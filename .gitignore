@@ -1,0 +1,52 @@
+# Build and publish output
+**/bin/
+**/obj/
+artifacts/
+publish/
+TestResults/
+coverage/
+coverage.*
+*.trx
+*.coverage
+*.coveragexml
+
+# Visual Studio, VS Code and JetBrains
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.rsuser
+*.DotSettings.user
+
+# NuGet and local tooling
+packages/
+*.nupkg
+*.snupkg
+.tools/
+
+# Logs, diagnostics and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.dmp
+*.etl
+*.binlog
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key
+*.snk
+secrets.json
+
+# Operating-system files
+Thumbs.db
+Desktop.ini
+.DS_Store

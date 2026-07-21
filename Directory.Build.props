@@ -1,0 +1,32 @@
+<Project>
+  <PropertyGroup>
+    <Version>1.1.0</Version>
+    <VersionPrefix>1.1.0</VersionPrefix>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <InformationalVersion>1.1.0</InformationalVersion>
+
+    <Title>Local Network Scanner</Title>
+    <Product>Local Network Scanner</Product>
+    <Authors>p-darksy-r and Local Network Scanner contributors</Authors>
+    <Company>p-darksy-r</Company>
+    <Description>Scanner de redes locais para Windows com descoberta, inventario e diagnostico transparente.</Description>
+    <Copyright>Copyright (c) 2026 p-darksy-r and contributors</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/p-darksy-r/LocalNetworkScanner</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/p-darksy-r/LocalNetworkScanner.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryBranch>main</RepositoryBranch>
+    <NeutralLanguage>pt-PT</NeutralLanguage>
+
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
+    <!-- These two rules recommend static/concrete APIs, while the services intentionally
+         keep instance-shaped seams for composition and testing. -->
+    <NoWarn>$(NoWarn);CA1822;CA1859</NoWarn>
+  </PropertyGroup>
+</Project>

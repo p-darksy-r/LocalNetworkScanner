@@ -1,0 +1,65 @@
+using System.Net;
+using System.Net.Sockets;
+using LocalNetworkScanner.Core.Models;
+using LocalNetworkScanner.Core.Utilities;
+
+namespace LocalNetworkScanner.Core.Services;
+
+public static class ScanRequestValidator
+{
+    public static void Validate(IReadOnlyList<IPAddress> addresses, ScanOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(addresses);
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (addresses.Count == 0)
+            throw new ArgumentException("O scan precisa de pelo menos um endereço.", nameof(addresses));
+        if (addresses.Count > IpRangeService.AbsoluteMaximumAddresses)
+            throw new ArgumentException(
+                $"Um scan está limitado a {IpRangeService.AbsoluteMaximumAddresses:N0} endereços.",
+                nameof(addresses));
+        if (addresses.Any(address =>
+                address.AddressFamily != AddressFamily.InterNetwork ||
+                !IpAddressHelper.IsPrivate(address)))
+        {
+            throw new InvalidOperationException(
+                "Por segurança, apenas são permitidos endereços IPv4 privados, locais ou link-local.");
+        }
+
+        ValidateRange(options.MaximumHostConcurrency, 1, 512, nameof(options.MaximumHostConcurrency));
+        ValidateRange(options.MaximumPortConcurrency, 1, 512, nameof(options.MaximumPortConcurrency));
+        ValidateRange(options.PingTimeoutMs, 50, 30_000, nameof(options.PingTimeoutMs));
+        ValidateRange(options.ConnectTimeoutMs, 50, 30_000, nameof(options.ConnectTimeoutMs));
+        ValidateRange(options.DiscoveryTimeoutMs, 100, 60_000, nameof(options.DiscoveryTimeoutMs));
+
+        if (options.EnableSnmpTopology)
+        {
+            if (options.SnmpSwitchAddress is null || !IpAddressHelper.IsPrivate(options.SnmpSwitchAddress))
+                throw new ArgumentException(
+                    "A topologia SNMP requer o endereço privado/local do switch.",
+                    nameof(options));
+            if (string.IsNullOrWhiteSpace(options.SnmpCommunity))
+                throw new ArgumentException(
+                    "A topologia SNMP requer uma community configurada pelo administrador.",
+                    nameof(options));
+            ValidateRange(options.SnmpTimeoutMs, 100, 30_000, nameof(options.SnmpTimeoutMs));
+        }
+
+        ValidatePorts(options.Ports, nameof(options.Ports));
+        ValidatePorts(options.DiscoveryPorts, nameof(options.DiscoveryPorts));
+    }
+
+    private static void ValidatePorts(IReadOnlyList<int> ports, string parameterName)
+    {
+        if (ports.Count == 0 || ports.Any(port => port is < 1 or > 65_535))
+            throw new ArgumentException("A lista contém portas inválidas ou está vazia.", parameterName);
+    }
+
+    private static void ValidateRange(int value, int minimum, int maximum, string parameterName)
+    {
+        if (value < minimum || value > maximum)
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                $"O valor deve estar entre {minimum:N0} e {maximum:N0}.");
+    }
+}

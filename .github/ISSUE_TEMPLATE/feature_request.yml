@@ -1,0 +1,29 @@
+name: Pedido de funcionalidade
+description: Sugerir uma melhoria para o produto
+title: '[Feature] '
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema a resolver
+      description: Explique a necessidade sem incluir inventários ou credenciais reais.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Solução proposta
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Utilização responsável
+      options:
+        - label: A funcionalidade destina-se a redes próprias ou explicitamente autorizadas.
+          required: true

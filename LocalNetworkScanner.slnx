@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="LocalNetworkScanner.Cli/LocalNetworkScanner.Cli.csproj" />
+  <Project Path="LocalNetworkScanner.Core/LocalNetworkScanner.Core.csproj" />
+  <Project Path="LocalNetworkScanner.Tests/LocalNetworkScanner.Tests.csproj" />
+  <Project Path="LocalNetworkScanner.Wpf/LocalNetworkScanner.Wpf.csproj" />
+</Solution>

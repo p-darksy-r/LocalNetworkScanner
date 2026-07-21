@@ -1,0 +1,108 @@
+using System.Net;
+
+namespace LocalNetworkScanner.Core.Models;
+
+public sealed class NetworkDevice
+{
+    public required IPAddress IpAddress { get; init; }
+
+    public bool IsOnline { get; set; }
+
+    public string? Alias { get; set; }
+
+    public string? Notes { get; set; }
+
+    public bool IsFavorite { get; set; }
+
+    public long? ResponseTimeMs { get; set; }
+
+    public int? ReplyTtl { get; set; }
+
+    public string? Hostname { get; set; }
+
+    public string? MacAddress { get; set; }
+
+    public string? Manufacturer { get; set; }
+
+    public bool IsRandomizedMac { get; set; }
+
+    public DiscoveryMethod DiscoveryMethods { get; set; }
+
+    public List<PortScanResult> Ports { get; set; } = [];
+
+    public List<string> MdnsNames { get; set; } = [];
+
+    public string? SsdpServer { get; set; }
+
+    public string? SsdpLocation { get; set; }
+
+    public string? NetBiosName { get; set; }
+
+    public string? Workgroup { get; set; }
+
+    public string? WsDiscoveryTypes { get; set; }
+
+    public string? WsDiscoveryAddresses { get; set; }
+
+    public string DeviceType { get; set; } = "Dispositivo de rede";
+
+    public string OsGuess { get; set; } = "Indeterminado";
+
+    public string RiskLevel { get; set; } = "Baixo";
+
+    public int RiskScore { get; set; }
+
+    public List<string> SecurityFindings { get; set; } = [];
+
+    public List<string> ObservedProtocols { get; set; } = [];
+
+    public TopologyAssessment Topology { get; set; } = new();
+
+    public DateTimeOffset FirstSeen { get; set; } = DateTimeOffset.UtcNow;
+
+    public DateTimeOffset LastSeen { get; set; } = DateTimeOffset.UtcNow;
+
+    public bool IsNew { get; set; }
+
+    public bool HistoryCompared { get; set; }
+
+    public List<string> Changes { get; set; } = [];
+
+    public string IpAddressText => IpAddress.ToString();
+
+    public string HostnameDisplay => string.IsNullOrWhiteSpace(Hostname) ? "—" : Hostname;
+
+    public string MacDisplay => string.IsNullOrWhiteSpace(MacAddress) ? "—" : MacAddress;
+
+    public string ManufacturerDisplay => string.IsNullOrWhiteSpace(Manufacturer) ? "Desconhecido" : Manufacturer;
+
+    public string ResponseTimeDisplay => ResponseTimeMs.HasValue ? $"{ResponseTimeMs.Value} ms" : "—";
+
+    public string OpenPortsText => Ports.Count == 0
+        ? "—"
+        : string.Join(", ", Ports.OrderBy(port => port.Port).Select(port => $"{port.Port}/{port.Protocol.ToLowerInvariant()}"));
+
+    public string DiscoveryText => DiscoveryMethods == DiscoveryMethod.None
+        ? "—"
+        : string.Join(" + ", Enum.GetValues<DiscoveryMethod>()
+            .Where(method => method != DiscoveryMethod.None && DiscoveryMethods.HasFlag(method))
+            .Select(method => method.ToString().ToUpperInvariant()));
+
+    public string ProtocolsText => ObservedProtocols.Count == 0
+        ? "—"
+        : string.Join(", ", ObservedProtocols);
+
+    public string TopologyText => Topology.Summary;
+
+    public string HistoryText => !HistoryCompared
+        ? "Não comparado"
+        : IsNew
+            ? "Novo"
+            : Changes.Count > 0 ? "Alterado" : "Conhecido";
+
+    public string IdentityDisplay => !string.IsNullOrWhiteSpace(Alias)
+        ? Alias
+        : string.IsNullOrWhiteSpace(Hostname)
+            ? string.IsNullOrWhiteSpace(NetBiosName) ? IpAddressText : NetBiosName
+            : Hostname;
+}

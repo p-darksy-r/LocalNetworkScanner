@@ -1,0 +1,10 @@
+namespace LocalNetworkScanner.Core.Models;
+
+public sealed class NetBiosInfo
+{
+    public string? ComputerName { get; init; }
+
+    public string? Workgroup { get; init; }
+
+    public string? MacAddress { get; init; }
+}

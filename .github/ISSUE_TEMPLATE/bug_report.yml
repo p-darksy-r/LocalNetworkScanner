@@ -1,0 +1,63 @@
+name: Relatório de erro
+description: Comunicar um problema reproduzível sem expor dados sensíveis da rede
+title: '[Bug] '
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado pelo relatório. Remova IPs, MACs, SSIDs, credenciais e inventários reais antes de publicar.
+        Vulnerabilidades exploráveis devem ser comunicadas através de um GitHub Security Advisory privado, não desta issue.
+  - type: input
+    id: version
+    attributes:
+      label: Versão
+      description: Versão da aplicação e, se possível, SHA-256 do pacote.
+      placeholder: 1.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: architecture
+    attributes:
+      label: Arquitetura
+      options:
+        - win-x64
+        - win-arm64
+        - Build de desenvolvimento
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Problema observado
+      description: Descreva o comportamento atual e o esperado.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Passos para reproduzir
+      description: Use uma rede de laboratório e dados anonimizados.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs anonimizados
+      render: text
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Confirmações
+      options:
+        - label: Removi identificadores e credenciais da rede.
+          required: true
+        - label: Verifiquei que não se trata de uma vulnerabilidade que deva ser comunicada em privado.
+          required: true
