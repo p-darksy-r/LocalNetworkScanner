@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->
+
 # Checklist de release Windows
 
 Uma release só deve ser marcada como concluída quando todos os itens obrigatórios estiverem verificados. Guardar evidência dos comandos, versões, hashes e máquinas usadas.
@@ -6,6 +8,7 @@ Uma release só deve ser marcada como concluída quando todos os itens obrigató
 
 - [ ] A versão em `Directory.Build.props` coincide com o changelog, nome do ZIP e tag.
 - [ ] `Product`, `Company`, copyright e publisher representam a entidade que vai distribuir a aplicação.
+- [ ] `scripts/check-copyright.ps1` confirma cabeçalho e rodapé em todos os ficheiros comentáveis.
 - [ ] O nome “Local Network Scanner” e o ícone são consistentes na UI, propriedades do EXE e instalador.
 - [ ] A licença MIT continua a ser a licença pretendida para o código e distribuição.
 - [ ] O `CHANGELOG.md` descreve apenas funcionalidades presentes nessa revisão.
@@ -37,6 +40,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1
 - [ ] Exportação JSON/CSV e migração/leitura do histórico foram testadas com dados hostis e Unicode.
 - [ ] A UI foi verificada com teclado, leitor de ecrã, escala 100/150/200%, tema claro/escuro e janela pequena.
 - [ ] Português é apresentado corretamente; ausência de dados usa “indisponível/desconhecido” sem inventar valores.
+- [ ] Perfis Rápido, Normal e Avançado aplicam limites distintos e mostram descrições coerentes na UI.
+- [ ] A lista de dispositivos permanece a vista principal e **Abrir topologia** só fica disponível quando existe mapa.
+- [ ] A janela de topologia abre/fecha sem repetir o scan e mantém zoom, pan, seleção e exportações.
+- [ ] Códigos `LNS-USR-*`, `LNS-NET-*`, `LNS-DEV-*` e `LNS-APP-*` têm categoria, severidade, ação recomendada e contexto sanitizado.
 
 ## 4. Limites, privacidade e utilização segura
 
@@ -71,14 +78,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeI
 - [ ] O smoke test `LocalNetworkScanner.Cli.exe --help` termina com exit code `0` numa máquina da arquitetura publicada; cross-publish ARM64 num host x64 não conta como smoke ARM64.
 - [ ] A UI arranca, inicia e cancela um scan de laboratório e fecha sem processo residual.
 - [ ] O ZIP inclui UI, CLI, README, licença, changelog e limites técnicos.
-- [ ] Exports JSON schema v2 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações.
+- [ ] Exports JSON schema v3 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações ou dos diagnósticos documentados.
 - [ ] As opções CLI `--html` e `--graphml` foram verificadas com dados sintéticos ou de laboratório.
 - [ ] O SHA-256 publicado corresponde exatamente ao ZIP.
 
 Verificação manual do checksum:
 
 ```powershell
-$zip = '.\artifacts\release\LocalNetworkScanner-1.1.0-win-x64.zip'
+$zip = '.\artifacts\release\LocalNetworkScanner-1.2.0-win-x64.zip'
 $expected = (Get-Content "$zip.sha256").Split(' ')[0]
 $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actual -ne $expected) { throw 'SHA-256 invalido.' }
@@ -136,6 +143,7 @@ Se for usado outro instalador, documentar a ferramenta e versão, privilégios p
 - [ ] Rede sem ICMP, multicast bloqueado e adaptador sem VLAN exposta produzem resultados honestos.
 - [ ] Switch SNMP indisponível, credenciais rejeitadas e tabelas FDB incompletas produzem avisos sem interromper o scan base.
 - [ ] Modo offline/sem interface ativa mostra uma mensagem acionável.
+- [ ] Entrada inválida, interface ausente, MAC inválido, fabricante/tipo desconhecido e falha inesperada apresentam o código correto sem expor dados sensíveis.
 - [ ] Nomes, SSIDs e hostnames com Unicode não quebram a UI nem CSV/JSON.
 
 ## 9. Publicação e pós-release
@@ -146,3 +154,5 @@ Se for usado outro instalador, documentar a ferramenta e versão, privilégios p
 - [ ] Existe um canal privado para vulnerabilidades e um canal normal para suporte.
 - [ ] Foi guardada uma cópia imutável dos artefactos e logs de build.
 - [ ] Foi preparado um plano de rollback ou retirada da release.
+
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

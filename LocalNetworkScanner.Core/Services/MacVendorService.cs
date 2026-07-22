@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Text;
 
 namespace LocalNetworkScanner.Core.Services;
@@ -200,3 +202,5 @@ public sealed class MacVendorService
             ? string.Empty
             : new string(value.Where(Uri.IsHexDigit).Select(char.ToUpperInvariant).ToArray());
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

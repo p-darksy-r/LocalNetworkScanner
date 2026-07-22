@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 namespace LocalNetworkScanner.Core.Models;
 
 public enum NetworkMapEdgeKind
@@ -24,3 +26,5 @@ public sealed class NetworkMapEdge
 
     public ConfidenceLevel Confidence { get; init; }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

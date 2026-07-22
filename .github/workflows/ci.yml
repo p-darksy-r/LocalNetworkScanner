@@ -1,3 +1,5 @@
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 name: CI
 
 on:
@@ -23,6 +25,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      - name: Verify copyright markers
+        shell: pwsh
+        run: .\scripts\check-copyright.ps1
+
       - name: Install .NET SDK from global.json
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
@@ -47,3 +53,5 @@ jobs:
 
       - name: CLI smoke test
         run: dotnet run --project .\LocalNetworkScanner.Cli\LocalNetworkScanner.Cli.csproj --configuration Release --no-build -- --help
+
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

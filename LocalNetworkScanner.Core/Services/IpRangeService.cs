@@ -1,4 +1,7 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Net;
+using LocalNetworkScanner.Core.Models;
 using LocalNetworkScanner.Core.Utilities;
 
 namespace LocalNetworkScanner.Core.Services;
@@ -23,7 +26,17 @@ public sealed class IpRangeService
         string cidr,
         int maximumAddresses = DefaultMaximumAddresses)
     {
-        (IPAddress address, int prefix) = IpAddressHelper.ParseCidr(cidr);
+        (IPAddress address, int prefix) parsed;
+        try
+        {
+            parsed = IpAddressHelper.ParseCidr(cidr);
+        }
+        catch (Exception exception) when (exception is ArgumentException or FormatException)
+        {
+            throw new ScanFormatException(DiagnosticCatalog.InvalidCidr(cidr), exception);
+        }
+
+        (IPAddress address, int prefix) = parsed;
         IPAddress mask = IpAddressHelper.PrefixToMask(prefix);
         return Generate(IpAddressHelper.GetNetworkAddress(address, mask), prefix, maximumAddresses);
     }
@@ -35,9 +48,10 @@ public sealed class IpRangeService
     {
         if (maximumAddresses is < 1 or > AbsoluteMaximumAddresses)
         {
-            throw new ArgumentOutOfRangeException(
+            throw new ScanRangeException(
+                DiagnosticCatalog.InvalidScanConfiguration(nameof(maximumAddresses)),
                 nameof(maximumAddresses),
-                $"O limite deve estar entre 1 e {AbsoluteMaximumAddresses:N0} endereços.");
+                maximumAddresses);
         }
 
         ulong addressCount = 1UL << (32 - prefixLength);
@@ -50,9 +64,11 @@ public sealed class IpRangeService
 
         if (usableCount > (ulong)maximumAddresses)
         {
-            throw new InvalidOperationException(
-                $"A rede contém {usableCount:N0} endereços utilizáveis. " +
-                $"O limite atual é {maximumAddresses:N0}; usa --max-hosts para o aumentar conscientemente.");
+            throw new ScanOperationException(
+                DiagnosticCatalog.RangeLimitExceeded(
+                    networkAddress + "/" + prefixLength.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    usableCount > int.MaxValue ? null : (int)usableCount,
+                    maximumAddresses));
         }
 
         uint first = IpAddressHelper.ToUInt32(networkAddress);
@@ -66,3 +82,5 @@ public sealed class IpRangeService
         return addresses;
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

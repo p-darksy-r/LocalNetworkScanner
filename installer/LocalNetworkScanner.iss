@@ -1,3 +1,5 @@
+; Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 #ifndef SourceRoot
   #error SourceRoot must point to the staged release directory.
 #endif
@@ -50,7 +52,7 @@ ChangesEnvironment=no
 VersionInfoVersion={#AppVersion}.0
 VersionInfoCompany={#AppPublisher}
 VersionInfoDescription={#AppName} installer ({#RuntimeIdentifier})
-VersionInfoCopyright=Copyright (c) 2026 p-darksy-r and contributors
+VersionInfoCopyright=Copyright (c) 2026 p-darksy-r and Local Network Scanner.
 VersionInfoProductName={#AppName}
 
 #if RuntimeIdentifier == "win-x64"
@@ -86,3 +88,5 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+; Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 namespace LocalNetworkScanner.Core.Utilities;
 
 internal static class ProductIdentity
@@ -9,3 +11,5 @@ internal static class ProductIdentity
 
     public static string UserAgent { get; } = $"{Name}/{Version}";
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

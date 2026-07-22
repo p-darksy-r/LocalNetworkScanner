@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Net;
 using System.Net.Sockets;
 
@@ -110,3 +112,5 @@ public static class IpAddressHelper
              (bytes[0] == 169 && bytes[1] == 254));
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

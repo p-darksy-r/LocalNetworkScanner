@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
@@ -227,3 +229,5 @@ public sealed class PortScannerService
             throw new ArgumentOutOfRangeException(nameof(timeoutMs), "O timeout deve ser superior a zero.");
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

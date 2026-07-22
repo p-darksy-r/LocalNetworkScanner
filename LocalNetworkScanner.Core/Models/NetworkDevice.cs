@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Net;
 
 namespace LocalNetworkScanner.Core.Models;
@@ -106,3 +108,5 @@ public sealed class NetworkDevice
             ? string.IsNullOrWhiteSpace(NetBiosName) ? IpAddressText : NetBiosName
             : Hostname;
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

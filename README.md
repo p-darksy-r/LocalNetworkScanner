@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->
+
 # Local Network Scanner
 
 [![CI](https://github.com/p-darksy-r/LocalNetworkScanner/actions/workflows/ci.yml/badge.svg)](https://github.com/p-darksy-r/LocalNetworkScanner/actions/workflows/ci.yml)
@@ -13,19 +15,47 @@ As versões oficiais, quando existirem, serão publicadas na página de [Release
 ## Funcionalidades
 
 - seleção da interface IPv4 e da rede privada a analisar;
-- perfis rápido, normal e profundo, com limites de concorrência e cancelamento seguro;
+- perfis **Rápido**, **Normal** e **Avançado**, com profundidade explícita, limites de concorrência e cancelamento seguro;
 - descoberta por ICMP, tentativa de ligação TCP, ARP e mecanismos locais multicast;
 - endereço IP, latência, hostname, MAC quando disponível e fabricante por heurística OUI;
 - pesquisa de portas TCP e identificação leve de serviços por portas e respostas de aplicação;
 - observações de mDNS, SSDP/UPnP e WS-Discovery quando a rede permite multicast;
 - classificação heurística do tipo de equipamento, sistema operativo provável e risco;
-- histórico local, deteção de alterações e exportação JSON schema v2, CSV, HTML e GraphML;
+- histórico local, deteção de alterações e exportação JSON schema v3, CSV, HTML e GraphML;
+- diagnósticos acionáveis com códigos estáveis que distinguem entrada do utilizador, rede, dispositivo e falhas internas da aplicação;
 - informação da ligação Wi-Fi local, incluindo SSID, BSSID, canal e percentagem de sinal quando o Windows a fornece;
 - VLAN da interface local quando exposta pelo nome ou pelas propriedades avançadas do adaptador;
 - indicação prudente de alcance direto em camada 2 quando existe evidência ARP;
 - topologia SNMP v2c opcional, desativada por defeito, para switches geridos autorizados: nome/descrição, observações da FDB Bridge/Q-BRIDGE, porta/interface quando não ambígua e VLAN apenas quando o mapeamento do equipamento é inequívoco;
-- visualização de topologia em grafo, com origem e confiança da evidência, enriquecida por vizinhos LLDP quando estes são disponibilizados pelo switch autorizado;
+- topologia opcional, aberta a pedido numa janela própria através do botão com ícone **Abrir topologia**, com origem e confiança da evidência e enriquecimento LLDP quando disponibilizado pelo switch autorizado;
 - exportação GraphML da topologia para análise em ferramentas externas, preservando o tipo, a origem, a confiança e o resumo da evidência de cada ligação.
+
+## Perfis de scan
+
+Depois de escolher a interface e o intervalo, selecione a profundidade adequada:
+
+| Perfil | Utilização recomendada | Comportamento |
+| --- | --- | --- |
+| **Rápido** | primeira passagem e redes maiores | descoberta leve e portas essenciais; minimiza ligações e tempo de espera |
+| **Normal** | inventário habitual | serviços comuns, identidade e avaliação de segurança com equilíbrio entre detalhe e duração; é o perfil recomendado |
+| **Avançado** | diagnóstico autorizado e dirigido | mais portas, recolha leve de banners e maior tolerância de resposta; demora mais e gera mais atividade na rede |
+
+Opções manuais podem substituir partes do perfil. Reveja sempre o intervalo antes de iniciar, sobretudo no modo Avançado. Na CLI, use `quick`, `standard` ou `advanced`; o alias histórico `deep` continua aceite para compatibilidade.
+
+## Diagnósticos e códigos de erro
+
+Um problema é apresentado com um código pesquisável, categoria, severidade, explicação em pt-PT e ação recomendada. Os prefixos indicam a origem provável:
+
+- `LNS-USR-*`: configuração ou entrada que o utilizador pode corrigir;
+- `LNS-NET-*`: interface, conectividade ou política da rede;
+- `LNS-DEV-*`: resposta ou identificação de um dispositivo, incluindo MAC inválido, fabricante desconhecido ou tipo não reconhecido;
+- `LNS-APP-*`: falha interna ou inesperada da aplicação.
+
+Um aviso de dispositivo desconhecido não significa necessariamente que o scan falhou. Copie o código ao pedir suporte, mas remova IPs, MACs, SSIDs e outros identificadores. Consulte o [catálogo de códigos de erro](docs/ERROR_CODES.md).
+
+## Lista primeiro, topologia a pedido
+
+Após cada scan, a aplicação mantém a lista de dispositivos como vista principal. Se existir um mapa, o botão com ícone **Abrir topologia** fica disponível e abre uma janela separada para esse mesmo resultado. A janela permite zoom, pan, ajuste automático, seleção sincronizada e exportação PNG/GraphML; fechá-la não elimina o scan nem altera a lista.
 
 ## O que os resultados não significam
 
@@ -74,6 +104,12 @@ Validação completa dos projetos disponíveis:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1
+```
+
+O gate também verifica se todos os ficheiros textuais comentáveis têm o cabeçalho e o rodapé de copyright. Para executar apenas essa verificação:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\check-copyright.ps1
 ```
 
 Para omitir o build e a verificação de formato explícitos do projeto gráfico:
@@ -138,9 +174,9 @@ Resultados:
 
 ```text
 artifacts\publish\<RID>\
-artifacts\staging\LocalNetworkScanner-1.1.0-<RID>\
-artifacts\release\LocalNetworkScanner-1.1.0-<RID>.zip
-artifacts\release\LocalNetworkScanner-1.1.0-<RID>.zip.sha256
+artifacts\staging\LocalNetworkScanner-1.2.0-<RID>\
+artifacts\release\LocalNetworkScanner-1.2.0-<RID>.zip
+artifacts\release\LocalNetworkScanner-1.2.0-<RID>.zip.sha256
 ```
 
 Instalador opcional com [Inno Setup 6](https://jrsoftware.org/isdl.php):
@@ -149,7 +185,7 @@ Instalador opcional com [Inno Setup 6](https://jrsoftware.org/isdl.php):
 powershell -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -RuntimeIdentifier win-x64
 ```
 
-Uma tag `v1.1.0` que coincida com `Directory.Build.props` inicia o workflow de release. O workflow volta a validar formato, build e testes, cria pacotes x64/ARM64, instaladores e checksums, e publica-os na release correspondente. Não inclui nem simula uma assinatura Authenticode.
+Uma tag `v1.2.0` que coincida com `Directory.Build.props` inicia o workflow de release. O workflow volta a validar copyright, formato, build e testes, cria pacotes x64/ARM64, instaladores e checksums, e publica-os na release correspondente. Não inclui nem simula uma assinatura Authenticode.
 
 Estes ficheiros locais não ficam automaticamente prontos para distribuição pública. A release final deve ter ícone e manifesto revistos, teste num Windows limpo, verificação do checksum e indicação inequívoca do estado Authenticode. Uma assinatura válida continua a ser recomendada para identidade e reputação; até existir, a distribuição permanece explicitamente não assinada. Consulte a [Checklist de release](docs/RELEASE_CHECKLIST.md).
 
@@ -176,3 +212,5 @@ Issues e pedidos de funcionalidades: [GitHub Issues](https://github.com/p-darksy
 ## Licença
 
 Distribuído sob a licença [MIT](LICENSE).
+
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

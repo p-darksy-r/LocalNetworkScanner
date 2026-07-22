@@ -1,3 +1,5 @@
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 [CmdletBinding()]
 param(
     [ValidateSet("Debug", "Release")]
@@ -17,6 +19,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $coreProject = Join-Path $repoRoot "LocalNetworkScanner.Core\LocalNetworkScanner.Core.csproj"
 $cliProject = Join-Path $repoRoot "LocalNetworkScanner.Cli\LocalNetworkScanner.Cli.csproj"
 $wpfProject = Join-Path $repoRoot "LocalNetworkScanner.Wpf\LocalNetworkScanner.Wpf.csproj"
+$copyrightCheckScript = Join-Path $repoRoot "scripts\check-copyright.ps1"
 $testResults = Join-Path $repoRoot "artifacts\TestResults"
 
 function Invoke-DotNet {
@@ -34,6 +37,9 @@ function Invoke-DotNet {
 
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
     throw "The .NET SDK is required and dotnet was not found on PATH."
+}
+if (-not (Test-Path -LiteralPath $copyrightCheckScript -PathType Leaf)) {
+    throw "The copyright validation script was not found: $copyrightCheckScript"
 }
 
 $projects = @($coreProject, $cliProject)
@@ -57,6 +63,9 @@ try {
         throw "Unable to determine the .NET SDK version."
     }
     Write-Host "Using .NET SDK $sdkVersion" -ForegroundColor Cyan
+
+    Write-Host "> copyright header/footer validation" -ForegroundColor DarkGray
+    & $copyrightCheckScript
 
     foreach ($project in $projects) {
         Invoke-DotNet @("restore", $project)
@@ -183,3 +192,5 @@ try {
 finally {
     Pop-Location
 }
+
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

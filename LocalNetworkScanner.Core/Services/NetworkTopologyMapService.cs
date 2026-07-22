@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
@@ -55,6 +57,7 @@ public sealed class NetworkTopologyMapService
                 ? result.SnmpTopology
                 : null;
             bool gatewayIsManagedSwitch = gatewaySnapshot is not null || result.Devices.Any(device =>
+                MacAddressService.TryNormalizeDeviceAddress(device.MacAddress, out _) &&
                 device.Topology.ObservedOnManagedBridge &&
                 IPAddress.TryParse(device.Topology.SwitchAddress, out IPAddress? switchAddress) &&
                 switchAddress.Equals(network.GatewayAddress));
@@ -72,7 +75,7 @@ public sealed class NetworkTopologyMapService
                         "Gateway e switch gerido consultado por SNMP")
                     : "Rota predefinida da interface",
                 IpAddress = network.GatewayAddress,
-                MacAddress = gatewayDevice?.MacAddress,
+                MacAddress = GetValidMac(gatewayDevice?.MacAddress),
                 DeviceType = gatewayIsManagedSwitch
                     ? "Gateway / switch gerido"
                     : gatewayDevice?.DeviceType ?? "Gateway",
@@ -208,7 +211,8 @@ public sealed class NetworkTopologyMapService
 
         foreach (NetworkDevice device in result.Devices)
         {
-            if (!device.Topology.ObservedOnManagedBridge ||
+            if (!MacAddressService.TryNormalizeDeviceAddress(device.MacAddress, out _) ||
+                !device.Topology.ObservedOnManagedBridge ||
                 !IPAddress.TryParse(device.Topology.SwitchAddress, out IPAddress? address))
             {
                 continue;
@@ -235,7 +239,7 @@ public sealed class NetworkTopologyMapService
                 Label = FirstNonEmpty(name, switchDevice?.IdentityDisplay, address.ToString()),
                 Subtitle = FirstNonEmpty(description, switchDevice?.DeviceType, "Switch consultado por SNMP"),
                 IpAddress = address,
-                MacAddress = switchDevice?.MacAddress,
+                MacAddress = GetValidMac(switchDevice?.MacAddress),
                 DeviceType = "Switch gerido",
                 VlanId = switchDevice?.Topology.VlanId,
                 RiskLevel = switchDevice?.RiskLevel ?? "Baixo",
@@ -262,11 +266,14 @@ public sealed class NetworkTopologyMapService
                 continue;
             }
 
+            bool hasValidDeviceMac = MacAddressService.TryNormalizeDeviceAddress(
+                device.MacAddress,
+                out string normalizedDeviceMac);
             bool hasFdbEvidence = false;
             if (result.SnmpTopology is not null &&
-                !string.IsNullOrWhiteSpace(device.MacAddress) &&
+                hasValidDeviceMac &&
                 result.SnmpTopology.MacTable.TryGetValue(
-                    MacAddressService.Normalize(device.MacAddress),
+                    normalizedDeviceMac,
                     out IReadOnlyList<SwitchPortObservation>? observations) &&
                 switchNodeIds.TryGetValue(
                     result.SnmpTopology.SwitchAddress,
@@ -279,7 +286,8 @@ public sealed class NetworkTopologyMapService
                     edges.Add(CreateFdbEdge(queriedSwitchId, deviceId, observation));
                 }
             }
-            else if (device.Topology.ObservedOnManagedBridge &&
+            else if (hasValidDeviceMac &&
+                     device.Topology.ObservedOnManagedBridge &&
                      IPAddress.TryParse(device.Topology.SwitchAddress, out IPAddress? switchAddress) &&
                      switchNodeIds.TryGetValue(switchAddress, out string? switchId))
             {
@@ -299,7 +307,7 @@ public sealed class NetworkTopologyMapService
 
             bool arpObserved =
                 device.DiscoveryMethods.HasFlag(DiscoveryMethod.Arp) &&
-                !string.IsNullOrWhiteSpace(device.MacAddress);
+                hasValidDeviceMac;
             if (arpObserved)
             {
                 edges.Add(new NetworkMapEdge
@@ -383,7 +391,7 @@ public sealed class NetworkTopologyMapService
                 Kind = NetworkMapNodeKind.LldpNeighbor,
                 Label = FirstNonEmpty(neighbor.SystemName, neighbor.ChassisId, "Vizinho LLDP"),
                 Subtitle = $"{localPort} ↔ {remotePort}",
-                MacAddress = IsMacAddress(neighbor.ChassisId) ? neighbor.ChassisId : null,
+                MacAddress = GetValidMac(neighbor.ChassisId),
                 DeviceType = "Vizinho LLDP",
                 RiskLevel = "Baixo",
                 IsOnline = true
@@ -415,7 +423,7 @@ public sealed class NetworkTopologyMapService
             Label = FirstNonEmpty(device?.IdentityDisplay, fallbackLabel, address.ToString()),
             Subtitle = device is null ? fallbackSubtitle : BuildDeviceSubtitle(device),
             IpAddress = address,
-            MacAddress = FirstNonEmptyOrNull(device?.MacAddress, fallbackMac),
+            MacAddress = GetValidMac(device?.MacAddress, fallbackMac),
             DeviceType = device?.DeviceType,
             VlanId = vlanId,
             RiskLevel = device?.RiskLevel ?? "Baixo",
@@ -478,38 +486,16 @@ public sealed class NetworkTopologyMapService
         return observed.Length == 0 ? "uma observação de rede" : string.Join(" + ", observed);
     }
 
-    private static bool IsMacAddress(string? value)
+    private static string? GetValidMac(params string?[] values)
     {
-        if (string.IsNullOrWhiteSpace(value))
-            return false;
-
-        string candidate = value.Trim();
-        if (candidate.Length == 12)
-            return candidate.All(IsAsciiHexDigit);
-
-        if (candidate.Length != 17)
-            return false;
-        char separator = candidate[2];
-        if (separator is not (':' or '-'))
-            return false;
-
-        for (int index = 0; index < candidate.Length; index++)
+        foreach (string? value in values)
         {
-            if ((index + 1) % 3 == 0)
-            {
-                if (candidate[index] != separator)
-                    return false;
-            }
-            else if (!IsAsciiHexDigit(candidate[index]))
-            {
-                return false;
-            }
+            if (MacAddressService.TryNormalizeDeviceAddress(value, out string normalized))
+                return normalized;
         }
-        return true;
-    }
 
-    private static bool IsAsciiHexDigit(char value) =>
-        value is >= '0' and <= '9' or >= 'A' and <= 'F' or >= 'a' and <= 'f';
+        return null;
+    }
 
     private static NetworkDevice? FindDevice(
         IReadOnlyList<NetworkDevice> devices,
@@ -528,6 +514,6 @@ public sealed class NetworkTopologyMapService
     private static string FirstNonEmpty(params string?[] values) =>
         values.First(value => !string.IsNullOrWhiteSpace(value))!;
 
-    private static string? FirstNonEmptyOrNull(params string?[] values) =>
-        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

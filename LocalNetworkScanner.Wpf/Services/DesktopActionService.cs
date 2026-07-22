@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Diagnostics;
 using LocalNetworkScanner.Core.Models;
 using LocalNetworkScanner.Core.Services;
@@ -58,3 +60,5 @@ public sealed class DesktopActionService
         });
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

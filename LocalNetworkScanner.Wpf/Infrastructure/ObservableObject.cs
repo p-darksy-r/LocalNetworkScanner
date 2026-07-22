@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
@@ -25,3 +27,5 @@ public abstract class ObservableObject : INotifyPropertyChanged
 
     protected void OnAllPropertiesChanged() => OnPropertyChanged(string.Empty);
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

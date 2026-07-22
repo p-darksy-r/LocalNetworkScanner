@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 namespace LocalNetworkScanner.Core.Models;
 
 public sealed class NetBiosInfo
@@ -8,3 +10,5 @@ public sealed class NetBiosInfo
 
     public string? MacAddress { get; init; }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

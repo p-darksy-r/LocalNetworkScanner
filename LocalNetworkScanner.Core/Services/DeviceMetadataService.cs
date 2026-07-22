@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Text.Json;
 using LocalNetworkScanner.Core.Models;
 
@@ -143,3 +145,5 @@ public sealed class DeviceMetadataService : IDisposable
         public DateTimeOffset UpdatedAt { get; set; }
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

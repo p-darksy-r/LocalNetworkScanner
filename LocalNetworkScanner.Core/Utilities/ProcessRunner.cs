@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Diagnostics;
 
 namespace LocalNetworkScanner.Core.Utilities;
@@ -115,3 +117,5 @@ internal static class ProcessRunner
         }
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

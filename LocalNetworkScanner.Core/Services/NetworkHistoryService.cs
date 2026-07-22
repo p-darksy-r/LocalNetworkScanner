@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Text.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -106,17 +108,20 @@ public sealed class NetworkHistoryService
     {
         IpAddress = device.IpAddressText,
         Hostname = device.Hostname,
-        MacAddress = device.MacAddress,
+        MacAddress = GetValidMac(device.MacAddress),
         Manufacturer = device.Manufacturer,
         OpenPorts = device.Ports.Select(port => port.Port).OrderBy(port => port).ToArray(),
         FirstSeen = device.FirstSeen,
         LastSeen = device.LastSeen
     };
 
-    private static string GetIdentity(SnapshotDevice device) =>
-        string.IsNullOrWhiteSpace(device.MacAddress)
+    private static string GetIdentity(SnapshotDevice device)
+    {
+        string? validMac = GetValidMac(device.MacAddress);
+        return validMac is null
             ? $"ip:{device.IpAddress}"
-            : $"mac:{device.MacAddress}";
+            : $"mac:{validMac}";
+    }
 
     private static string Sanitize(string value) =>
         string.Concat(value.Select(character => Path.GetInvalidFileNameChars().Contains(character) ? '_' : character));
@@ -125,14 +130,19 @@ public sealed class NetworkHistoryService
     {
         string? gatewayMac = result.NetworkInterface.GatewayAddress is null
             ? null
-            : result.Devices.FirstOrDefault(device =>
-                device.IpAddress.Equals(result.NetworkInterface.GatewayAddress))?.MacAddress;
+            : GetValidMac(result.Devices.FirstOrDefault(device =>
+                device.IpAddress.Equals(result.NetworkInterface.GatewayAddress))?.MacAddress);
         string anchor = gatewayMac ??
-            result.NetworkInterface.Bssid ??
+            GetValidMac(result.NetworkInterface.Bssid) ??
             result.NetworkInterface.GatewayAddress?.ToString() ??
             result.NetworkInterface.Id;
         return $"{result.NetworkInterface.NetworkCidr}|{anchor}".ToLowerInvariant();
     }
+
+    private static string? GetValidMac(string? value) =>
+        MacAddressService.TryNormalizeDeviceAddress(value, out string normalized)
+            ? normalized
+            : null;
 
     private static string Hash(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))[..16].ToLowerInvariant();
@@ -156,3 +166,5 @@ public sealed class NetworkHistoryService
         public DateTimeOffset LastSeen { get; set; }
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
@@ -187,3 +189,5 @@ public sealed class MdnsDiscoveryService
         throw new InvalidDataException("Nome DNS sem terminador.");
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

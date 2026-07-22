@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Net;
 using System.Net.Sockets;
 using LocalNetworkScanner.Core.Models;
@@ -13,17 +15,23 @@ public static class ScanRequestValidator
         ArgumentNullException.ThrowIfNull(options);
 
         if (addresses.Count == 0)
-            throw new ArgumentException("O scan precisa de pelo menos um endereço.", nameof(addresses));
-        if (addresses.Count > IpRangeService.AbsoluteMaximumAddresses)
-            throw new ArgumentException(
-                $"Um scan está limitado a {IpRangeService.AbsoluteMaximumAddresses:N0} endereços.",
+            throw new ScanInputException(
+                DiagnosticCatalog.InvalidScanConfiguration(nameof(addresses)),
                 nameof(addresses));
-        if (addresses.Any(address =>
+        if (addresses.Count > IpRangeService.AbsoluteMaximumAddresses)
+            throw new ScanInputException(
+                DiagnosticCatalog.RangeLimitExceeded(
+                    addressCount: addresses.Count,
+                    configuredLimit: IpRangeService.AbsoluteMaximumAddresses),
+                nameof(addresses));
+
+        IPAddress? invalidAddress = addresses.FirstOrDefault(address =>
                 address.AddressFamily != AddressFamily.InterNetwork ||
-                !IpAddressHelper.IsPrivate(address)))
+                !IpAddressHelper.IsPrivate(address));
+        if (invalidAddress is not null)
         {
-            throw new InvalidOperationException(
-                "Por segurança, apenas são permitidos endereços IPv4 privados, locais ou link-local.");
+            throw new ScanOperationException(
+                DiagnosticCatalog.PublicAddressScope(invalidAddress.ToString()));
         }
 
         ValidateRange(options.MaximumHostConcurrency, 1, 512, nameof(options.MaximumHostConcurrency));
@@ -35,12 +43,12 @@ public static class ScanRequestValidator
         if (options.EnableSnmpTopology)
         {
             if (options.SnmpSwitchAddress is null || !IpAddressHelper.IsPrivate(options.SnmpSwitchAddress))
-                throw new ArgumentException(
-                    "A topologia SNMP requer o endereço privado/local do switch.",
+                throw new ScanInputException(
+                    DiagnosticCatalog.InvalidScanConfiguration(nameof(options.SnmpSwitchAddress)),
                     nameof(options));
             if (string.IsNullOrWhiteSpace(options.SnmpCommunity))
-                throw new ArgumentException(
-                    "A topologia SNMP requer uma community configurada pelo administrador.",
+                throw new ScanInputException(
+                    DiagnosticCatalog.InvalidScanConfiguration("SNMP"),
                     nameof(options));
             ValidateRange(options.SnmpTimeoutMs, 100, 30_000, nameof(options.SnmpTimeoutMs));
         }
@@ -52,14 +60,19 @@ public static class ScanRequestValidator
     private static void ValidatePorts(IReadOnlyList<int> ports, string parameterName)
     {
         if (ports.Count == 0 || ports.Any(port => port is < 1 or > 65_535))
-            throw new ArgumentException("A lista contém portas inválidas ou está vazia.", parameterName);
+            throw new ScanInputException(
+                DiagnosticCatalog.InvalidPortSpecification(parameterName),
+                parameterName);
     }
 
     private static void ValidateRange(int value, int minimum, int maximum, string parameterName)
     {
         if (value < minimum || value > maximum)
-            throw new ArgumentOutOfRangeException(
+            throw new ScanRangeException(
+                DiagnosticCatalog.InvalidScanConfiguration(parameterName),
                 parameterName,
-                $"O valor deve estar entre {minimum:N0} e {maximum:N0}.");
+                value);
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

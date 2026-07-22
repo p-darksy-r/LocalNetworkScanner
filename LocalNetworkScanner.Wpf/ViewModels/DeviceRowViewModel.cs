@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using LocalNetworkScanner.Core.Models;
 using LocalNetworkScanner.Core.Services;
 using LocalNetworkScanner.Wpf.Infrastructure;
@@ -115,7 +117,7 @@ public sealed class DeviceRowViewModel : ObservableObject
     public bool HasSecurityFindings => _device.SecurityFindings.Count > 0;
     public bool HasChanges => _device.Changes.Count > 0;
     public bool HasPorts => _device.Ports.Count > 0;
-    public bool HasMacAddress => !string.IsNullOrWhiteSpace(_device.MacAddress);
+    public bool HasMacAddress => MacAddressService.TryNormalizeDeviceAddress(_device.MacAddress, out _);
     public bool CanOpenWeb => _device.Ports.Any(item => ServiceCatalog.IsHttpPort(item.Port));
     public bool CanOpenExplorer => _device.Ports.Any(item => item.Port is 139 or 445);
     public bool CanOpenRemoteDesktop => _device.Ports.Any(item => item.Port == 3389);
@@ -135,3 +137,5 @@ public sealed class DeviceRowViewModel : ObservableObject
         _ => "Sem evidência suficiente"
     };
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

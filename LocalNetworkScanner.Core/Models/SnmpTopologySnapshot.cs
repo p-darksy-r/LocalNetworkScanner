@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Net;
 
 namespace LocalNetworkScanner.Core.Models;
@@ -61,3 +63,5 @@ public sealed class LldpNeighborObservation
 
     public string? SystemDescription { get; init; }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

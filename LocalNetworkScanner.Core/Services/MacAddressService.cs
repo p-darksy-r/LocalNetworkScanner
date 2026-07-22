@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Globalization;
@@ -68,9 +70,60 @@ public sealed partial class MacAddressService
             : string.Join(":", Enumerable.Range(0, 6).Select(index => hex.Substring(index * 2, 2).ToUpperInvariant()));
     }
 
+    /// <summary>
+    /// Valida e normaliza um MAC unicast de 48 bits adequado à identidade de um dispositivo.
+    /// </summary>
+    public static bool TryNormalizeDeviceAddress(string? value, out string normalized)
+    {
+        normalized = string.Empty;
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        string trimmed = value.Trim();
+        if (!ValidDeviceMacRegex().IsMatch(trimmed))
+            return false;
+
+        string hex = new(trimmed
+            .Where(character => character is not (':' or '-' or '.'))
+            .ToArray());
+
+        byte[] bytes = new byte[6];
+        for (int index = 0; index < bytes.Length; index++)
+        {
+            if (!byte.TryParse(
+                    hex.AsSpan(index * 2, 2),
+                    System.Globalization.NumberStyles.HexNumber,
+                    CultureInfo.InvariantCulture,
+                    out bytes[index]))
+            {
+                return false;
+            }
+        }
+
+        bool allZero = bytes.All(item => item == 0);
+        bool allBroadcast = bytes.All(item => item == byte.MaxValue);
+        bool isGroupAddress = (bytes[0] & 0x01) != 0;
+        if (allZero || allBroadcast || isGroupAddress)
+            return false;
+
+        normalized = string.Join(
+            ":",
+            bytes.Select(item => item.ToString("X2", CultureInfo.InvariantCulture)));
+        return true;
+    }
+
     [DllImport("iphlpapi.dll", ExactSpelling = true)]
     private static extern int SendARP(uint destinationIp, uint sourceIp, byte[] macAddress, ref int physicalAddressLength);
 
-    [GeneratedRegex(@"(?i)(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(
+        @"(?i)(?<![0-9a-f])[0-9a-f]{2}(?<separator>[:-])(?:[0-9a-f]{2}\k<separator>){4}[0-9a-f]{2}(?![0-9a-f])",
+        RegexOptions.CultureInvariant)]
     private static partial Regex MacRegex();
+
+    [GeneratedRegex(
+        @"^(?:[0-9A-Fa-f]{12}|(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}|(?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2}|(?:[0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4})$",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex ValidDeviceMacRegex();
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

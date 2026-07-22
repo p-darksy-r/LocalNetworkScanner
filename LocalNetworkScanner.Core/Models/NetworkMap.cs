@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 namespace LocalNetworkScanner.Core.Models;
 
 public sealed class NetworkMap
@@ -12,3 +14,5 @@ public sealed class NetworkMap
 
     public IReadOnlyList<string> Warnings { get; init; } = [];
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

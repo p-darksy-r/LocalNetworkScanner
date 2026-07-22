@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->
+
 <Application x:Class="LocalNetworkScanner.Wpf.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -276,3 +278,5 @@
         </Style>
     </Application.Resources>
 </Application>
+
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

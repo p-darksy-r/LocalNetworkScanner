@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 {
   "sdk": {
     "version": "10.0.301",
@@ -5,3 +7,5 @@
     "allowPrerelease": false
   }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 # Build and publish output
 **/bin/
 **/obj/
@@ -50,3 +52,5 @@ secrets.json
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

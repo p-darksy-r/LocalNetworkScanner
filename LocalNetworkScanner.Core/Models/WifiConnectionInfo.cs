@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 namespace LocalNetworkScanner.Core.Models;
 
 public sealed class WifiConnectionInfo
@@ -10,3 +12,5 @@ public sealed class WifiConnectionInfo
     public int? Channel { get; init; }
     public string? RadioType { get; init; }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

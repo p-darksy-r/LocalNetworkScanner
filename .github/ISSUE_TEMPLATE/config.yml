@@ -1,5 +1,9 @@
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 blank_issues_enabled: false
 contact_links:
   - name: Comunicar uma vulnerabilidade
     url: https://github.com/p-darksy-r/LocalNetworkScanner/security/advisories/new
     about: Utilize um Security Advisory privado para vulnerabilidades exploráveis.
+
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Net.Http.Headers;
 using LocalNetworkScanner.Core.Utilities;
 
@@ -71,3 +73,5 @@ public sealed class OuiDatabaseService
         }
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

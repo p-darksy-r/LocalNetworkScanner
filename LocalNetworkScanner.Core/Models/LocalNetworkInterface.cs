@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Net;
 using System.Net.NetworkInformation;
 
@@ -63,3 +65,5 @@ public sealed class LocalNetworkInterface
 
     public override string ToString() => DisplayName;
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

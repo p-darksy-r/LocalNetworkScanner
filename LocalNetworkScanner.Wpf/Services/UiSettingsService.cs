@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Text.Json;
 using System.IO;
 using LocalNetworkScanner.Core.Models;
@@ -78,3 +80,5 @@ public sealed class UiSettings
     public int SnmpTimeoutMs { get; set; } = 900;
     public bool EnableServiceProbes { get; set; } = true;
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->
+
 # Instalação no Windows
 
 As releases disponibilizam dois formatos para cada arquitetura suportada. Ambos incluem o runtime .NET e não exigem a instalação separada do SDK ou do runtime.
@@ -34,7 +36,7 @@ O pacote contém também `LocalNetworkScanner.Cli.exe` para automação. O hist�
 Compare o SHA-256 do ficheiro descarregado com `SHA256SUMS.txt` ou com o ficheiro `.sha256` adjacente na release:
 
 ```powershell
-$file = '.\LocalNetworkScanner-1.1.0-win-x64.zip'
+$file = '.\LocalNetworkScanner-1.2.0-win-x64.zip'
 (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
 ```
 
@@ -61,3 +63,5 @@ Se o compilador não estiver no caminho normal:
 ```
 
 O script publica primeiro o pacote portátil, valida os ficheiros de staging, compila o instalador e cria um checksum SHA-256. Não simula nem ignora a ausência do compilador e não afirma que o resultado está assinado.
+
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

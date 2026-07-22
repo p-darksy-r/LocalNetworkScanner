@@ -1,12 +1,18 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Buffers.Binary;
+using System.ComponentModel;
 using System.Net;
+using System.Net.Http;
 using System.Net.NetworkInformation;
+using System.Reflection;
 using System.Formats.Asn1;
 using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using LocalNetworkScanner.Core.Models;
 using LocalNetworkScanner.Core.Services;
 using LocalNetworkScanner.Core.Utilities;
@@ -35,6 +41,8 @@ List<(string Name, Func<Task> Run)> tests =
         Equal(2, range.Count);
         Equal("10.4.0.1", range[0].ToString());
         Equal("10.4.0.2", range[1].ToString());
+        Throws<ArgumentOutOfRangeException>(() =>
+            new IpRangeService().GenerateFromCidr("10.4.0.0/30", maximumAddresses: 0));
     })),
     ("Public target rejected", () => Sync(() =>
     {
@@ -46,6 +54,166 @@ List<(string Name, Func<Task> Run)> tests =
         Equal("22,80,81,82,443", string.Join(',', ServiceCatalog.ParsePortSpecification("443,80-82,22")));
         Throws<FormatException>(() => ServiceCatalog.ParsePortSpecification("0,70000"));
     })),
+    ("Diagnostic contract and sanitization", () => Sync(() =>
+    {
+        ScanDiagnostic diagnostic = new(
+            "lns-dev-099",
+            DiagnosticCategory.Device,
+            DiagnosticSeverity.Warning,
+            "MAC inválido\nrecebido",
+            "Confirma a tabela ARP.",
+            "192.168.1.20",
+            new Dictionary<string, string>
+            {
+                ["mac"] = "00:11:22:33:44:55",
+                ["community"] = "private-value",
+                ["password"] = "private-value",
+                ["token"] = "private-value"
+            });
+
+        Equal("LNS-DEV-099", diagnostic.Code);
+        Equal("MAC inválido recebido", diagnostic.Message);
+        Equal(1, diagnostic.Context.Count);
+        Equal("00:11:22:33:44:55", diagnostic.Context["mac"]);
+        True(!diagnostic.Context.ContainsKey("community"), "A community SNMP não pode aparecer no contexto.");
+        Throws<ArgumentException>(() => _ = new ScanDiagnostic(
+            "LNS-APP-099",
+            DiagnosticCategory.User,
+            DiagnosticSeverity.Error,
+            "Inválido",
+            "Corrigir"));
+
+        ScanDiagnostic redacted = new(
+            "LNS-APP-098",
+            DiagnosticCategory.Application,
+            DiagnosticSeverity.Error,
+            "Falha segura.",
+            "Corrigir.",
+            "--token=example-secret",
+            new Dictionary<string, string>
+            {
+                ["endpoint"] = "https://alice:password@example.invalid/path?api_key=secret-key",
+                ["api_key"] = "also-secret"
+            });
+        Equal("--token=<redacted>", redacted.Target);
+        Equal(
+            "https://<redacted>:<redacted>@example.invalid/path?api_key=<redacted>",
+            redacted.Context["endpoint"]);
+        True(!redacted.Context.ContainsKey("api_key"), "Uma API key não pode aparecer no contexto.");
+    })),
+    ("Diagnostic mapper preserves origin", () => Sync(() =>
+    {
+        ScanDiagnostic input = DiagnosticCatalog.InvalidCidr("192.168.1.999/24");
+        Equal(input, DiagnosticMapper.FromException(new ScanFormatException(input)));
+        Equal(DiagnosticCatalog.FileOperationFailedCode,
+            DiagnosticMapper.FromException(new IOException("sensitive detail"), "report.json").Code);
+        Equal(DiagnosticCatalog.AccessDeniedCode,
+            DiagnosticMapper.FromException(new UnauthorizedAccessException(), "report.json").Code);
+        Equal(DiagnosticCatalog.NetworkOperationFailedCode,
+            DiagnosticMapper.FromException(new HttpRequestException(), "IEEE OUI").Code);
+        Equal(DiagnosticCatalog.NetworkOperationFailedCode,
+            DiagnosticMapper.FromException(new TaskCanceledException(), "IEEE OUI").Code);
+        Equal(DiagnosticCatalog.NetworkOperationFailedCode,
+            DiagnosticMapper.FromException(new TimeoutException(), "192.168.1.20").Code);
+        Equal(DiagnosticCatalog.NetworkOperationFailedCode,
+            DiagnosticMapper.FromException(new Win32Exception(53), "rede").Code);
+        Equal(DiagnosticCatalog.OperationCancelledCode,
+            DiagnosticMapper.FromException(new OperationCanceledException(), "scan").Code);
+        Equal(DiagnosticCatalog.UnexpectedApplicationErrorCode,
+            DiagnosticMapper.FromException(new ArgumentException("internal bug"), "motor").Code);
+        Equal(DiagnosticCatalog.UnexpectedApplicationErrorCode,
+            DiagnosticMapper.FromException(new InvalidProgramException("sensitive detail"), "UI").Code);
+    })),
+    ("Optional diagnostics preserve scan results", () => Sync(() =>
+    {
+        NetworkScanResult original = CreateTopologyExportResult();
+        ScanDiagnostic warning = DiagnosticCatalog.OptionalFileOperationFailed(
+            "histórico local",
+            "guardar snapshot");
+        NetworkScanResult updated = original.WithAdditionalDiagnostic(warning);
+
+        Equal(original.Devices, updated.Devices);
+        Equal(original.Diagnostics.Count + 1, updated.Diagnostics.Count);
+        Equal(DiagnosticSeverity.Warning, updated.Diagnostics[^1].Severity);
+        Equal(false, updated.Diagnostics[^1].IsFatal);
+    })),
+    ("Diagnostic catalog has stable unique codes", () => Sync(() =>
+    {
+        string[] codes = typeof(DiagnosticCatalog)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(field => field.IsLiteral &&
+                            field.FieldType == typeof(string) &&
+                            field.Name.EndsWith("Code", StringComparison.Ordinal))
+            .Select(field => (string)field.GetRawConstantValue()!)
+            .ToArray();
+
+        Equal(25, codes.Length);
+        Equal(codes.Length, codes.Distinct(StringComparer.Ordinal).Count());
+        True(codes.All(code => code.Length == 11 && code.StartsWith("LNS-", StringComparison.Ordinal)),
+            "Todos os códigos públicos devem seguir o contrato LNS-CAT-NNN.");
+    })),
+    ("MAC identity validation", () => Sync(() =>
+    {
+        True(MacAddressService.TryNormalizeDeviceAddress("00-11-22-33-44-55", out string normalized),
+            "Um MAC unicast válido deveria ser aceite.");
+        Equal("00:11:22:33:44:55", normalized);
+        True(MacAddressService.TryNormalizeDeviceAddress("0011.2233.4455", out normalized),
+            "O formato Cisco deveria ser aceite.");
+        Equal("00:11:22:33:44:55", normalized);
+        True(!MacAddressService.TryNormalizeDeviceAddress("00:00:00:00:00:00", out _), "MAC zero deve ser rejeitado.");
+        True(!MacAddressService.TryNormalizeDeviceAddress("FF:FF:FF:FF:FF:FF", out _), "Broadcast deve ser rejeitado.");
+        True(!MacAddressService.TryNormalizeDeviceAddress("01:00:5E:00:00:01", out _), "Multicast deve ser rejeitado.");
+        True(!MacAddressService.TryNormalizeDeviceAddress("00:11-22:33-44:55", out _), "Separadores mistos devem ser rejeitados.");
+        True(!MacAddressService.TryNormalizeDeviceAddress("0:01122334455", out _), "Separadores mal posicionados devem ser rejeitados.");
+        True(!MacAddressService.TryNormalizeDeviceAddress("not-a-mac", out _), "Texto arbitrário deve ser rejeitado.");
+    })),
+    ("Invalid MAC is quarantined end-to-end", async () =>
+    {
+        NetworkDevice device = new()
+        {
+            IpAddress = IPAddress.Parse("192.168.1.70"),
+            IsOnline = true,
+            MacAddress = "0:01122334455",
+            Manufacturer = "Untrusted",
+            IsRandomizedMac = true,
+            DiscoveryMethods = DiscoveryMethod.Arp
+        };
+
+        string? observed = NetworkScannerService.NormalizeDeviceMacIdentity(device);
+        Equal("0:01122334455", observed);
+        Equal<string?>(null, device.MacAddress);
+        Equal<string?>(null, device.Manufacturer);
+        Equal(false, device.IsRandomizedMac);
+        True(!device.DiscoveryMethods.HasFlag(DiscoveryMethod.Arp),
+            "Um MAC inválido não pode preservar evidência ARP.");
+
+        device.Topology = new TopologyInferenceService().Assess(device, CreateInterface());
+        Equal<bool?>(null, device.Topology.SameLayer2Segment);
+        Equal(false, new DeviceRowViewModel(device).HasMacAddress);
+
+        NetworkScanResult result = new()
+        {
+            NetworkInterface = CreateInterface(),
+            StartedAt = DateTimeOffset.UtcNow.AddSeconds(-1),
+            CompletedAt = DateTimeOffset.UtcNow,
+            AddressesScanned = 1,
+            Devices = [device]
+        };
+        NetworkMap map = new NetworkTopologyMapService().Build(result);
+        Equal(0, map.Edges.Count(edge => edge.Kind == NetworkMapEdgeKind.Layer2Observed));
+
+        NetworkDevice missing = new()
+        {
+            IpAddress = IPAddress.Parse("192.168.1.71"),
+            DiscoveryMethods = DiscoveryMethod.Tcp
+        };
+        Equal<string?>(null, NetworkScannerService.NormalizeDeviceMacIdentity(missing));
+        Equal(DiscoveryMethod.Tcp, missing.DiscoveryMethods);
+
+        ScanFormatException exception = await ThrowsAsync<ScanFormatException>(() =>
+            new WakeOnLanService().SendAsync("0:01122334455", IPAddress.Broadcast));
+        Equal(DiagnosticCatalog.InvalidMacAddressCode, exception.Diagnostic.Code);
+    }),
     ("Product identity follows assembly version", () => Sync(() =>
     {
         string expectedVersion = typeof(NetworkDevice).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
@@ -446,7 +614,11 @@ List<(string Name, Func<Task> Run)> tests =
         string directory = Path.Combine(Path.GetTempPath(), "LocalNetworkScanner.Tests", Guid.NewGuid().ToString("N"));
         try
         {
-            NetworkDevice device = new() { IpAddress = IPAddress.Parse("192.168.1.40") };
+            NetworkDevice device = new()
+            {
+                IpAddress = IPAddress.Parse("192.168.1.40"),
+                MacAddress = "0:01122334455"
+            };
             Equal("Não comparado", device.HistoryText);
             NetworkScanResult result = new()
             {
@@ -461,6 +633,9 @@ List<(string Name, Func<Task> Run)> tests =
             Equal(true, device.HistoryCompared);
             Equal(true, device.IsNew);
             Equal("Novo", device.HistoryText);
+            string snapshot = await File.ReadAllTextAsync(Directory.GetFiles(directory, "*.json").Single());
+            True(!snapshot.Contains("0:01122334455", StringComparison.Ordinal),
+                "Um MAC inválido não pode ser persistido no histórico.");
         }
         finally
         {
@@ -553,7 +728,13 @@ List<(string Name, Func<Task> Run)> tests =
             await using FileStream stream = File.OpenRead(path);
             using JsonDocument document = await JsonDocument.ParseAsync(stream);
             JsonElement root = document.RootElement;
-            Equal(2, root.GetProperty("schemaVersion").GetInt32());
+            Equal(3, root.GetProperty("schemaVersion").GetInt32());
+            JsonElement diagnostics = root.GetProperty("scan").GetProperty("diagnostics");
+            Equal(1, diagnostics.GetArrayLength());
+            Equal(DiagnosticCatalog.InvalidMacAddressCode,
+                diagnostics[0].GetProperty("code").GetString());
+            True(diagnostics[0].GetProperty("recommendedAction").GetString()?.Length > 0,
+                "O JSON deve incluir a ação recomendada.");
             JsonElement map = root.GetProperty("topologyMap");
             True(map.GetProperty("nodes").GetArrayLength() >= 3,
                 "O JSON deveria conter os nós do mapa de topologia.");
@@ -598,6 +779,10 @@ List<(string Name, Func<Task> Run)> tests =
                     .Any(data => (string?)data.Attribute("key") == "e_evidence" &&
                                  data.Value.Contains("proxy ARP", StringComparison.Ordinal)),
                 "O GraphML deveria preservar a explicação da evidência.");
+            True(document.Descendants(graphMl + "data")
+                    .Any(data => (string?)data.Attribute("key") == "g_diagnostics" &&
+                                 data.Value.Contains(DiagnosticCatalog.InvalidMacAddressCode, StringComparison.Ordinal)),
+                "O GraphML deveria preservar os códigos de diagnóstico.");
             True(document.ToString().Contains("printer &lt;lab&gt;&amp;", StringComparison.Ordinal),
                 "Os rótulos não confiáveis devem ser escapados no XML.");
         }
@@ -612,14 +797,23 @@ List<(string Name, Func<Task> Run)> tests =
         string directory = Path.Combine(Path.GetTempPath(), "LocalNetworkScanner.Tests", Guid.NewGuid().ToString("N"));
         string path = Path.Combine(directory, "topology.png");
         App application = new();
+        application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         application.InitializeComponent();
-        MainWindow window = new();
+        MainWindow window = new()
+        {
+            Opacity = 0,
+            ShowActivated = false,
+            ShowInTaskbar = false
+        };
+        TopologyWindow? topologyWindow = null;
         try
         {
             NetworkScanResult result = CreateTopologyExportResult();
             DeviceRowViewModel row = new(result.Devices[0]);
             window.ViewModel.Devices.Add(row);
             window.ViewModel.SelectedDevice = row;
+            window.Show();
+            window.Hide();
             window.Measure(new Size(1_440, 880));
             window.Arrange(new Rect(0, 0, 1_440, 880));
             window.UpdateLayout();
@@ -628,6 +822,48 @@ List<(string Name, Func<Task> Run)> tests =
             row.Update(result.Devices[0]);
             window.UpdateLayout();
             Equal("7 ms", row.ResponseTime);
+
+            Equal("Rápido", window.ViewModel.Profiles[0].DisplayName);
+            Equal("Normal", window.ViewModel.Profiles[1].DisplayName);
+            Equal("Avançado", window.ViewModel.Profiles[2].DisplayName);
+            Equal(ScanProfile.Deep, window.ViewModel.Profiles[2].Value);
+
+            Button? topologyButton = window.FindName("OpenTopologyButton") as Button;
+            NotNull(topologyButton);
+            var topologyBinding = topologyButton!.GetBindingExpression(UIElement.IsEnabledProperty);
+            NotNull(topologyBinding);
+            topologyBinding!.UpdateTarget();
+            True(
+                !topologyButton!.IsEnabled,
+                $"A topologia deve estar desativada antes de existir mapa. " +
+                $"HasTopologyMap={window.ViewModel.HasTopologyMap}; " +
+                $"DataContext={topologyButton.DataContext?.GetType().Name ?? "null"}; " +
+                $"Binding={topologyBinding.Status}.");
+
+            NetworkMap map = new NetworkTopologyMapService().Build(result);
+            typeof(MainViewModel)
+                .GetProperty(nameof(MainViewModel.TopologyMap))!
+                .SetValue(window.ViewModel, map);
+            topologyBinding.UpdateTarget();
+            window.UpdateLayout();
+            True(topologyButton.IsEnabled, "A topologia deve ficar disponível depois do scan.");
+
+            topologyWindow = new TopologyWindow(window.ViewModel)
+            {
+                Opacity = 0,
+                ShowActivated = false,
+                ShowInTaskbar = false
+            };
+            topologyWindow.Show();
+            topologyWindow.Hide();
+            topologyWindow.Measure(new Size(1_240, 760));
+            topologyWindow.Arrange(new Rect(0, 0, 1_240, 760));
+            topologyWindow.UpdateLayout();
+            Equal(window.ViewModel, topologyWindow.DataContext);
+            NetworkTopologyControl? optionalTopology =
+                topologyWindow.FindName("TopologyGraph") as NetworkTopologyControl;
+            NotNull(optionalTopology);
+            Equal(map, optionalTopology!.Map);
 
             NetworkTopologyControl topology = new()
             {
@@ -645,6 +881,8 @@ List<(string Name, Func<Task> Run)> tests =
         }
         finally
         {
+            topologyWindow?.Close();
+            window.Close();
             window.DataContext = null;
             window.ViewModel.Dispose();
             application.Shutdown();
@@ -733,7 +971,8 @@ static NetworkScanResult CreateTopologyExportResult()
         StartedAt = new DateTimeOffset(2026, 7, 21, 10, 0, 0, TimeSpan.Zero),
         CompletedAt = new DateTimeOffset(2026, 7, 21, 10, 0, 1, TimeSpan.Zero),
         AddressesScanned = 1,
-        Devices = [device]
+        Devices = [device],
+        Diagnostics = [DiagnosticCatalog.InvalidMacAddress(device.IpAddressText, "invalid-mac")]
     };
 }
 
@@ -856,3 +1095,20 @@ static void Throws<TException>(Action action)
 
     throw new InvalidOperationException($"Era esperada a exceção {typeof(TException).Name}.");
 }
+
+static async Task<TException> ThrowsAsync<TException>(Func<Task> action)
+    where TException : Exception
+{
+    try
+    {
+        await action();
+    }
+    catch (TException exception)
+    {
+        return exception;
+    }
+
+    throw new InvalidOperationException($"Era esperada a exceção {typeof(TException).Name}.");
+}
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

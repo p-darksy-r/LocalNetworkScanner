@@ -1,0 +1,142 @@
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->
+
+<Window x:Class="LocalNetworkScanner.Wpf.TopologyWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:LocalNetworkScanner.Wpf.Controls"
+        Title="Topologia da rede — Local Network Scanner"
+        Width="1240"
+        Height="760"
+        MinWidth="720"
+        MinHeight="480"
+        Background="{DynamicResource WindowBackgroundBrush}"
+        FontFamily="Segoe UI Variable Text, Segoe UI"
+        TextOptions.TextFormattingMode="Display"
+        WindowStartupLocation="CenterOwner"
+        Loaded="OnLoaded"
+        PreviewKeyDown="OnPreviewKeyDown"
+        AutomationProperties.Name="Topologia do scan atual">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Margin="2,0,2,13">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock FontFamily="Segoe UI Variable Display, Segoe UI"
+                           FontSize="24"
+                           FontWeight="SemiBold"
+                           Text="Topologia do scan" />
+                <TextBlock Margin="0,3,0,0"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Text="{Binding TopologyMap.NetworkCidr, StringFormat=Mapa opcional da rede {0}}" />
+            </StackPanel>
+            <WrapPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Button Margin="4,0"
+                        Style="{StaticResource CompactButtonStyle}"
+                        Click="OnFitTopologyClick"
+                        Content="Ajustar"
+                        ToolTip="Enquadrar todos os nós (Home)"
+                        AutomationProperties.Name="Ajustar topologia à área visível" />
+                <Button Margin="4,0"
+                        Style="{StaticResource CompactButtonStyle}"
+                        Click="OnResetTopologyClick"
+                        Content="100%"
+                        ToolTip="Repor ampliação a 100 por cento"
+                        AutomationProperties.Name="Repor ampliação da topologia" />
+                <Button Margin="4,0"
+                        Style="{StaticResource CompactButtonStyle}"
+                        Click="OnExportTopologyPngClick"
+                        Content="Guardar PNG"
+                        ToolTip="Guardar exatamente o mapa visível como imagem PNG"
+                        AutomationProperties.Name="Guardar mapa de topologia em PNG" />
+                <Button Margin="4,0"
+                        Style="{StaticResource CompactButtonStyle}"
+                        Command="{Binding ExportGraphMlCommand}"
+                        Content="GraphML"
+                        ToolTip="Guardar topologia estruturada para Gephi, yEd ou ferramentas compatíveis"
+                        AutomationProperties.Name="Guardar topologia em GraphML" />
+                <Button Margin="12,0,0,0"
+                        Style="{StaticResource CompactButtonStyle}"
+                        Click="OnCloseClick"
+                        Content="Fechar"
+                        AutomationProperties.Name="Fechar janela de topologia" />
+            </WrapPanel>
+        </Grid>
+
+        <Border Grid.Row="1"
+                Background="{DynamicResource SurfaceMutedBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="9">
+            <controls:NetworkTopologyControl x:Name="TopologyGraph"
+                                             Map="{Binding TopologyMap}"
+                                             SelectedNode="{Binding SelectedTopologyNode, Mode=TwoWay}"
+                                             MinHeight="300" />
+        </Border>
+
+        <Grid Grid.Row="2" Margin="2,9,2,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <WrapPanel>
+                    <TextBlock Margin="0,0,16,2" FontSize="10" FontWeight="SemiBold" Text="LEGENDA" />
+                    <TextBlock Margin="0,0,16,2" FontSize="10" Text="━━━━ ARP / L2 observado" />
+                    <TextBlock Margin="0,0,16,2" FontSize="10" Text="━ ━ FDB / SNMP" />
+                    <TextBlock Margin="0,0,16,2" FontSize="10" Text="···· Alcance IP inferido" />
+                    <TextBlock Margin="0,0,16,2" FontSize="10" Text="━━ Rota / LLDP" />
+                </WrapPanel>
+                <TextBlock FontSize="10"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           TextWrapping="Wrap"
+                           Text="Roda: zoom · arrastar o fundo: mover · Tab: percorrer nós · +/−: zoom · setas: mover · Home: ajustar. A FDB mostra onde o MAC foi aprendido, não prova a ligação física." />
+                <Expander Margin="0,3,0,0"
+                          Header="Notas e limites do mapa"
+                          AutomationProperties.Name="Notas e limites técnicos da topologia">
+                    <ItemsControl Margin="0,3,0,0" ItemsSource="{Binding TopologyMap.Warnings}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Margin="0,1"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource WarningBrush}"
+                                           Text="{Binding StringFormat=• {0}}"
+                                           TextWrapping="Wrap" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Expander>
+            </StackPanel>
+
+            <Border Grid.Column="1"
+                    MinWidth="265"
+                    MaxWidth="400"
+                    Margin="18,0,0,0"
+                    Padding="11,8"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="7"
+                    AutomationProperties.LiveSetting="Polite">
+                <StackPanel>
+                    <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Text="NÓ SELECIONADO" />
+                    <TextBlock Margin="0,3,0,0" FontWeight="SemiBold" Text="{Binding SelectedTopologyNode.Label, TargetNullValue=Nenhum nó selecionado}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Margin="0,2,0,0" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding SelectedTopologyNode.Subtitle}" TextTrimming="CharacterEllipsis" />
+                    <WrapPanel Margin="0,3,0,0">
+                        <TextBlock Margin="0,0,12,0" FontSize="10" Text="{Binding SelectedTopologyNode.IpAddress, StringFormat=IP: {0}}" />
+                        <TextBlock FontSize="10" Text="{Binding SelectedTopologyNode.VlanId, StringFormat=VLAN: {0}}" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
+
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

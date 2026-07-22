@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->
+
 # Limites técnicos e interpretação dos resultados
 
 Este documento faz parte do produto. Um scanner de rede credível deve explicar o que mediu, o que inferiu e o que não consegue determinar a partir de um computador Windows comum.
@@ -7,6 +9,22 @@ Este documento faz parte do produto. Um scanner de rede credível deve explicar 
 O Local Network Scanner faz descoberta ativa. Envia pedidos ICMP e multicast e tenta ligações TCP. Também consulta informação que o Windows mantém sobre a interface e a vizinhança local. Não permanece a observar todo o tráfego da rede.
 
 Um dispositivo pode não ser encontrado mesmo estando ligado. Firewalls podem bloquear ICMP, todas as portas de descoberta podem estar fechadas, multicast pode estar filtrado e o equipamento pode estar numa rede isolada.
+
+## Perfis de scan
+
+Os perfis alteram timeouts, concorrência e profundidade, mas não eliminam as limitações dos protocolos:
+
+- **Rápido** faz descoberta leve e testa apenas portas essenciais; é adequado à primeira passagem e reduz o impacto;
+- **Normal** testa serviços comuns e recolhe identidade e sinais de segurança com duração equilibrada; é a predefinição recomendada;
+- **Avançado** testa mais portas, recolhe respostas leves adicionais e tolera dispositivos mais lentos; produz mais atividade e pode demorar substancialmente mais.
+
+Uma opção manual pode substituir um valor do perfil. Assim, dois scans com o mesmo nome de perfil não são necessariamente equivalentes se as opções avançadas forem diferentes. Cancelamento mantém os resultados parciais já confirmados, mas estes não devem ser confundidos com cobertura completa.
+
+## Diagnósticos e responsabilidade provável
+
+Os códigos `LNS-USR-*`, `LNS-NET-*`, `LNS-DEV-*` e `LNS-APP-*` classificam a origem provável e apresentam uma ação recomendada. A categoria ajuda a resolver o problema; não é prova absoluta de culpa. Por exemplo, um timeout pode resultar do dispositivo, firewall, Wi-Fi ou congestionamento, e um fabricante desconhecido pode ser normal num MAC privado/aleatório.
+
+Diagnósticos não fatais preservam o inventário que foi possível obter. Um código relativo a um dispositivo afeta normalmente apenas esse alvo; um erro fatal de configuração ou aplicação pode impedir o scan. Consulte [Códigos de erro e diagnóstico](ERROR_CODES.md).
 
 ## IP e disponibilidade
 
@@ -89,9 +107,11 @@ SNMP v2c não protege os dados de acesso ao nível do protocolo. A opção deve 
 
 O grafo combina entidades observadas pelo scan com relações fornecidas pela infraestrutura ou inferidas. Cada ligação preserva o seu tipo, a origem, a confiança e um resumo da evidência; a aparência visual não transforma uma inferência em facto.
 
+A lista de dispositivos é a vista principal do resultado. O grafo só é criado visualmente quando o utilizador escolhe **Abrir topologia** e aparece numa janela separada. Abrir ou fechar essa janela não executa um novo scan, não promove inferências a factos e não altera o inventário subjacente.
+
 A exportação GraphML transporta estes atributos para ferramentas externas. Uma ferramenta que ignore os atributos ou aplique o seu próprio layout pode fazer relações fracas parecerem tão fortes como relações confirmadas. Ao analisar ou partilhar o ficheiro, mantenha visíveis a origem e a confiança e consulte a evidência textual.
 
-O JSON schema v2 inclui a topologia além do inventário. Consumidores automáticos devem verificar `schemaVersion` e não assumir compatibilidade estrutural com exports de versões anteriores.
+O JSON schema v3 inclui a topologia e os diagnósticos estruturados além do inventário. Consumidores automáticos devem verificar `schemaVersion` e não assumir compatibilidade estrutural com exports de versões anteriores. HTML e GraphML podem incluir diagnósticos relevantes, mas não substituem o contexto completo do JSON.
 
 LLDP descreve aquilo que um equipamento participante anuncia e o switch autorizado expõe. Pode revelar vizinhos de infraestrutura e portas, mas não garante um caminho completo de extremo a extremo: dispositivos finais frequentemente não anunciam LLDP, tabelas podem estar incompletas e equipamentos intermédios não consultados continuam desconhecidos.
 
@@ -119,9 +139,9 @@ Os resultados são um retrato temporal, não monitorização contínua.
 
 ## Escala e impacto
 
-Redes e intervalos grandes multiplicam pings, tentativas TCP, resolução de nomes e probes. Os perfis limitam concorrência e timeouts, mas um scan profundo pode demorar e gerar muitos eventos nos equipamentos de segurança.
+Redes e intervalos grandes multiplicam pings, tentativas TCP, resolução de nomes e probes. Os perfis limitam concorrência e timeouts, mas um scan Avançado pode demorar e gerar muitos eventos nos equipamentos de segurança.
 
-Comece pelo perfil rápido, confirme o intervalo e aumente a profundidade apenas quando necessário. Cancele o scan se a rede apresentar degradação.
+Comece pelo perfil Rápido, confirme o intervalo e avance para Normal ou Avançado apenas quando necessário. Cancele o scan se a rede apresentar degradação.
 
 ## Permissões e portabilidade
 
@@ -132,3 +152,5 @@ O executável self-contained inclui o runtime .NET, mas continua dependente de A
 ## Dados sensíveis
 
 Snapshots e exportações podem conter IPs, MACs, SSIDs, BSSIDs, hostnames, serviços e portas. Estes dados permitem mapear uma rede. Guarde-os com controlo de acesso e remova identificadores antes de pedir suporte público.
+
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

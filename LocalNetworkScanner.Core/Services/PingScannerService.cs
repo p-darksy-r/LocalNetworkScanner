@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Net;
 using System.Net.NetworkInformation;
 using LocalNetworkScanner.Core.Models;
@@ -37,3 +39,5 @@ public sealed class PingScannerService
         }
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

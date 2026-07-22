@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -170,3 +172,5 @@ public sealed class WsDiscoveryService
 }
 
 internal sealed record WsDiscoveryMatch(IPAddress Address, string? Types, string? XAddresses);
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

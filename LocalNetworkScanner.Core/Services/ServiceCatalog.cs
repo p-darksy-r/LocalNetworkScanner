@@ -1,3 +1,7 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
+using LocalNetworkScanner.Core.Models;
+
 namespace LocalNetworkScanner.Core.Services;
 
 public static class ServiceCatalog
@@ -113,6 +117,21 @@ public static class ServiceCatalog
     public static IReadOnlyList<int> ParsePortSpecification(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
+
+        try
+        {
+            return ParsePortSpecificationCore(value);
+        }
+        catch (FormatException exception) when (exception is not ScanFormatException)
+        {
+            throw new ScanFormatException(
+                DiagnosticCatalog.InvalidPortSpecification(value),
+                exception);
+        }
+    }
+
+    private static IReadOnlyList<int> ParsePortSpecificationCore(string value)
+    {
         value = value.Trim();
 
         if (value.Equals("quick", StringComparison.OrdinalIgnoreCase))
@@ -157,3 +176,5 @@ public static class ServiceCatalog
         return ports.ToArray();
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

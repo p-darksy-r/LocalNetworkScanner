@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Collections.Concurrent;
 using System.Net;
 using LocalNetworkScanner.Core.Models;
@@ -59,6 +61,7 @@ public sealed class NetworkScannerService
 
         DateTimeOffset startedAt = DateTimeOffset.UtcNow;
         ConcurrentDictionary<IPAddress, NetworkDevice> devices = [];
+        ConcurrentDictionary<IPAddress, string> invalidMacAddresses = [];
         HashSet<IPAddress> allowedAddresses = addresses.ToHashSet();
         int completedHosts = 0;
         int onlineHosts = 0;
@@ -226,8 +229,16 @@ public sealed class NetworkScannerService
             }
             device.Ports = (await portsTask).ToList();
 
-            device.IsRandomizedMac = MacVendorService.IsLocallyAdministered(device.MacAddress);
-            device.Manufacturer = _macVendorService.Lookup(device.MacAddress);
+            string? invalidMac = NormalizeDeviceMacIdentity(device);
+            if (invalidMac is not null)
+            {
+                invalidMacAddresses[device.IpAddress] = invalidMac;
+            }
+            else if (device.MacAddress is not null)
+            {
+                device.IsRandomizedMac = MacVendorService.IsLocallyAdministered(device.MacAddress);
+                device.Manufacturer = _macVendorService.Lookup(device.MacAddress);
+            }
             device.Topology = _topologyInferenceService.Assess(device, networkInterface);
             _deviceClassifierService.Classify(device, networkInterface);
             _securityAssessmentService.Assess(device);
@@ -244,7 +255,7 @@ public sealed class NetworkScannerService
                 device));
         });
 
-        string? snmpWarning = null;
+        bool snmpUnavailable = false;
         SnmpTopologySnapshot? snmpTopology = null;
         if (options.EnableSnmpTopology)
         {
@@ -267,8 +278,7 @@ public sealed class NetworkScannerService
 
             if (snmpTopology is null)
             {
-                snmpWarning =
-                    "O switch SNMP não respondeu ou rejeitou as credenciais; a aplicação manteve a topologia inferida.";
+                snmpUnavailable = true;
             }
             else
             {
@@ -295,6 +305,13 @@ public sealed class NetworkScannerService
             ordered.Count,
             $"Scan concluído: {ordered.Count} dispositivos."));
 
+        IReadOnlyList<ScanDiagnostic> diagnostics = BuildDiagnostics(
+            networkInterface,
+            ordered,
+            options.SnmpSwitchAddress,
+            snmpUnavailable,
+            invalidMacAddresses);
+
         return new NetworkScanResult
         {
             NetworkInterface = networkInterface,
@@ -303,7 +320,8 @@ public sealed class NetworkScannerService
             AddressesScanned = addresses.Count,
             Devices = ordered,
             SnmpTopology = snmpTopology,
-            Warnings = BuildWarnings(networkInterface, snmpWarning)
+            Diagnostics = diagnostics,
+            Warnings = diagnostics.Select(item => item.Message).ToArray()
         };
     }
 
@@ -313,6 +331,27 @@ public sealed class NetworkScannerService
         IsOnline = true,
         DiscoveryMethods = method
     };
+
+    internal static string? NormalizeDeviceMacIdentity(NetworkDevice device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+
+        string? observedMac = device.MacAddress;
+        if (string.IsNullOrWhiteSpace(observedMac))
+            return null;
+
+        if (MacAddressService.TryNormalizeDeviceAddress(observedMac, out string normalizedMac))
+        {
+            device.MacAddress = normalizedMac;
+            return null;
+        }
+
+        device.MacAddress = null;
+        device.Manufacturer = null;
+        device.IsRandomizedMac = false;
+        device.DiscoveryMethods &= ~DiscoveryMethod.Arp;
+        return observedMac;
+    }
 
     private static List<string> GetObservedProtocols(NetworkDevice device)
     {
@@ -342,23 +381,52 @@ public sealed class NetworkScannerService
         return protocols.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    private static List<string> BuildWarnings(
+    private static IReadOnlyList<ScanDiagnostic> BuildDiagnostics(
         LocalNetworkInterface networkInterface,
-        string? snmpWarning)
+        IReadOnlyList<NetworkDevice> devices,
+        IPAddress? snmpSwitchAddress,
+        bool snmpUnavailable,
+        IReadOnlyDictionary<IPAddress, string> invalidMacAddresses)
     {
-        List<string> warnings =
+        List<ScanDiagnostic> diagnostics =
         [
-            "O mesmo segmento L2 é inferido por ARP. A FDB consultada por SNMP mostra onde um MAC foi aprendido, mas essa porta pode ser um uplink/trunk; não é apresentada como prova do mesmo switch físico.",
-            "O scan identifica protocolos por descoberta, portas e banners; captura de pacotes completa requer um driver como Npcap."
+            DiagnosticCatalog.Layer2Inference(),
+            DiagnosticCatalog.PacketCaptureUnavailable()
         ];
 
+        if (devices.Count == 0)
+            diagnostics.Add(DiagnosticCatalog.NoDevicesFound(networkInterface.NetworkCidr));
         if (networkInterface.VlanId is null)
-            warnings.Add("A VLAN da interface não foi exposta pelo sistema operativo; não é inventado um ID sem evidência.");
+            diagnostics.Add(DiagnosticCatalog.VlanUnavailable(networkInterface.Name));
         if (networkInterface.IsWireless && networkInterface.WifiSignalPercent is null)
-            warnings.Add("O sistema não devolveu a intensidade do Wi-Fi; RSSI por dispositivo exige telemetria do access point/controlador.");
-        if (!string.IsNullOrWhiteSpace(snmpWarning))
-            warnings.Add(snmpWarning);
+            diagnostics.Add(DiagnosticCatalog.WifiTelemetryUnavailable(networkInterface.Name));
+        if (snmpUnavailable)
+            diagnostics.Add(DiagnosticCatalog.SnmpUnavailable(snmpSwitchAddress?.ToString()));
 
-        return warnings;
+        foreach (NetworkDevice device in devices)
+        {
+            string target = device.IpAddressText;
+            if (invalidMacAddresses.TryGetValue(device.IpAddress, out string? invalidMac))
+                diagnostics.Add(DiagnosticCatalog.InvalidMacAddress(target, invalidMac));
+
+            if (!string.IsNullOrWhiteSpace(device.MacAddress))
+            {
+                if (device.IsRandomizedMac)
+                {
+                    diagnostics.Add(DiagnosticCatalog.RandomizedMacAddress(target, device.MacAddress));
+                }
+                else if (string.IsNullOrWhiteSpace(device.Manufacturer))
+                {
+                    diagnostics.Add(DiagnosticCatalog.UnknownManufacturer(target, device.MacAddress));
+                }
+            }
+
+            if (device.DeviceType.Equals("Dispositivo de rede", StringComparison.Ordinal))
+                diagnostics.Add(DiagnosticCatalog.UnrecognizedDevice(target));
+        }
+
+        return diagnostics;
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

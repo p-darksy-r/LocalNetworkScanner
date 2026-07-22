@@ -1,3 +1,5 @@
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 [CmdletBinding()]
 param(
     [Alias("Rid")]
@@ -220,8 +222,12 @@ try {
 
     $stagingDocs = Join-Path $stagingRoot "docs"
     New-Item -ItemType Directory -Path $stagingDocs -Force | Out-Null
-    foreach ($document in @("TECHNICAL_LIMITS.md", "RELEASE_CHECKLIST.md", "INSTALLATION.md")) {
-        Copy-Item -LiteralPath (Join-Path $repoRoot ("docs\" + $document)) -Destination $stagingDocs
+    $documentationFiles = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "docs") -File -Filter "*.md")
+    if ($documentationFiles.Count -eq 0) {
+        throw "No Markdown documentation files were found for the release package."
+    }
+    foreach ($document in $documentationFiles) {
+        Copy-Item -LiteralPath $document.FullName -Destination $stagingDocs
     }
 
     $archivePath = Join-Path $releaseRoot ($packageName + ".zip")
@@ -255,3 +261,5 @@ try {
 finally {
     Pop-Location
 }
+
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

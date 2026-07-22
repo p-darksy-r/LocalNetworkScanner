@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Globalization;
 using System.Formats.Asn1;
 using System.Net;
@@ -621,3 +623,5 @@ public sealed class SnmpTopologyService
         int LocalPortNumber,
         int RemoteIndex);
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

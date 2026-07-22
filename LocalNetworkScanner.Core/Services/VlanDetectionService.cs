@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using LocalNetworkScanner.Core.Models;
@@ -87,3 +89,5 @@ public sealed partial class VlanDetectionService
     [GeneratedRegex(@"(?i)\bvlan[\s:_-]*(\d{1,4})\b", RegexOptions.CultureInvariant)]
     private static partial Regex VlanNameRegex();
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

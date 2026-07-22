@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -141,3 +143,5 @@ public sealed class ServiceProbeService
         return compact.Length > 500 ? compact[..500] : compact;
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

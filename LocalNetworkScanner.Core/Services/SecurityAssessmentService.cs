@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using LocalNetworkScanner.Core.Models;
 
 namespace LocalNetworkScanner.Core.Services;
@@ -55,3 +57,5 @@ public sealed class SecurityAssessmentService
         }
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

@@ -1,7 +1,11 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
+using LocalNetworkScanner.Core.Services;
+using LocalNetworkScanner.Wpf.Services;
 
 namespace LocalNetworkScanner.Wpf;
 
@@ -31,12 +35,9 @@ public partial class App : Application
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        MessageBox.Show(
-            MainWindow,
-            $"Ocorreu um erro inesperado.\n\n{e.Exception.Message}",
+        new UserDialogService().ShowDiagnostic(
             "Local Network Scanner",
-            MessageBoxButton.OK,
-            MessageBoxImage.Error);
+            DiagnosticMapper.FromException(e.Exception, "interface gráfica"));
         e.Handled = true;
     }
 
@@ -108,3 +109,5 @@ public partial class App : Application
         "RiskLowForegroundBrush"
     ];
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

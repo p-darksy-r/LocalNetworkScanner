@@ -1,3 +1,5 @@
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 name: Pedido de funcionalidade
 description: Sugerir uma melhoria para o produto
 title: '[Feature] '
@@ -27,3 +29,5 @@ body:
       options:
         - label: A funcionalidade destina-se a redes próprias ou explicitamente autorizadas.
           required: true
+
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

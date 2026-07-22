@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
@@ -214,3 +216,5 @@ public sealed class NetBiosDiscoveryService
             throw new InvalidDataException("Resposta NetBIOS truncada.");
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

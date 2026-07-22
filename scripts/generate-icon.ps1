@@ -1,3 +1,5 @@
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 [CmdletBinding()]
 param()
 
@@ -194,3 +196,5 @@ finally {
 
 [System.IO.File]::WriteAllBytes($previewPath, (New-IconPngBytes -Size 512))
 Write-Host "Icon generated: $iconPath" -ForegroundColor Green
+
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

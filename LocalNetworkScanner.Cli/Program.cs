@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Net;
 using System.Text;
 using LocalNetworkScanner.Core.Models;
@@ -30,7 +32,7 @@ try
         await interfaceService.GetActiveInterfacesAsync(cancellation.Token);
 
     if (interfaces.Count == 0)
-        throw new InvalidOperationException("Não foi encontrada nenhuma interface IPv4 ativa.");
+        throw new ScanOperationException(DiagnosticCatalog.NoActiveInterface());
 
     if (cli.Command.Equals("interfaces", StringComparison.OrdinalIgnoreCase))
     {
@@ -53,8 +55,7 @@ try
 
     if (addresses.Any(address => !IpAddressHelper.IsPrivate(address)))
     {
-        throw new InvalidOperationException(
-            "Este produto limita-se a redes privadas/locais. O CIDR indicado contém endereços públicos.");
+        throw new ScanOperationException(DiagnosticCatalog.PublicAddressScope(cli.Cidr));
     }
 
     PrintSelectedNetwork(selectedInterface, addresses.Count, profile, scanOptions.Ports.Count);
@@ -95,50 +96,79 @@ try
         cancellation.Token);
 
     if (!cli.SkipHistory)
-        await new NetworkHistoryService().ApplyAndSaveAsync(result, cancellation.Token);
+    {
+        try
+        {
+            await new NetworkHistoryService().ApplyAndSaveAsync(result, cancellation.Token);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            result = result.WithAdditionalDiagnostic(
+                DiagnosticCatalog.OptionalFileOperationFailed("histórico local", "guardar snapshot"));
+        }
+    }
 
     PrintResult(result);
 
     ExportService exportService = new();
     if (!string.IsNullOrWhiteSpace(cli.JsonPath))
     {
-        await exportService.ExportJsonAsync(result, cli.JsonPath, cancellation.Token);
+        await ExportSafelyAsync(
+            () => exportService.ExportJsonAsync(result, cli.JsonPath, cancellation.Token),
+            cli.JsonPath);
         Console.WriteLine($"JSON guardado em: {Path.GetFullPath(cli.JsonPath)}");
     }
 
     if (!string.IsNullOrWhiteSpace(cli.CsvPath))
     {
-        await exportService.ExportCsvAsync(result, cli.CsvPath, cancellation.Token);
+        await ExportSafelyAsync(
+            () => exportService.ExportCsvAsync(result, cli.CsvPath, cancellation.Token),
+            cli.CsvPath);
         Console.WriteLine($"CSV guardado em:  {Path.GetFullPath(cli.CsvPath)}");
     }
 
     if (!string.IsNullOrWhiteSpace(cli.HtmlPath))
     {
-        await exportService.ExportHtmlAsync(result, cli.HtmlPath, cancellation.Token);
+        await ExportSafelyAsync(
+            () => exportService.ExportHtmlAsync(result, cli.HtmlPath, cancellation.Token),
+            cli.HtmlPath);
         Console.WriteLine($"HTML guardado em: {Path.GetFullPath(cli.HtmlPath)}");
     }
 
     if (!string.IsNullOrWhiteSpace(cli.GraphMlPath))
     {
-        await exportService.ExportGraphMlAsync(result, cli.GraphMlPath, cancellation.Token);
+        await ExportSafelyAsync(
+            () => exportService.ExportGraphMlAsync(result, cli.GraphMlPath, cancellation.Token),
+            cli.GraphMlPath);
         Console.WriteLine($"GraphML guardado em: {Path.GetFullPath(cli.GraphMlPath)}");
     }
 }
 catch (OperationCanceledException)
 {
-    Console.WriteLine("\nO scan foi cancelado.");
+    PrintDiagnostic(DiagnosticCatalog.OperationCancelled(), Console.Error);
     Environment.ExitCode = 130;
-}
-catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or FormatException)
-{
-    Console.Error.WriteLine($"\nErro: {exception.Message}");
-    Console.Error.WriteLine("Usa --help para consultar as opções.");
-    Environment.ExitCode = 2;
 }
 catch (Exception exception)
 {
-    Console.Error.WriteLine($"\nErro inesperado: {exception.Message}");
-    Environment.ExitCode = 1;
+    ScanDiagnostic diagnostic = DiagnosticMapper.FromException(exception);
+    PrintDiagnostic(diagnostic, Console.Error);
+    Environment.ExitCode = GetExitCode(diagnostic);
+}
+
+static async Task ExportSafelyAsync(Func<Task> export, string path)
+{
+    try
+    {
+        await export();
+    }
+    catch (OperationCanceledException)
+    {
+        throw;
+    }
+    catch (Exception exception)
+    {
+        throw new ScanOperationException(DiagnosticMapper.FromException(exception, path), exception);
+    }
 }
 
 static ScanOptions BuildScanOptions(ScanProfile profile, string? ports)
@@ -202,7 +232,7 @@ static LocalNetworkInterface SelectInterface(
         LocalNetworkInterface? named = interfaces.FirstOrDefault(item =>
             item.Name.Contains(selector, StringComparison.OrdinalIgnoreCase) ||
             item.Description.Contains(selector, StringComparison.OrdinalIgnoreCase));
-        return named ?? throw new InvalidOperationException($"Interface '{selector}' não encontrada.");
+        return named ?? throw new ScanOperationException(DiagnosticCatalog.InvalidInterface(selector));
     }
 
     if (!interactive)
@@ -220,7 +250,7 @@ static LocalNetworkInterface SelectInterface(
 
 static ScanProfile AskProfile(ScanProfile defaultProfile)
 {
-    Console.Write($"Perfil [rápido/normal/profundo] (normal): ");
+    Console.Write($"Perfil [rápido/normal/avançado] (normal): ");
     string? value = Console.ReadLine();
     return string.IsNullOrWhiteSpace(value) ? defaultProfile : CliOptions.ParseProfile(value);
 }
@@ -277,11 +307,61 @@ static void PrintResult(NetworkScanResult result)
         }
     }
 
-    Console.WriteLine("\nLimites técnicos reportados com transparência:");
-    foreach (string warning in result.Warnings)
-        Console.WriteLine($"  • {warning}");
+    if (result.Diagnostics.Count > 0)
+    {
+        Console.WriteLine("\nDiagnósticos do scan:");
+        foreach (ScanDiagnostic diagnostic in result.Diagnostics)
+            PrintDiagnostic(diagnostic, Console.Out, compact: true);
+    }
+    else if (result.Warnings.Count > 0)
+    {
+        Console.WriteLine("\nLimites técnicos reportados com transparência:");
+        foreach (string warning in result.Warnings)
+            Console.WriteLine($"  • {warning}");
+    }
+
     Console.WriteLine();
 }
+
+static void PrintDiagnostic(ScanDiagnostic diagnostic, TextWriter writer, bool compact = false)
+{
+    string severity = diagnostic.Severity switch
+    {
+        DiagnosticSeverity.Information => "Informação",
+        DiagnosticSeverity.Warning => "Aviso",
+        DiagnosticSeverity.Error => "Erro",
+        _ => "Crítico"
+    };
+    string category = diagnostic.Category switch
+    {
+        DiagnosticCategory.User => "Utilizador",
+        DiagnosticCategory.Network => "Rede",
+        DiagnosticCategory.Device => "Dispositivo/dados",
+        _ => "Aplicação"
+    };
+    string indent = compact ? "  " : Environment.NewLine;
+
+    writer.WriteLine($"{indent}[{diagnostic.Code}] {severity} · Origem provável: {category}");
+    writer.WriteLine($"{(compact ? "    " : string.Empty)}{diagnostic.Message}");
+    writer.WriteLine($"{(compact ? "    " : string.Empty)}Ação recomendada: {diagnostic.RecommendedAction}");
+    if (!string.IsNullOrWhiteSpace(diagnostic.Target))
+        writer.WriteLine($"{(compact ? "    " : string.Empty)}Alvo: {diagnostic.Target}");
+    if (diagnostic.Context.Count > 0)
+    {
+        string context = string.Join(
+            ", ",
+            diagnostic.Context.Select(item => $"{item.Key}={item.Value}"));
+        writer.WriteLine($"{(compact ? "    " : string.Empty)}Contexto: {context}");
+    }
+}
+
+static int GetExitCode(ScanDiagnostic diagnostic) => diagnostic.Category switch
+{
+    DiagnosticCategory.User => 2,
+    DiagnosticCategory.Network => 3,
+    DiagnosticCategory.Device => 4,
+    _ => 1
+};
 
 static string Truncate(string value, int length) =>
     value.Length <= length ? value : value[..(length - 1)] + "…";
@@ -299,7 +379,7 @@ static void PrintHelp()
         Opções:
           -i, --interface <índice|nome>  Interface a utilizar
           --cidr <rede/prefixo>          Rede privada explícita, ex. 192.168.1.0/24
-          --profile <quick|standard|deep>
+          --profile <quick|standard|advanced>
           --ports <lista>                Ex. 22,80,443 ou 1-1024 ou quick|top|deep|all
           --max-hosts <n>                Limite até 65536 (predefinição: 4096)
           --json <ficheiro>              Exportar relatório JSON
@@ -311,6 +391,12 @@ static void PrintHelp()
 
         Sem argumentos é iniciado o modo interativo. Usa apenas em redes próprias
         ou em redes para as quais tens autorização explícita.
+
+        Códigos de saída:
+          0  Concluído (pode conter avisos não fatais LNS-*)
+          1  Falha da aplicação     2  Entrada do utilizador
+          3  Falha de rede          4  Falha de dispositivo/dados
+          130 Operação cancelada
         """);
 }
 
@@ -342,7 +428,7 @@ internal sealed class CliOptions
         if (result.Command is "help")
             result.ShowHelp = true;
         else if (result.Command is not ("scan" or "interfaces"))
-            throw new ArgumentException($"Comando desconhecido: '{result.Command}'.");
+            throw new ScanInputException(DiagnosticCatalog.InvalidCommand(result.Command));
 
         while (index < arguments.Length)
         {
@@ -379,7 +465,8 @@ internal sealed class CliOptions
                 case "--max-hosts":
                     string value = NextValue(arguments, ref index, argument);
                     if (!int.TryParse(value, out int maximum) || maximum is < 1 or > IpRangeService.AbsoluteMaximumAddresses)
-                        throw new ArgumentException($"--max-hosts deve estar entre 1 e {IpRangeService.AbsoluteMaximumAddresses:N0}.");
+                        throw new ScanInputException(
+                            DiagnosticCatalog.InvalidScanConfiguration("--max-hosts"));
                     result.MaximumHosts = maximum;
                     break;
                 case "--no-history":
@@ -388,7 +475,7 @@ internal sealed class CliOptions
                 case "--no-prompt" or "-y" or "--yes":
                     break;
                 default:
-                    throw new ArgumentException($"Opção desconhecida: '{argument}'.");
+                    throw new ScanInputException(DiagnosticCatalog.InvalidCommand(argument));
             }
         }
 
@@ -399,14 +486,14 @@ internal sealed class CliOptions
     {
         "quick" or "rapido" or "rápido" => ScanProfile.Quick,
         "standard" or "normal" => ScanProfile.Standard,
-        "deep" or "profundo" => ScanProfile.Deep,
-        _ => throw new ArgumentException($"Perfil inválido: '{value}'. Usa quick, standard ou deep.")
+        "advanced" or "avancado" or "avançado" or "deep" or "profundo" => ScanProfile.Deep,
+        _ => throw new ScanInputException(DiagnosticCatalog.InvalidProfile(value))
     };
 
     private static string NextValue(string[] arguments, ref int index, string option)
     {
         if (index >= arguments.Length)
-            throw new ArgumentException($"Falta o valor de {option}.");
+            throw new ScanInputException(DiagnosticCatalog.MissingOptionValue(option));
         return arguments[index++];
     }
 }
@@ -423,3 +510,5 @@ internal sealed class InlineProgress<T> : IProgress<T>
 
     public void Report(T value) => _handler(value);
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

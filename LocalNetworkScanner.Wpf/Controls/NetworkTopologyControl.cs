@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.IO;
 using System.Windows;
 using System.Windows.Automation;
@@ -588,3 +590,5 @@ public sealed class NetworkTopologyControl : Grid
         return null;
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

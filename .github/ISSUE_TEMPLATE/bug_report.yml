@@ -1,3 +1,5 @@
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 name: Relatório de erro
 description: Comunicar um problema reproduzível sem expor dados sensíveis da rede
 title: '[Bug] '
@@ -13,7 +15,7 @@ body:
     attributes:
       label: Versão
       description: Versão da aplicação e, se possível, SHA-256 do pacote.
-      placeholder: 1.1.0
+      placeholder: 1.2.0
     validations:
       required: true
   - type: dropdown
@@ -40,6 +42,12 @@ body:
       description: Descreva o comportamento atual e o esperado.
     validations:
       required: true
+  - type: input
+    id: diagnostic_code
+    attributes:
+      label: Código de diagnóstico
+      description: Indique apenas o código LNS-* apresentado pela aplicação; não copie IPs, MACs, SSIDs ou credenciais.
+      placeholder: LNS-NET-001
   - type: textarea
     id: reproduction
     attributes:
@@ -61,3 +69,5 @@ body:
           required: true
         - label: Verifiquei que não se trata de uma vulnerabilidade que deva ser comunicada em privado.
           required: true
+
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

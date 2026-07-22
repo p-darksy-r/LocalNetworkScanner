@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -125,3 +127,5 @@ public sealed class NetworkInterfaceService
             : string.Join(":", bytes.Select(value => value.ToString("X2", CultureInfo.InvariantCulture)));
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

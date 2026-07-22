@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
@@ -50,7 +52,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string _elapsedText = "00:00";
     private double _progressPercentage;
     private bool _isAdvancedMode;
-    private bool _isTopologyView;
     private bool _isLoadingInterfaces;
     private bool _isScanning;
     private bool _isCancelling;
@@ -95,9 +96,27 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         Profiles =
         [
-            new ScanProfileOption(ScanProfile.Quick, "Rápido", "Descoberta ágil e portas essenciais"),
-            new ScanProfileOption(ScanProfile.Standard, "Normal", "Equilíbrio entre velocidade e detalhe"),
-            new ScanProfileOption(ScanProfile.Deep, "Profundo", "Mais portas, banners e maior tolerância")
+            new ScanProfileOption(
+                ScanProfile.Quick,
+                "Rápido",
+                "Confirma rapidamente quais os equipamentos disponíveis.",
+                "Descoberta leve e portas essenciais",
+                "Mais rápido",
+                "VISÃO RÁPIDA"),
+            new ScanProfileOption(
+                ScanProfile.Standard,
+                "Normal",
+                "Equilibra velocidade e detalhe para a maioria das redes.",
+                "Serviços comuns, identidade e segurança",
+                "Equilibrado",
+                "RECOMENDADO"),
+            new ScanProfileOption(
+                ScanProfile.Deep,
+                "Avançado",
+                "Produz um inventário mais completo quando precisas de investigar.",
+                "Mais portas, banners e maior tolerância",
+                "Mais demorado",
+                "ANÁLISE PROFUNDA")
         ];
         Filters =
         [
@@ -158,8 +177,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RemoteDesktopCommand = new RelayCommand(
             () => RunDesktopAction(_desktopActions.OpenRemoteDesktop, "Ligação de Ambiente de Trabalho Remoto iniciada."),
             () => SelectedDevice?.CanOpenRemoteDesktop == true);
-        ShowListViewCommand = new RelayCommand(() => IsTopologyView = false);
-        ShowTopologyViewCommand = new RelayCommand(() => IsTopologyView = true);
 
         _uiTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -170,6 +187,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<LocalNetworkInterface> NetworkInterfaces { get; } = [];
     public ObservableCollection<DeviceRowViewModel> Devices { get; } = [];
+    public ObservableCollection<DiagnosticRowViewModel> Diagnostics { get; } = [];
     public ObservableCollection<string> Warnings { get; } = [];
     public IReadOnlyList<ScanProfileOption> Profiles { get; }
     public IReadOnlyList<DeviceFilterOption> Filters { get; }
@@ -194,8 +212,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand PingCommand { get; }
     public RelayCommand TracerouteCommand { get; }
     public RelayCommand RemoteDesktopCommand { get; }
-    public RelayCommand ShowListViewCommand { get; }
-    public RelayCommand ShowTopologyViewCommand { get; }
 
     public LocalNetworkInterface? SelectedNetworkInterface
     {
@@ -294,23 +310,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     public bool HasTopologyMap => TopologyMap?.Nodes.Count > 0;
-
-    public bool IsTopologyView
-    {
-        get => _isTopologyView;
-        set
-        {
-            if (!SetProperty(ref _isTopologyView, value))
-                return;
-
-            OnPropertyChanged(nameof(IsListView));
-            StatusMessage = value
-                ? "Vista de topologia ativa. As ligações indicam a respetiva evidência e confiança."
-                : "Vista de lista ativa.";
-        }
-    }
-
-    public bool IsListView => !IsTopologyView;
 
     public string NetworkCidr
     {
@@ -544,8 +543,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool CanEditScanSettings => !IsScanning && !IsLoadingInterfaces;
     public bool IsNotScanning => !IsScanning;
+    public bool HasDiagnostics => Diagnostics.Count > 0;
+    public string DiagnosticSummary => Diagnostics.Count == 1
+        ? "1 diagnóstico do scan"
+        : $"{Diagnostics.Count:N0} diagnósticos do scan";
     public bool HasWarnings => Warnings.Count > 0;
-    public string ModeLabel => IsAdvancedMode ? "Modo avançado" : "Modo simples";
+    public string ModeLabel => IsAdvancedMode ? "Ocultar ajustes técnicos" : "Personalizar scan";
     public string SelectedProfileDescription => IsAdvancedMode
         ? $"{SelectedProfile.Description}. As opções abaixo substituem o perfil."
         : SelectedProfile.Description;
@@ -679,10 +682,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (SelectedNetworkInterface is null)
             {
                 NetworkCidr = string.Empty;
-                StatusMessage = "Não foi encontrada uma interface IPv4 ativa.";
-                _dialogs.ShowError(
-                    "Sem rede ativa",
-                    "Liga o computador a uma rede e usa “Atualizar interfaces”.");
+                PresentDiagnostic("Sem rede ativa", DiagnosticCatalog.NoActiveInterface());
                 return;
             }
 
@@ -712,8 +712,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         catch (Exception exception) when (
             exception is InvalidOperationException or System.Net.NetworkInformation.NetworkInformationException)
         {
-            StatusMessage = "Não foi possível obter as interfaces de rede.";
-            _dialogs.ShowError("Erro de rede", exception.Message);
+            PresentDiagnostic(
+                "Não foi possível obter as interfaces de rede",
+                DiagnosticMapper.FromException(exception, "interfaces IPv4"));
         }
         finally
         {
@@ -752,7 +753,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             FlushPendingDeviceUpdates();
             ProgressPhase = "Histórico";
             StatusMessage = "A comparar com o scan anterior...";
-            await _history.ApplyAndSaveAsync(result, _scanCancellation.Token);
+            try
+            {
+                await _history.ApplyAndSaveAsync(result, _scanCancellation.Token);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                result = result.WithAdditionalDiagnostic(
+                    DiagnosticCatalog.OptionalFileOperationFailed("histórico local", "guardar snapshot"));
+            }
             await _deviceMetadata.ApplyAsync(result, _scanCancellation.Token);
 
             _lastResult = result;
@@ -768,9 +777,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 ? "Scan concluído. Não foram encontrados dispositivos online."
                 : $"Scan concluído: {result.Devices.Count:N0} dispositivos online em {result.Duration.TotalSeconds:F1} s.";
 
-            foreach (string warning in result.Warnings)
-                Warnings.Add(warning);
-            OnPropertyChanged(nameof(HasWarnings));
+            LoadDiagnostics(result);
         }
         catch (OperationCanceledException)
         {
@@ -784,6 +791,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 .ToList();
             string partialWarning =
                 "Resultado parcial: o scan foi cancelado e alguns dispositivos ou detalhes podem estar em falta.";
+            ScanDiagnostic cancellationDiagnostic =
+                DiagnosticCatalog.OperationCancelled(prepared.NetworkInterface.NetworkCidr);
             _lastResult = new NetworkScanResult
             {
                 NetworkInterface = prepared.NetworkInterface,
@@ -792,12 +801,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 AddressesScanned = ScannedCount,
                 Devices = partialDevices,
                 IsPartial = true,
+                Diagnostics = [cancellationDiagnostic],
                 Warnings = [partialWarning]
             };
             UpdateTopologyMap();
-            Warnings.Clear();
-            Warnings.Add(partialWarning);
-            OnPropertyChanged(nameof(HasWarnings));
+            LoadDiagnostics(_lastResult);
             SelectedDevice ??= Devices.FirstOrDefault();
             ProgressPhase = "Cancelado";
             StatusMessage = partialDevices.Count == 0
@@ -807,9 +815,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         catch (Exception exception) when (
             exception is InvalidOperationException or ArgumentException or FormatException or IOException)
         {
+            ScanDiagnostic diagnostic = DiagnosticMapper.FromException(exception, NetworkCidr);
             ProgressPhase = "Erro";
-            StatusMessage = $"O scan não foi concluído: {exception.Message}";
-            _dialogs.ShowError("Não foi possível concluir o scan", exception.Message);
+            PresentDiagnostic("Não foi possível concluir o scan", diagnostic);
         }
         finally
         {
@@ -827,7 +835,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         if (SelectedNetworkInterface is null)
         {
-            _dialogs.ShowError("Interface necessária", "Seleciona uma interface de rede antes de iniciar.");
+            PresentDiagnostic("Interface necessária", DiagnosticCatalog.InvalidInterface("nenhuma interface selecionada"));
             return null;
         }
 
@@ -840,8 +848,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             if (addresses.Any(address => !IpAddressHelper.IsPrivate(address)))
             {
-                throw new InvalidOperationException(
-                    "Esta aplicação limita-se a redes privadas/locais. O CIDR indicado contém endereços públicos.");
+                throw new ScanInputException(DiagnosticCatalog.PublicAddressScope(NetworkCidr), nameof(NetworkCidr));
             }
 
             if (addresses.Count > 4_096 && !_dialogs.Confirm(
@@ -859,7 +866,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         catch (Exception exception) when (
             exception is InvalidOperationException or ArgumentException or FormatException)
         {
-            _dialogs.ShowError("Configuração inválida", exception.Message);
+            PresentDiagnostic(
+                "Configuração inválida",
+                DiagnosticMapper.FromException(exception, NetworkCidr));
             return null;
         }
     }
@@ -914,8 +923,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (!EnableIcmp && !EnableTcpDiscovery && !EnableMulticastDiscovery)
         {
-            throw new InvalidOperationException(
-                "Ativa pelo menos um método de descoberta: ICMP, TCP ou mDNS/SSDP.");
+            throw new ScanInputException(
+                DiagnosticCatalog.InvalidScanConfiguration("métodos de descoberta"));
         }
 
 
@@ -925,18 +934,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 switchAddress.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork ||
                 !IpAddressHelper.IsPrivate(switchAddress))
             {
-                throw new InvalidOperationException("Indica um endereço IPv4 privado válido para o switch SNMP.");
+                throw new ScanInputException(
+                    DiagnosticCatalog.InvalidScanConfiguration("endereço do switch SNMP"));
             }
 
             if (string.IsNullOrWhiteSpace(SnmpCommunity))
-                throw new InvalidOperationException("Indica a comunidade SNMP para consultar a tabela MAC do switch.");
+            {
+                throw new ScanInputException(
+                    DiagnosticCatalog.InvalidScanConfiguration("configuração SNMP"));
+            }
         }
     }
 
     private static void ValidateRange(int value, int minimum, int maximum, string label)
     {
         if (value < minimum || value > maximum)
-            throw new ArgumentOutOfRangeException(label, $"{label} deve estar entre {minimum:N0} e {maximum:N0}.");
+            throw new ScanInputException(
+                DiagnosticCatalog.InvalidScanConfiguration(label),
+                label);
     }
 
     private void ApplyProgress(ScanProgress update)
@@ -1111,6 +1126,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Devices.Clear();
         _devicesByIp.Clear();
         _pendingDeviceUpdates.Clear();
+        Diagnostics.Clear();
         Warnings.Clear();
         SelectedDevice = null;
         SelectedTopologyNode = null;
@@ -1122,6 +1138,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RiskCount = 0;
         VisibleDeviceCount = 0;
         ProgressPercentage = 0;
+        OnPropertyChanged(nameof(HasDiagnostics));
+        OnPropertyChanged(nameof(DiagnosticSummary));
         OnPropertyChanged(nameof(HasWarnings));
         RaiseAllCanExecuteChanged();
     }
@@ -1146,7 +1164,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            _dialogs.ShowError("Falha ao exportar", exception.Message);
+            ReportException("Falha ao exportar CSV", exception, path);
         }
     }
 
@@ -1170,7 +1188,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            _dialogs.ShowError("Falha ao exportar", exception.Message);
+            ReportException("Falha ao exportar JSON", exception, path);
         }
     }
 
@@ -1194,7 +1212,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            _dialogs.ShowError("Falha ao exportar", exception.Message);
+            ReportException("Falha ao exportar HTML", exception, path);
         }
     }
 
@@ -1218,7 +1236,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            _dialogs.ShowError("Falha ao guardar GraphML", exception.Message);
+            ReportException("Falha ao guardar GraphML", exception, path);
         }
     }
 
@@ -1238,7 +1256,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            _dialogs.ShowError("Falha ao guardar o dispositivo", exception.Message);
+            ReportException("Falha ao guardar o dispositivo", exception, selected.IpAddress);
         }
     }
 
@@ -1267,7 +1285,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         catch (Exception exception) when (
             exception is InvalidOperationException or FormatException or System.Net.Sockets.SocketException)
         {
-            _dialogs.ShowError("Falha no Wake-on-LAN", exception.Message);
+            ReportException("Falha no Wake-on-LAN", exception, selected.IpAddress);
         }
     }
 
@@ -1290,7 +1308,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         catch (Exception exception) when (
             exception is HttpRequestException or IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            _dialogs.ShowError("Não foi possível atualizar fabricantes", exception.Message);
+            ReportException("Não foi possível atualizar fabricantes", exception, OuiDatabaseService.OfficialDatabaseUrl);
             StatusMessage = "A base integrada de fabricantes continua disponível.";
         }
     }
@@ -1300,9 +1318,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (SelectedDevice is null)
             return;
 
-        StatusMessage = _dialogs.TryCopyText(SelectedDevice.IpAddress)
-            ? $"IP {SelectedDevice.IpAddress} copiado."
-            : "O Windows não permitiu aceder à área de transferência.";
+        if (_dialogs.TryCopyText(SelectedDevice.IpAddress))
+        {
+            StatusMessage = $"IP {SelectedDevice.IpAddress} copiado.";
+            return;
+        }
+
+        PresentDiagnostic(
+            "Não foi possível copiar o IP",
+            DiagnosticCatalog.AccessDenied("área de transferência do Windows"));
     }
 
     private void CopyMac()
@@ -1310,9 +1334,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (SelectedDevice is null || !SelectedDevice.HasMacAddress)
             return;
 
-        StatusMessage = _dialogs.TryCopyText(SelectedDevice.MacAddress)
-            ? $"MAC {SelectedDevice.MacAddress} copiado."
-            : "O Windows não permitiu aceder à área de transferência.";
+        if (_dialogs.TryCopyText(SelectedDevice.MacAddress))
+        {
+            StatusMessage = $"MAC {SelectedDevice.MacAddress} copiado.";
+            return;
+        }
+
+        PresentDiagnostic(
+            "Não foi possível copiar o MAC",
+            DiagnosticCatalog.AccessDenied("área de transferência do Windows"));
     }
 
     private void RunDesktopAction(Action<NetworkDevice> action, string successMessage)
@@ -1328,7 +1358,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         catch (Exception exception) when (
             exception is InvalidOperationException or Win32Exception or UriFormatException)
         {
-            _dialogs.ShowError("Não foi possível abrir a ação", exception.Message);
+            ReportException("Não foi possível abrir a ação", exception, SelectedDevice?.IpAddress);
         }
     }
 
@@ -1425,10 +1455,52 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RaiseSelectionCanExecuteChanged();
     }
 
+    public void ReportException(string title, Exception exception, string? target = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
+        ArgumentNullException.ThrowIfNull(exception);
+        PresentDiagnostic(title, DiagnosticMapper.FromException(exception, target));
+    }
+
+    private void LoadDiagnostics(NetworkScanResult result)
+    {
+        Diagnostics.Clear();
+        Warnings.Clear();
+
+        HashSet<string> diagnosticMessages = new(StringComparer.Ordinal);
+        foreach (ScanDiagnostic diagnostic in result.Diagnostics)
+        {
+            Diagnostics.Add(new DiagnosticRowViewModel(diagnostic));
+            diagnosticMessages.Add(diagnostic.Message);
+        }
+
+        foreach (string warning in result.Warnings.Where(warning => !diagnosticMessages.Contains(warning)))
+            Warnings.Add(warning);
+
+        OnPropertyChanged(nameof(HasDiagnostics));
+        OnPropertyChanged(nameof(DiagnosticSummary));
+        OnPropertyChanged(nameof(HasWarnings));
+    }
+
+    private void PresentDiagnostic(string title, ScanDiagnostic diagnostic)
+    {
+        bool alreadyPresent = Diagnostics.Any(item =>
+            item.Code.Equals(diagnostic.Code, StringComparison.Ordinal) &&
+            string.Equals(item.Target, diagnostic.Target, StringComparison.OrdinalIgnoreCase));
+        if (!alreadyPresent)
+            Diagnostics.Add(new DiagnosticRowViewModel(diagnostic));
+
+        OnPropertyChanged(nameof(HasDiagnostics));
+        OnPropertyChanged(nameof(DiagnosticSummary));
+        StatusMessage = $"[{diagnostic.Code}] {diagnostic.Message}";
+        _dialogs.ShowDiagnostic(title, diagnostic);
+    }
+
     private void HandleUnexpectedException(Exception exception)
     {
-        StatusMessage = "Ocorreu um erro inesperado.";
-        _dialogs.ShowError("Erro inesperado", exception.Message);
+        PresentDiagnostic(
+            "Erro inesperado",
+            DiagnosticMapper.FromException(exception, "interface gráfica"));
     }
 
     private static string ConfidenceToText(ConfidenceLevel confidence) => confidence switch
@@ -1444,3 +1516,5 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         IReadOnlyList<IPAddress> Addresses,
         ScanOptions Options);
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

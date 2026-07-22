@@ -1,6 +1,10 @@
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->
+
 <Solution>
   <Project Path="LocalNetworkScanner.Cli/LocalNetworkScanner.Cli.csproj" />
   <Project Path="LocalNetworkScanner.Core/LocalNetworkScanner.Core.csproj" />
   <Project Path="LocalNetworkScanner.Tests/LocalNetworkScanner.Tests.csproj" />
   <Project Path="LocalNetworkScanner.Wpf/LocalNetworkScanner.Wpf.csproj" />
 </Solution>
+
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

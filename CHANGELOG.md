@@ -1,10 +1,37 @@
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->
+
 # Changelog
 
 Todas as alterações relevantes deste projeto são registadas neste ficheiro. O formato segue os princípios de Keep a Changelog e o versionamento segue Semantic Versioning.
 
 ## [Unreleased]
 
-Ainda sem alterações após `1.1.0`.
+Ainda sem alterações após `1.2.0`.
+
+## [1.2.0] - 2026-07-22
+
+### Added
+
+- diagnósticos estruturados com códigos estáveis `LNS-USR-*`, `LNS-NET-*`, `LNS-DEV-*` e `LNS-APP-*`, categoria, severidade, ação recomendada e contexto sanitizado;
+- códigos específicos para entrada inválida, ausência de interface IPv4, MAC inválido, fabricante desconhecido, tipo de dispositivo não reconhecido e falhas inesperadas;
+- catálogo público de códigos de erro e orientação para suporte sem exposição do inventário da rede;
+- perfis de scan **Rápido**, **Normal** e **Avançado**, com descrições de impacto e profundidade adequadas a utilizadores iniciantes e avançados;
+- scripts idempotentes para aplicar e verificar cabeçalhos e rodapés de copyright em todos os formatos comentáveis do repositório;
+- validação explícita da política de copyright nos workflows de CI e release.
+
+### Changed
+
+- a lista de dispositivos volta a ser sempre a vista principal após o scan;
+- a topologia do resultado passa a abrir apenas a pedido, numa janela separada através do botão com ícone **Abrir topologia**;
+- a janela de topologia mantém zoom, pan, ajuste, seleção sincronizada e exportações PNG/GraphML sem competir com o espaço da lista;
+- exports JSON usam schema v3 para incluir os diagnósticos estruturados; HTML e GraphML preservam os códigos relevantes;
+- versão do produto e documentação de distribuição atualizadas para `1.2.0`.
+- atribuição de copyright uniformizada em todos os ficheiros e metadados para `p-darksy-r and Local Network Scanner`, sob licença MIT.
+
+### Fixed
+
+- mensagens antes genéricas distinguem agora problemas corrigíveis pelo utilizador, limitações ou falhas da rede, respostas inválidas/desconhecidas de dispositivos e defeitos inesperados da aplicação.
+- argumentos e alvos de diagnóstico ocultam padrões de credenciais; uma falha ao guardar o histórico local já não elimina um scan concluído.
 
 ## [1.1.0] - 2026-07-21
 
@@ -60,3 +87,5 @@ Ainda sem alterações após `1.1.0`.
 - documentação explícita de utilização autorizada e tratamento de inventário sensível;
 - neutralização de formula injection em campos não confiáveis exportados para CSV;
 - parsing estrito das colunas Registry/Assignment/Organization da base IEEE OUI.
+
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

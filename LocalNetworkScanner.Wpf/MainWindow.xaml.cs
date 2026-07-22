@@ -1,9 +1,9 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.ComponentModel;
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using Microsoft.Win32;
 using LocalNetworkScanner.Wpf.Services;
 using LocalNetworkScanner.Wpf.ViewModels;
 
@@ -12,6 +12,7 @@ namespace LocalNetworkScanner.Wpf;
 public partial class MainWindow : Window
 {
     private bool _hasLoaded;
+    private TopologyWindow? _topologyWindow;
 
     public MainWindow()
     {
@@ -69,6 +70,7 @@ public partial class MainWindow : Window
             ViewModel.RequestCancellation();
         }
 
+        _topologyWindow?.Close();
         ViewModel.SaveSettings();
         ViewModel.Dispose();
     }
@@ -111,54 +113,35 @@ public partial class MainWindow : Window
             ViewModel.SnmpCommunity = passwordBox.Password;
     }
 
-    private void OnFitTopologyClick(object sender, RoutedEventArgs e) => TopologyGraph.FitToView();
-
-    private void OnResetTopologyClick(object sender, RoutedEventArgs e) => TopologyGraph.ResetView();
-
-    private void OnExportTopologyPngClick(object sender, RoutedEventArgs e)
+    private void OnOpenTopologyClick(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.HasTopologyMap)
         {
             MessageBox.Show(
                 this,
-                "Inicia um scan antes de guardar o mapa de topologia.",
+                "Inicia e conclui um scan com resultados antes de abrir o mapa.",
                 "Topologia ainda vazia",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             return;
         }
 
-        SaveFileDialog dialog = new()
+        if (_topologyWindow is { IsVisible: true })
         {
-            Title = "Guardar mapa de topologia",
-            FileName = $"topologia-rede-{DateTime.Now:yyyyMMdd-HHmm}.png",
-            DefaultExt = ".png",
-            Filter = "Imagem PNG (*.png)|*.png|Todos os ficheiros (*.*)|*.*",
-            AddExtension = true,
-            OverwritePrompt = true
-        };
-        if (dialog.ShowDialog(this) != true)
-            return;
+            if (_topologyWindow.WindowState == WindowState.Minimized)
+                _topologyWindow.WindowState = WindowState.Normal;
 
-        try
-        {
-            TopologyGraph.ExportVisiblePng(dialog.FileName);
-            MessageBox.Show(
-                this,
-                $"Mapa guardado em:\n{dialog.FileName}",
-                "Topologia exportada",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            _topologyWindow.Activate();
+            return;
         }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+
+        _topologyWindow = new TopologyWindow(ViewModel)
         {
-            MessageBox.Show(
-                this,
-                exception.Message,
-                "Não foi possível guardar o mapa",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-        }
+            Owner = this
+        };
+        _topologyWindow.Closed += (_, _) => _topologyWindow = null;
+        _topologyWindow.Show();
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

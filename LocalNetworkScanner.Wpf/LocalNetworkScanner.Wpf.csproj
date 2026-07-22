@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->
+
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
@@ -22,3 +24,5 @@
   </ItemGroup>
 
 </Project>
+
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

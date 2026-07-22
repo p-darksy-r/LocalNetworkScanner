@@ -1,5 +1,8 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Net;
 using System.Net.Sockets;
+using LocalNetworkScanner.Core.Models;
 
 namespace LocalNetworkScanner.Core.Services;
 
@@ -10,7 +13,6 @@ public sealed class WakeOnLanService
         IPAddress broadcastAddress,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(macAddress);
         ArgumentNullException.ThrowIfNull(broadcastAddress);
 
         byte[] mac = ParseMac(macAddress);
@@ -35,13 +37,18 @@ public sealed class WakeOnLanService
 
     private static byte[] ParseMac(string value)
     {
-        string hex = new(value.Where(Uri.IsHexDigit).ToArray());
-        if (hex.Length != 12)
-            throw new FormatException("O endereço MAC deve conter 12 dígitos hexadecimais.");
+        if (!MacAddressService.TryNormalizeDeviceAddress(value, out string normalized))
+        {
+            throw new ScanFormatException(
+                DiagnosticCatalog.InvalidMacAddress("Wake-on-LAN", value));
+        }
 
+        string hex = normalized.Replace(":", string.Empty, StringComparison.Ordinal);
         byte[] result = new byte[6];
         for (int index = 0; index < result.Length; index++)
             result[index] = Convert.ToByte(hex.Substring(index * 2, 2), 16);
         return result;
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

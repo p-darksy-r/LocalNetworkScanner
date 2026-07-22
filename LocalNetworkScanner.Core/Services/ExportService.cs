@@ -1,3 +1,5 @@
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
 using System.Text;
 using System.Text.Json;
 using System.Globalization;
@@ -19,7 +21,7 @@ public sealed class ExportService
         NetworkMap topologyMap = new NetworkTopologyMapService().Build(result);
         object payload = new
         {
-            schemaVersion = 2,
+            schemaVersion = 3,
             generatedAt = DateTimeOffset.UtcNow,
             network = new
             {
@@ -45,7 +47,18 @@ public sealed class ExportService
                 result.AddressesScanned,
                 result.IsPartial,
                 devicesOnline = result.Devices.Count,
-                result.Warnings
+                result.Warnings,
+                diagnostics = result.Diagnostics.Select(diagnostic => new
+                {
+                    code = diagnostic.Code,
+                    category = diagnostic.Category.ToString(),
+                    severity = diagnostic.Severity.ToString(),
+                    message = diagnostic.Message,
+                    recommendedAction = diagnostic.RecommendedAction,
+                    target = diagnostic.Target,
+                    context = diagnostic.Context,
+                    isFatal = diagnostic.IsFatal
+                })
             },
             topologyMap = new
             {
@@ -148,6 +161,7 @@ public sealed class ExportService
         await WriteGraphMlKeyAsync(writer, graphMlNamespace, "g_network", "graph", "network_cidr", "string");
         await WriteGraphMlKeyAsync(writer, graphMlNamespace, "g_generated", "graph", "generated_at", "string");
         await WriteGraphMlKeyAsync(writer, graphMlNamespace, "g_warnings", "graph", "warnings", "string");
+        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "g_diagnostics", "graph", "diagnostics", "string");
         await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_label", "node", "label", "string");
         await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_kind", "node", "kind", "string");
         await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_subtitle", "node", "subtitle", "string");
@@ -175,6 +189,11 @@ public sealed class ExportService
             graphMlNamespace,
             "g_warnings",
             string.Join(Environment.NewLine, map.Warnings));
+        await WriteGraphMlDataAsync(
+            writer,
+            graphMlNamespace,
+            "g_diagnostics",
+            string.Join(Environment.NewLine, result.Diagnostics.Select(FormatDiagnostic)));
 
         foreach (NetworkMapNode node in map.Nodes)
         {
@@ -292,7 +311,8 @@ public sealed class ExportService
             "th,td{text-align:left;padding:11px 12px;border-bottom:1px solid #e8eef4;vertical-align:top}" +
             "th{background:#eef4f9;color:#344e6e;position:sticky;top:0}.high{color:#b42318;font-weight:700}" +
             ".medium{color:#b54708;font-weight:700}.low{color:#067647;font-weight:700}" +
-            ".warnings{margin-top:24px;padding:18px;background:#fff7e8;border-left:4px solid #f79009}" +
+            ".warnings,.diagnostics{margin-top:24px;padding:18px;background:#fff7e8;border-left:4px solid #f79009}" +
+            ".diagnostics{background:#eef6ff;border-color:#2e90fa}.diagnostic{margin:12px 0}.code{font-family:Consolas,monospace;font-weight:700}" +
             "@media(max-width:850px){body{padding:14px}.cards{grid-template-columns:1fr 1fr}.scroll{overflow:auto}}" +
             "</style></head><body>");
         string resultState = result.IsPartial ? " · RESULTADO PARCIAL / SCAN CANCELADO" : string.Empty;
@@ -326,7 +346,23 @@ public sealed class ExportService
         }
 
         html.Append("</tbody></table></div>");
-        if (result.Warnings.Count > 0)
+        if (result.Diagnostics.Count > 0)
+        {
+            html.Append("<section class=\"diagnostics\"><strong>Diagnósticos estruturados</strong>");
+            foreach (ScanDiagnostic diagnostic in result.Diagnostics)
+            {
+                html.Append("<article class=\"diagnostic\">");
+                html.Append($"<span class=\"code\">{H(diagnostic.Code)}</span> · {H(GetSeverityLabel(diagnostic.Severity))} · {H(GetCategoryLabel(diagnostic.Category))}<br>");
+                html.Append($"{H(diagnostic.Message)}<br><strong>Ação:</strong> {H(diagnostic.RecommendedAction)}");
+                if (!string.IsNullOrWhiteSpace(diagnostic.Target))
+                    html.Append($"<br><strong>Alvo:</strong> {H(diagnostic.Target)}");
+                html.Append("</article>");
+            }
+
+            html.Append("</section>");
+        }
+
+        if (result.Warnings.Count > 0 && result.Diagnostics.Count == 0)
         {
             html.Append("<section class=\"warnings\"><strong>Limites e notas técnicas</strong><ul>");
             foreach (string warning in result.Warnings)
@@ -404,6 +440,31 @@ public sealed class ExportService
 
     private static string EncodeGraphMlId(string value) => XmlConvert.EncodeName(value);
 
+    private static string FormatDiagnostic(ScanDiagnostic diagnostic)
+    {
+        string target = string.IsNullOrWhiteSpace(diagnostic.Target)
+            ? string.Empty
+            : $" | Alvo: {diagnostic.Target}";
+        return $"[{diagnostic.Code}] {diagnostic.Severity}/{diagnostic.Category} | " +
+            $"{diagnostic.Message} | Ação: {diagnostic.RecommendedAction}{target}";
+    }
+
+    private static string GetSeverityLabel(DiagnosticSeverity severity) => severity switch
+    {
+        DiagnosticSeverity.Information => "Informação",
+        DiagnosticSeverity.Warning => "Aviso",
+        DiagnosticSeverity.Error => "Erro",
+        _ => "Crítico"
+    };
+
+    private static string GetCategoryLabel(DiagnosticCategory category) => category switch
+    {
+        DiagnosticCategory.User => "Utilizador",
+        DiagnosticCategory.Network => "Rede",
+        DiagnosticCategory.Device => "Dispositivo/dados",
+        _ => "Aplicação"
+    };
+
     private static void EnsureDirectory(string path)
     {
         string fullPath = Path.GetFullPath(path);
@@ -412,3 +473,5 @@ public sealed class ExportService
             Directory.CreateDirectory(directory);
     }
 }
+
+// Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
