@@ -6,6 +6,7 @@ updates:
     directory: /
     schedule:
       interval: monthly
-    open-pull-requests-limit: 5
+    # O projeto mantém apenas o branch main; atualizações de versão são revistas manualmente.
+    open-pull-requests-limit: 0
 
 # Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
