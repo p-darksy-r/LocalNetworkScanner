@@ -3,14 +3,146 @@
 using System.Text;
 using System.Text.Json;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Xml;
 using LocalNetworkScanner.Core.Models;
+using LocalNetworkScanner.Core.Utilities;
 
 namespace LocalNetworkScanner.Core.Services;
 
 public sealed class ExportService
 {
     private static readonly JsonSerializerOptions IndentedJsonOptions = new() { WriteIndented = true };
+
+    /// <summary>
+    /// Cria um relatório de suporte concebido para partilha: inclui apenas estado
+    /// agregado e códigos de diagnóstico, nunca nomes, endereços ou notas da rede.
+    /// </summary>
+    public async Task ExportSupportJsonAsync(
+        NetworkScanResult result,
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        EnsureDirectory(path);
+
+        DiscoveryMethod[] discoveryMethods = Enum.GetValues<DiscoveryMethod>()
+            .Where(method => method != DiscoveryMethod.None)
+            .ToArray();
+        object payload = new
+        {
+            schemaVersion = 1,
+            reportType = "LocalNetworkScanner.Support",
+            generatedAt = DateTimeOffset.UtcNow,
+            privacy = new
+            {
+                containsNetworkIdentifiers = false,
+                excluded = new[]
+                {
+                    "IP and MAC addresses",
+                    "interface, host, switch and device names",
+                    "Wi-Fi SSID and BSSID",
+                    "device aliases and notes",
+                    "diagnostic targets, context and raw warnings"
+                }
+            },
+            application = new
+            {
+                name = ProductIdentity.Name,
+                version = ProductIdentity.Version,
+                runtime = RuntimeInformation.FrameworkDescription,
+                osArchitecture = RuntimeInformation.OSArchitecture.ToString(),
+                processArchitecture = RuntimeInformation.ProcessArchitecture.ToString(),
+                osVersion = Environment.OSVersion.VersionString
+            },
+            scan = new
+            {
+                result.StartedAt,
+                result.CompletedAt,
+                durationMs = result.Duration.TotalMilliseconds,
+                result.AddressesScanned,
+                result.IsPartial,
+                devicesOnline = result.Devices.Count,
+                warningCount = result.Warnings.Count,
+                diagnosticCount = result.Diagnostics.Count
+            },
+            networkCapabilities = new
+            {
+                interfaceType = result.NetworkInterface.InterfaceType.ToString(),
+                result.NetworkInterface.IsWireless,
+                speedMbps = result.NetworkInterface.SpeedMbps,
+                result.NetworkInterface.SupportsMulticast,
+                hasGateway = result.NetworkInterface.GatewayAddress is not null,
+                dnsServerCount = result.NetworkInterface.DnsAddresses.Count,
+                wifiSignalAvailable = result.NetworkInterface.WifiSignalPercent.HasValue,
+                wifiChannelAvailable = result.NetworkInterface.WifiChannel.HasValue,
+                vlanReportedByWindows = result.NetworkInterface.VlanId.HasValue,
+                snmpTopologyCollected = result.SnmpTopology is not null
+            },
+            devices = new
+            {
+                total = result.Devices.Count,
+                withMacAddress = result.Devices.Count(device =>
+                    MacAddressService.TryNormalizeDeviceAddress(device.MacAddress, out _)),
+                withResolvedManufacturer = result.Devices.Count(device =>
+                    !string.IsNullOrWhiteSpace(device.Manufacturer)),
+                withResponseTime = result.Devices.Count(device => device.ResponseTimeMs.HasValue),
+                withOpenPorts = result.Devices.Count(device => device.Ports.Count > 0),
+                openPortObservations = result.Devices.Sum(device => device.Ports.Count),
+                randomizedMac = result.Devices.Count(device => device.IsRandomizedMac),
+                newSincePreviousScan = result.Devices.Count(device => device.HistoryCompared && device.IsNew),
+                changedSincePreviousScan = result.Devices.Count(device =>
+                    device.HistoryCompared && device.Changes.Count > 0),
+                risk = new
+                {
+                    low = result.Devices.Count(device =>
+                        device.RiskLevel.Equals("Baixo", StringComparison.OrdinalIgnoreCase)),
+                    medium = result.Devices.Count(device =>
+                        device.RiskLevel.Equals("Médio", StringComparison.OrdinalIgnoreCase)),
+                    high = result.Devices.Count(device =>
+                        device.RiskLevel.Equals("Alto", StringComparison.OrdinalIgnoreCase))
+                },
+                topology = new
+                {
+                    sameLayer2Confirmed = result.Devices.Count(device =>
+                        device.Topology.SameLayer2Segment == true),
+                    vlanConfirmed = result.Devices.Count(device => device.Topology.VlanId.HasValue),
+                    managedBridgeObserved = result.Devices.Count(device =>
+                        device.Topology.ObservedOnManagedBridge),
+                    samePhysicalSwitchConfirmed = result.Devices.Count(device =>
+                        device.Topology.SamePhysicalSwitch == true)
+                },
+                discovery = discoveryMethods.ToDictionary(
+                    method => method.ToString(),
+                    method => result.Devices.Count(device =>
+                        device.DiscoveryMethods.HasFlag(method)))
+            },
+            diagnostics = result.Diagnostics
+                .GroupBy(diagnostic => new
+                {
+                    diagnostic.Code,
+                    diagnostic.Category,
+                    diagnostic.Severity,
+                    diagnostic.IsFatal
+                })
+                .OrderBy(group => group.Key.Code, StringComparer.Ordinal)
+                .Select(group => new
+                {
+                    code = group.Key.Code,
+                    category = group.Key.Category.ToString(),
+                    severity = group.Key.Severity.ToString(),
+                    isFatal = group.Key.IsFatal,
+                    count = group.Count()
+                })
+        };
+
+        await using FileStream stream = File.Create(path);
+        await JsonSerializer.SerializeAsync(
+            stream,
+            payload,
+            IndentedJsonOptions,
+            cancellationToken);
+    }
 
     public async Task ExportJsonAsync(
         NetworkScanResult result,

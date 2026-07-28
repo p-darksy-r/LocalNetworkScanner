@@ -2,12 +2,15 @@
 
 using System.Buffers.Binary;
 using System.ComponentModel;
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Reflection;
 using System.Formats.Asn1;
 using System.IO;
+using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -18,6 +21,7 @@ using LocalNetworkScanner.Core.Services;
 using LocalNetworkScanner.Core.Utilities;
 using LocalNetworkScanner.Wpf;
 using LocalNetworkScanner.Wpf.Controls;
+using LocalNetworkScanner.Wpf.Infrastructure;
 using LocalNetworkScanner.Wpf.ViewModels;
 
 List<(string Name, Func<Task> Run)> tests =
@@ -117,6 +121,8 @@ List<(string Name, Func<Task> Run)> tests =
             DiagnosticMapper.FromException(new TimeoutException(), "192.168.1.20").Code);
         Equal(DiagnosticCatalog.NetworkOperationFailedCode,
             DiagnosticMapper.FromException(new Win32Exception(53), "rede").Code);
+        Equal(DiagnosticCatalog.ApplicationControlBlockedCode,
+            DiagnosticMapper.FromException(new Win32Exception(4_551), "LocalNetworkScanner.exe").Code);
         Equal(DiagnosticCatalog.OperationCancelledCode,
             DiagnosticMapper.FromException(new OperationCanceledException(), "scan").Code);
         Equal(DiagnosticCatalog.UnexpectedApplicationErrorCode,
@@ -147,7 +153,7 @@ List<(string Name, Func<Task> Run)> tests =
             .Select(field => (string)field.GetRawConstantValue()!)
             .ToArray();
 
-        Equal(25, codes.Length);
+        Equal(26, codes.Length);
         Equal(codes.Length, codes.Distinct(StringComparer.Ordinal).Count());
         True(codes.All(code => code.Length == 11 && code.StartsWith("LNS-", StringComparison.Ordinal)),
             "Todos os códigos públicos devem seguir o contrato LNS-CAT-NNN.");
@@ -167,6 +173,184 @@ List<(string Name, Func<Task> Run)> tests =
         True(!MacAddressService.TryNormalizeDeviceAddress("0:01122334455", out _), "Separadores mal posicionados devem ser rejeitados.");
         True(!MacAddressService.TryNormalizeDeviceAddress("not-a-mac", out _), "Texto arbitrário deve ser rejeitado.");
     })),
+    ("WPF advanced integer validation", () => Sync(() =>
+    {
+        IntegerRangeValidationRule rule = new()
+        {
+            FieldName = "Timeout",
+            Minimum = 50,
+            Maximum = 30_000
+        };
+        CultureInfo culture = CultureInfo.GetCultureInfo("pt-PT");
+        Equal(false, rule.Validate(string.Empty, culture).IsValid);
+        Equal(false, rule.Validate("abc", culture).IsValid);
+        Equal(false, rule.Validate("49", culture).IsValid);
+        Equal(true, rule.Validate("50", culture).IsValid);
+        Equal(true, rule.Validate("30000", culture).IsValid);
+        Equal(false, rule.Validate("30001", culture).IsValid);
+    })),
+    ("Device rows expose typed sort keys", () => Sync(() =>
+    {
+        DeviceRowViewModel lowerIp = new(new NetworkDevice
+        {
+            IpAddress = IPAddress.Parse("192.168.1.2"),
+            ResponseTimeMs = 9,
+            RiskScore = 20,
+            Ports = [new PortScanResult { Port = 80, Protocol = "TCP" }]
+        });
+        DeviceRowViewModel higherIp = new(new NetworkDevice
+        {
+            IpAddress = IPAddress.Parse("192.168.1.10"),
+            ResponseTimeMs = 100,
+            RiskScore = 80,
+            Ports =
+            [
+                new PortScanResult { Port = 22, Protocol = "TCP" },
+                new PortScanResult { Port = 443, Protocol = "TCP" }
+            ]
+        });
+        DeviceRowViewModel noPing = new(new NetworkDevice
+        {
+            IpAddress = IPAddress.Parse("192.168.1.20")
+        });
+
+        True(lowerIp.IpSortKey < higherIp.IpSortKey, "A ordenação de IP deve ser numérica.");
+        True(lowerIp.ResponseTimeSortKey < higherIp.ResponseTimeSortKey,
+            "A ordenação de ping deve usar milissegundos.");
+        Equal(long.MaxValue, noPing.ResponseTimeSortKey);
+        True(lowerIp.RiskScore < higherIp.RiskScore, "O risco deve ser ordenado pela pontuação.");
+        True(lowerIp.OpenPortCount < higherIp.OpenPortCount,
+            "As portas devem ser ordenadas pela contagem.");
+    })),
+    ("Topology filters distinguish infrastructure clients and alerts", () => Sync(() =>
+    {
+        NetworkMapNode gateway = new()
+        {
+            Id = "gateway",
+            Kind = NetworkMapNodeKind.Gateway,
+            Label = "Gateway",
+            RiskLevel = "Baixo",
+            IsOnline = true
+        };
+        NetworkMapNode client = new()
+        {
+            Id = "client",
+            Kind = NetworkMapNodeKind.Device,
+            Label = "Portátil",
+            DeviceType = "Computador Windows",
+            RiskLevel = "Baixo",
+            IsOnline = true
+        };
+        NetworkMapNode alert = new()
+        {
+            Id = "alert",
+            Kind = NetworkMapNodeKind.Device,
+            Label = "Câmara",
+            DeviceType = "Câmara / vídeo IP",
+            RiskLevel = "Alto",
+            IsOnline = true
+        };
+
+        Equal(true, NetworkTopologyControl.IsNodeVisible(gateway, TopologyFilterMode.Infrastructure));
+        Equal(false, NetworkTopologyControl.IsNodeVisible(gateway, TopologyFilterMode.Clients));
+        Equal(true, NetworkTopologyControl.IsNodeVisible(client, TopologyFilterMode.Clients));
+        Equal(false, NetworkTopologyControl.IsNodeVisible(client, TopologyFilterMode.Alerts));
+        Equal(true, NetworkTopologyControl.IsNodeVisible(alert, TopologyFilterMode.Alerts));
+    })),
+    ("ARP neighbor table parsing", () => Sync(() =>
+    {
+        const string output =
+            "Interface: 192.168.1.10 --- 0x5\n" +
+            "  Internet Address      Physical Address      Type\n" +
+            "  192.168.1.1           00-11-22-33-44-55     dynamic\n" +
+            "  192.168.1.250         01-00-5e-00-00-01     static\n" +
+            "192.168.1.20 dev eth0 lladdr 00:AA:BB:CC:DD:EE REACHABLE\n" +
+            "999.168.1.30 dev eth0 lladdr 00:10:20:30:40:50 STALE\n";
+
+        IReadOnlyDictionary<IPAddress, string> neighbors =
+            MacAddressService.ParseNeighborTable(output);
+        Equal(2, neighbors.Count);
+        Equal("00:11:22:33:44:55", neighbors[IPAddress.Parse("192.168.1.1")]);
+        Equal("00:AA:BB:CC:DD:EE", neighbors[IPAddress.Parse("192.168.1.20")]);
+        True(!neighbors.ContainsKey(IPAddress.Parse("192.168.1.250")),
+            "Uma entrada multicast não pode ser aceite como identidade ARP.");
+    })),
+    ("ARP scan session caches table and addresses", async () =>
+    {
+        int tableReads = 0;
+        int activeResolutions = 0;
+        MacAddressService service = new(
+            (_, _) =>
+            {
+                Interlocked.Increment(ref tableReads);
+                return Task.FromResult<string?>(
+                    "192.168.1.20  00-11-22-33-44-55  dynamic");
+            },
+            (address, _, _) =>
+            {
+                Interlocked.Increment(ref activeResolutions);
+                return Task.FromResult<string?>(address.Equals(IPAddress.Parse("192.168.1.30"))
+                    ? "00-AA-BB-CC-DD-01"
+                    : "01:00:5E:00:00:01");
+            },
+            maximumActiveConcurrency: 2);
+        await using MacAddressService.ScanSession session =
+            service.CreateScanSession(CreateInterface());
+
+        IPAddress tableAddress = IPAddress.Parse("192.168.1.20");
+        string?[] tableResults = await Task.WhenAll(
+            session.ResolveAsync(tableAddress, CancellationToken.None),
+            session.ResolveAsync(tableAddress, CancellationToken.None));
+        True(tableResults.All(value => value == "00:11:22:33:44:55"),
+            "A tabela de vizinhos deveria resolver o endereço sem SendARP.");
+
+        IPAddress activeAddress = IPAddress.Parse("192.168.1.30");
+        string?[] activeResults = await Task.WhenAll(
+            session.ResolveAsync(activeAddress, CancellationToken.None),
+            session.ResolveAsync(activeAddress, CancellationToken.None));
+        True(activeResults.All(value => value == "00:AA:BB:CC:DD:01"),
+            "A resolução ativa deveria ser normalizada e reutilizada.");
+
+        IPAddress invalidAddress = IPAddress.Parse("192.168.1.40");
+        Equal<string?>(null, await session.ResolveAsync(invalidAddress, CancellationToken.None));
+        Equal<string?>(null, await session.ResolveAsync(invalidAddress, CancellationToken.None));
+        Equal("00:AA:BB:CC:DD:EE",
+            await session.ResolveAsync(CreateInterface().IpAddress, CancellationToken.None));
+        Equal<string?>(null,
+            await session.ResolveAsync(IPAddress.Parse("10.0.0.20"), CancellationToken.None));
+
+        Equal(1, Volatile.Read(ref tableReads));
+        Equal(2, Volatile.Read(ref activeResolutions));
+    }),
+    ("ARP scan session propagates cancellation", async () =>
+    {
+        int activeResolutions = 0;
+        TaskCompletionSource tableStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using CancellationTokenSource cancellation = new();
+        MacAddressService service = new(
+            async (_, token) =>
+            {
+                tableStarted.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return null;
+            },
+            (_, _, _) =>
+            {
+                Interlocked.Increment(ref activeResolutions);
+                return Task.FromResult<string?>(null);
+            });
+        await using MacAddressService.ScanSession session =
+            service.CreateScanSession(CreateInterface(), cancellation.Token);
+
+        Task<string?> resolution = session.ResolveAsync(
+            IPAddress.Parse("192.168.1.50"),
+            CancellationToken.None);
+        await tableStarted.Task;
+        cancellation.Cancel();
+        await ThrowsAsync<OperationCanceledException>(async () => _ = await resolution);
+        Equal(0, Volatile.Read(ref activeResolutions));
+    }),
     ("Invalid MAC is quarantined end-to-end", async () =>
     {
         NetworkDevice device = new()
@@ -239,6 +423,433 @@ List<(string Name, Func<Task> Run)> tests =
             File.Delete(path);
         }
     })),
+    ("Bundled IEEE vendor database integrity", () => Sync(() =>
+    {
+        const string resourceName = "LocalNetworkScanner.Core.Data.ieee-mac-vendors.tsv.gz";
+        using Stream? resource = typeof(MacVendorService).Assembly.GetManifestResourceStream(resourceName);
+        NotNull(resource);
+
+        using MemoryStream compressed = new();
+        resource!.CopyTo(compressed);
+        string resourceHash = Convert.ToHexString(
+            SHA256.HashData(compressed.ToArray())).ToLowerInvariant();
+        Equal(
+            "26ec00a8b4d3a965e79d031780d064263452ed319fad917b80ce305905605003",
+            resourceHash);
+
+        compressed.Position = 0;
+        using GZipStream gzip = new(compressed, CompressionMode.Decompress);
+        using StreamReader reader = new(gzip, new UTF8Encoding(false));
+        Dictionary<string, string> metadata = new(StringComparer.Ordinal);
+        Dictionary<string, int> registryCounts = new(StringComparer.Ordinal)
+        {
+            ["MA-L"] = 0,
+            ["MA-M"] = 0,
+            ["MA-S"] = 0,
+            ["IAB"] = 0
+        };
+        Dictionary<string, int> prefixOccurrences = new(StringComparer.Ordinal);
+        int entries = 0;
+        string? line;
+        while ((line = reader.ReadLine()) is not null)
+        {
+            if (line.StartsWith('#'))
+            {
+                int separator = line.IndexOf('=');
+                if (separator > 2)
+                    metadata[line[2..separator]] = line[(separator + 1)..];
+                continue;
+            }
+
+            string[] columns = line.Split('\t', 3);
+            Equal(3, columns.Length);
+            True(registryCounts.ContainsKey(columns[0]), $"Registo IEEE inesperado: {columns[0]}.");
+            int expectedPrefixLength = columns[0] switch
+            {
+                "MA-L" => 6,
+                "MA-M" => 7,
+                _ => 9
+            };
+            Equal(expectedPrefixLength, columns[1].Length);
+            True(
+                columns[1].All(character =>
+                    character is >= '0' and <= '9' or >= 'A' and <= 'F'),
+                $"Prefixo IEEE inválido: {columns[1]}.");
+            True(!string.IsNullOrWhiteSpace(columns[2]), "A organização IEEE não pode estar vazia.");
+
+            entries++;
+            registryCounts[columns[0]]++;
+            prefixOccurrences[columns[1]] =
+                prefixOccurrences.GetValueOrDefault(columns[1]) + 1;
+        }
+
+        Equal(58_019, entries);
+        Equal(58_016, prefixOccurrences.Count);
+        Equal(39_829, registryCounts["MA-L"]);
+        Equal(6_503, registryCounts["MA-M"]);
+        Equal(7_112, registryCounts["MA-S"]);
+        Equal(4_575, registryCounts["IAB"]);
+        Equal("LocalNetworkScanner.IEEE-MAC-Vendors/v1", metadata["format"]);
+        Equal("2026-07-28", metadata["snapshotDate"]);
+        Equal("58019", metadata["entries"]);
+        Equal("58016", metadata["uniquePrefixes"]);
+        Equal(2, prefixOccurrences["0001C8"]);
+        Equal(3, prefixOccurrences["080030"]);
+        Equal(
+            2,
+            prefixOccurrences.Count(item => item.Value > 1));
+    })),
+    ("Bundled IEEE vendor lookup coverage", () => Sync(() =>
+    {
+        string missingOverride = Path.Combine(
+            Path.GetTempPath(),
+            "LocalNetworkScanner.Tests",
+            Guid.NewGuid().ToString("N"),
+            "missing-vendors.tsv.gz");
+        MacVendorService service = new(missingOverride);
+
+        Equal(false, service.HasExternalDatabase);
+        Equal(false, service.DatabaseInfo.IsDegraded);
+        Equal("Incorporada", service.DatabaseInfo.Source);
+        Equal(new DateOnly(2026, 7, 28), service.DatabaseInfo.SnapshotDate);
+        Equal(58_019, service.DatabaseInfo.EntryCount);
+        Equal(58_016, service.DatabaseInfo.UniquePrefixCount);
+        Equal(39_829, service.DatabaseInfo.RegistryCounts["MA-L"]);
+        Equal(6_503, service.DatabaseInfo.RegistryCounts["MA-M"]);
+        Equal(7_112, service.DatabaseInfo.RegistryCounts["MA-S"]);
+        Equal(4_575, service.DatabaseInfo.RegistryCounts["IAB"]);
+
+        MacVendorMatch? large = service.LookupDetailed("00:0C:29:12:34:56");
+        NotNull(large);
+        Equal("VMware, Inc.", large!.Organization);
+        Equal("MA-L", large.Registry);
+        Equal(24, large.PrefixLength);
+
+        MacVendorMatch? medium = service.LookupDetailed("C8:5C:E2:7A:BC:DE");
+        NotNull(medium);
+        Equal("SYNERGY SYSTEMS AND SOLUTIONS", medium!.Organization);
+        Equal("MA-M", medium.Registry);
+        Equal(28, medium.PrefixLength);
+
+        MacVendorMatch? small = service.LookupDetailed("8C:1F:64:AF:A1:23");
+        NotNull(small);
+        Equal("DATA ELECTRONIC DEVICES, INC", small!.Organization);
+        Equal("MA-S", small.Registry);
+        Equal(36, small.PrefixLength);
+
+        MacVendorMatch? legacy = service.LookupDetailed("00:50:C2:00:31:23");
+        NotNull(legacy);
+        Equal("Microsoft", legacy!.Organization);
+        Equal("IAB", legacy.Registry);
+        Equal(36, legacy.PrefixLength);
+    })),
+    ("Vendor lookup uses the longest prefix and parses quoted Unicode CSV", () => Sync(() =>
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            "LocalNetworkScanner.Tests",
+            Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(directory, "vendors.csv");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(
+                path,
+                "Registry,Assignment,Organization Name,Organization Address\n" +
+                "MA-L,00FFEE,\"Parent, S.A. – Lisboa\",Portugal\n" +
+                "MA-M,00FFEEA,\"Médio & Filhos\",Portugal\n" +
+                "MA-S,00FFEEABC,\"Específico, Lda.\",Portugal\n" +
+                "IAB,00FFEEABD,\"Legado, Lda.\",Portugal\n",
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+            MacVendorService service = new(path);
+            Equal(true, service.HasExternalDatabase);
+            Equal(4, service.DatabaseInfo.EntryCount);
+            Equal(4, service.DatabaseInfo.UniquePrefixCount);
+
+            MacVendorMatch? small = service.LookupDetailed("00:FF:EE:AB:C0:01");
+            NotNull(small);
+            Equal("Específico, Lda.", small!.Organization);
+            Equal("MA-S", small.Registry);
+            Equal("00FFEEABC", small.Prefix);
+            Equal(36, small.PrefixLength);
+
+            MacVendorMatch? legacy = service.LookupDetailed("00:FF:EE:AB:D0:01");
+            NotNull(legacy);
+            Equal("Legado, Lda.", legacy!.Organization);
+            Equal("IAB", legacy.Registry);
+
+            MacVendorMatch? medium = service.LookupDetailed("00:FF:EE:AF:00:01");
+            NotNull(medium);
+            Equal("Médio & Filhos", medium!.Organization);
+            Equal("MA-M", medium.Registry);
+            Equal(28, medium.PrefixLength);
+
+            MacVendorMatch? large = service.LookupDetailed("00:FF:EE:BF:00:01");
+            NotNull(large);
+            Equal("Parent, S.A. – Lisboa", large!.Organization);
+            Equal("MA-L", large.Registry);
+            Equal(24, large.PrefixLength);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    })),
+    ("Historical vendor duplicates aggregate deterministically", () => Sync(() =>
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            "LocalNetworkScanner.Tests",
+            Guid.NewGuid().ToString("N"));
+        string firstPath = Path.Combine(directory, "duplicates-a.tsv");
+        string secondPath = Path.Combine(directory, "duplicates-b.tsv");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            string header = "Registry\tAssignment\tOrganization Name\n";
+            File.WriteAllText(
+                firstPath,
+                header +
+                "MA-L\t00FFEE\tÁrvore Networks\n" +
+                "MA-L\t00FFEE\tZeta, S.A.\n" +
+                "MA-L\t00FFEE\tÁrvore Networks\n",
+                new UTF8Encoding(false));
+            File.WriteAllText(
+                secondPath,
+                header +
+                "MA-L\t00FFEE\tZeta, S.A.\n" +
+                "MA-L\t00FFEE\tÁrvore Networks\n" +
+                "MA-L\t00FFEE\tÁrvore Networks\n",
+                new UTF8Encoding(false));
+
+            MacVendorService first = new(firstPath);
+            MacVendorService second = new(secondPath);
+            const string macAddress = "00:FF:EE:12:34:56";
+            string? firstOrganization = first.Lookup(macAddress);
+            string? secondOrganization = second.Lookup(macAddress);
+
+            Equal("Zeta, S.A. / Árvore Networks", firstOrganization);
+            Equal(firstOrganization, secondOrganization);
+            Equal(3, first.DatabaseInfo.EntryCount);
+            Equal(1, first.DatabaseInfo.UniquePrefixCount);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    })),
+    ("Vendor lookup rejects non-global MAC identities", () => Sync(() =>
+    {
+        string missingOverride = Path.Combine(
+            Path.GetTempPath(),
+            "LocalNetworkScanner.Tests",
+            Guid.NewGuid().ToString("N"),
+            "missing-vendors.tsv.gz");
+        MacVendorService service = new(missingOverride);
+
+        Equal("MAC privado/aleatório", service.Lookup("02:00:00:00:00:01"));
+        Equal<string?>(null, service.LookupDetailed("02:00:00:00:00:01")?.Organization);
+        Equal<string?>(null, service.Lookup("01:00:5E:00:00:01"));
+        Equal<string?>(null, service.Lookup("not-a-mac"));
+        Equal<string?>(null, service.Lookup("00:00:00:00:00:00"));
+        Equal<string?>(null, service.Lookup("FF:FF:FF:FF:FF:FF"));
+    })),
+    ("Corrupt external vendor database falls back to bundled snapshot", () => Sync(() =>
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            "LocalNetworkScanner.Tests",
+            Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(directory, "vendors.tsv");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(
+                path,
+                "Registry\tAssignment\tOrganization Name\n" +
+                "MA-L\tINVALID\tCorrupt entry\n",
+                new UTF8Encoding(false));
+
+            MacVendorService service = new(path);
+            Equal(false, service.HasExternalDatabase);
+            Equal("Incorporada", service.DatabaseInfo.Source);
+            Equal(false, service.DatabaseInfo.IsDegraded);
+            True(
+                !string.IsNullOrWhiteSpace(service.ExternalDatabaseError),
+                "A rejeição da base externa deveria ficar disponível para diagnóstico.");
+            Equal("VMware, Inc.", service.Lookup("00:0C:29:12:34:56"));
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    })),
+    ("Vendor lookups are safe under concurrency", async () =>
+    {
+        string missingOverride = Path.Combine(
+            Path.GetTempPath(),
+            "LocalNetworkScanner.Tests",
+            Guid.NewGuid().ToString("N"),
+            "missing-vendors.tsv.gz");
+        MacVendorService service = new(missingOverride);
+        string?[] results = await Task.WhenAll(
+            Enumerable.Range(0, 512).Select(index => Task.Run(() =>
+                (index % 4) switch
+                {
+                    0 => service.Lookup("00:0C:29:12:34:56"),
+                    1 => service.Lookup("C8:5C:E2:7A:BC:DE"),
+                    2 => service.Lookup("8C:1F:64:AF:A1:23"),
+                    _ => service.Lookup("00:50:C2:00:31:23")
+                })));
+
+        Equal(128, results.Count(value => value == "VMware, Inc."));
+        Equal(128, results.Count(value => value == "SYNERGY SYSTEMS AND SOLUTIONS"));
+        Equal(128, results.Count(value => value == "DATA ELECTRONIC DEVICES, INC"));
+        Equal(128, results.Count(value => value == "Microsoft"));
+    }),
+    ("Optional IEEE update is complete and atomic", async () =>
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            "LocalNetworkScanner.Tests",
+            Guid.NewGuid().ToString("N"));
+        string databasePath = Path.Combine(directory, "vendor-database.tsv.gz");
+        IReadOnlyList<OuiDatabaseSource> sources =
+        [
+            new(
+                "MA-L",
+                "mal.csv",
+                "https://fixtures.invalid/mal.csv",
+                6,
+                1,
+                10,
+                4_096),
+            new(
+                "MA-M",
+                "mam.csv",
+                "https://fixtures.invalid/mam.csv",
+                7,
+                1,
+                10,
+                4_096),
+            new(
+                "MA-S",
+                "mas.csv",
+                "https://fixtures.invalid/mas.csv",
+                9,
+                1,
+                10,
+                4_096),
+            new(
+                "IAB",
+                "iab.csv",
+                "https://fixtures.invalid/iab.csv",
+                9,
+                1,
+                10,
+                4_096)
+        ];
+        Dictionary<string, string> initialBodies = new(StringComparer.Ordinal)
+        {
+            ["/mal.csv"] = VendorCsv("MA-L", "00FFEE", "Inicial MA-L"),
+            ["/mam.csv"] = VendorCsv("MA-M", "00FFEEA", "Inicial MA-M"),
+            ["/mas.csv"] = VendorCsv("MA-S", "00FFEEABC", "Inicial,\nMA-S"),
+            ["/iab.csv"] = VendorCsv("IAB", "00FFEEABD", "Inicial IAB")
+        };
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            List<string> requests = [];
+            using HttpClient initialClient = new(new StubHttpMessageHandler(
+                (request, _) =>
+                {
+                    string path = request.RequestUri!.AbsolutePath;
+                    requests.Add(path);
+                    return Task.FromResult(CsvResponse(initialBodies[path]));
+                }));
+            OuiDatabaseService initialUpdater = new(
+                initialClient,
+                databasePath,
+                sources);
+            string updatedPath = await initialUpdater.UpdateAsync();
+
+            Equal(Path.GetFullPath(databasePath), updatedPath);
+            Equal(true, File.Exists(databasePath));
+            Equal(4, requests.Count);
+            Equal(4, requests.Distinct(StringComparer.Ordinal).Count());
+            True(
+                initialClient.DefaultRequestHeaders.UserAgent.Any(item =>
+                    item.Product?.Name == ProductIdentity.Name),
+                "O updater deveria identificar o produto no User-Agent.");
+            Equal(0, Directory.GetDirectories(directory, ".vendor-update-*").Length);
+
+            MacVendorService updated = new(databasePath);
+            Equal(true, updated.HasExternalDatabase);
+            Equal(4, updated.DatabaseInfo.EntryCount);
+            Equal(4, updated.DatabaseInfo.UniquePrefixCount);
+            Equal("Inicial, MA-S", updated.Lookup("00:FF:EE:AB:C0:01"));
+            Equal("Inicial MA-M", updated.Lookup("00:FF:EE:AF:00:01"));
+            Equal("Inicial MA-L", updated.Lookup("00:FF:EE:BF:00:01"));
+            Equal("Inicial IAB", updated.Lookup("00:FF:EE:AB:D0:01"));
+            Throws<InvalidDataException>(() =>
+                MacVendorService.ValidateCompleteDatabaseFile(databasePath, "Teste parcial"));
+
+            byte[] originalDatabase = await File.ReadAllBytesAsync(databasePath);
+            Dictionary<string, string> replacementBodies = new(StringComparer.Ordinal)
+            {
+                ["/mal.csv"] = VendorCsv("MA-L", "00FFEE", "Substituição MA-L"),
+                ["/mam.csv"] = VendorCsv("MA-M", "00FFEEA", "Substituição MA-M"),
+                ["/mas.csv"] = VendorCsv("MA-S", "00FFEEABC", "Substituição MA-S"),
+                ["/iab.csv"] = VendorCsv("IAB", "00FFEEABD", "Substituição IAB")
+            };
+            using HttpClient failingClient = new(new StubHttpMessageHandler(
+                (request, _) =>
+                {
+                    string path = request.RequestUri!.AbsolutePath;
+                    if (path == "/mas.csv")
+                    {
+                        return Task.FromResult(
+                            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+                    }
+
+                    return Task.FromResult(CsvResponse(replacementBodies[path]));
+                }));
+            OuiDatabaseService failingUpdater = new(
+                failingClient,
+                databasePath,
+                sources,
+                Path.Combine(directory, "legacy-oui.csv"));
+
+            await ThrowsAsync<HttpRequestException>(() => failingUpdater.UpdateAsync());
+            Equal(
+                Convert.ToHexString(SHA256.HashData(originalDatabase)),
+                Convert.ToHexString(SHA256.HashData(
+                    await File.ReadAllBytesAsync(databasePath))));
+            Equal(0, Directory.GetDirectories(directory, ".vendor-update-*").Length);
+            Equal(
+                "Inicial, MA-S",
+                new MacVendorService(databasePath).Lookup("00:FF:EE:AB:C0:01"));
+
+            string legacyPath = Path.Combine(directory, "legacy-oui.csv");
+            await File.WriteAllTextAsync(
+                legacyPath,
+                VendorCsv("MA-L", "001122", "Legado"));
+            Equal(true, failingUpdater.ResetLocalDatabase());
+            Equal(false, File.Exists(databasePath));
+            Equal(false, File.Exists(legacyPath));
+            Equal(false, failingUpdater.ResetLocalDatabase());
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    }),
     ("NetBIOS request", () => Sync(() =>
     {
         byte[] request = NetBiosDiscoveryService.BuildNodeStatusRequest();
@@ -643,6 +1254,164 @@ List<(string Name, Func<Task> Run)> tests =
                 Directory.Delete(directory, recursive: true);
         }
     }),
+    ("History preserves identity across IP and MAC transitions", async () =>
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "LocalNetworkScanner.Tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            NetworkHistoryService history = new(directory);
+            DateTimeOffset firstSeen = new(2026, 7, 20, 10, 0, 0, TimeSpan.Zero);
+            NetworkDevice first = new()
+            {
+                IpAddress = IPAddress.Parse("192.168.1.40"),
+                Hostname = "printer",
+                FirstSeen = firstSeen,
+                LastSeen = firstSeen
+            };
+            await history.ApplyAndSaveAsync(CreateResult([first], firstSeen));
+
+            NetworkDevice gainedMac = new()
+            {
+                IpAddress = IPAddress.Parse("192.168.1.40"),
+                Hostname = "printer",
+                MacAddress = "00:11:22:33:44:55",
+                FirstSeen = firstSeen.AddHours(1),
+                LastSeen = firstSeen.AddHours(1)
+            };
+            await history.ApplyAndSaveAsync(CreateResult([gainedMac], firstSeen.AddHours(1)));
+            Equal(false, gainedMac.IsNew);
+            Equal(firstSeen, gainedMac.FirstSeen);
+
+            NetworkDevice movedIp = new()
+            {
+                IpAddress = IPAddress.Parse("192.168.1.41"),
+                Hostname = "printer",
+                MacAddress = "00:11:22:33:44:55",
+                FirstSeen = firstSeen.AddHours(2),
+                LastSeen = firstSeen.AddHours(2)
+            };
+            await history.ApplyAndSaveAsync(CreateResult([movedIp], firstSeen.AddHours(2)));
+            Equal(false, movedIp.IsNew);
+            Equal(firstSeen, movedIp.FirstSeen);
+            True(movedIp.Changes.Any(change => change.Contains("IP mudou", StringComparison.Ordinal)),
+                "Uma mudança de IP do mesmo MAC deveria ficar registada.");
+
+            NetworkDevice reusedIp = new()
+            {
+                IpAddress = IPAddress.Parse("192.168.1.41"),
+                Hostname = "other-device",
+                MacAddress = "00:11:22:33:44:66",
+                FirstSeen = firstSeen.AddHours(3),
+                LastSeen = firstSeen.AddHours(3)
+            };
+            await history.ApplyAndSaveAsync(CreateResult([reusedIp], firstSeen.AddHours(3)));
+            Equal(true, reusedIp.IsNew);
+            Equal(firstSeen.AddHours(3), reusedIp.FirstSeen);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    }),
+    ("History migrates network anchors and clears only its files", async () =>
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "LocalNetworkScanner.Tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            NetworkHistoryService history = new(directory);
+            DateTimeOffset capturedAt = new(2026, 7, 20, 12, 0, 0, TimeSpan.Zero);
+            NetworkDevice gatewayWithoutMac = new()
+            {
+                IpAddress = IPAddress.Parse("192.168.1.1"),
+                Hostname = "gateway"
+            };
+            NetworkDevice stableClient = new()
+            {
+                IpAddress = IPAddress.Parse("192.168.1.20"),
+                MacAddress = "00:11:22:33:44:55",
+                FirstSeen = capturedAt,
+                LastSeen = capturedAt
+            };
+            await history.ApplyAndSaveAsync(
+                CreateResult([gatewayWithoutMac, stableClient], capturedAt));
+
+            NetworkDevice gatewayWithMac = new()
+            {
+                IpAddress = IPAddress.Parse("192.168.1.1"),
+                Hostname = "gateway",
+                MacAddress = "00:AA:BB:CC:DD:01"
+            };
+            NetworkDevice sameClient = new()
+            {
+                IpAddress = IPAddress.Parse("192.168.1.20"),
+                MacAddress = "00:11:22:33:44:55",
+                FirstSeen = capturedAt.AddHours(1),
+                LastSeen = capturedAt.AddHours(1)
+            };
+            await history.ApplyAndSaveAsync(
+                CreateResult([gatewayWithMac, sameClient], capturedAt.AddHours(1)));
+            Equal(false, sameClient.IsNew);
+            Equal(capturedAt, sameClient.FirstSeen);
+            Equal(1, Directory.GetFiles(directory, "*.json").Length);
+
+            string unrelated = Path.Combine(directory, "keep.txt");
+            string temporary = Directory.GetFiles(directory, "*.json").Single() + ".tmp-orphan";
+            await File.WriteAllTextAsync(unrelated, "keep");
+            await File.WriteAllTextAsync(temporary, "temporary");
+            Equal(2, await history.ClearAsync());
+            Equal(false, Directory.EnumerateFiles(directory, "*.json").Any());
+            Equal(true, File.Exists(unrelated));
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    }),
+    ("Device metadata follows MAC and rejects IP reuse", async () =>
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "LocalNetworkScanner.Tests", Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(directory, "devices.json");
+        try
+        {
+            using DeviceMetadataService metadata = new(path);
+            NetworkDevice original = new()
+            {
+                IpAddress = IPAddress.Parse("192.168.1.30"),
+                MacAddress = "00:10:20:30:40:50",
+                Alias = "NAS principal",
+                Notes = "Armário técnico",
+                IsFavorite = true
+            };
+            await metadata.SaveAsync(original, "192.168.1.0/24");
+
+            NetworkDevice moved = new()
+            {
+                IpAddress = IPAddress.Parse("192.168.1.31"),
+                MacAddress = "00:10:20:30:40:50"
+            };
+            NetworkScanResult movedResult = CreateResult([moved], DateTimeOffset.UtcNow);
+            await metadata.ApplyAsync(movedResult);
+            Equal("NAS principal", moved.Alias);
+            Equal("Armário técnico", moved.Notes);
+            Equal(true, moved.IsFavorite);
+
+            NetworkDevice reusedIp = new()
+            {
+                IpAddress = IPAddress.Parse("192.168.1.30"),
+                MacAddress = "00:10:20:30:40:60"
+            };
+            await metadata.ApplyAsync(CreateResult([reusedIp], DateTimeOffset.UtcNow.AddMinutes(1)));
+            Equal<string?>(null, reusedIp.Alias);
+            Equal(false, reusedIp.IsFavorite);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    }),
     ("HTML export escapes content", async () =>
     {
         string directory = Path.Combine(Path.GetTempPath(), "LocalNetworkScanner.Tests", Guid.NewGuid().ToString("N"));
@@ -743,6 +1512,54 @@ List<(string Name, Func<Task> Run)> tests =
                 .First(edge => edge.GetProperty("kind").GetString() == "Layer2Observed")
                 .GetProperty("kind")
                 .GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    }),
+    ("Support export excludes network identifiers", async () =>
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "LocalNetworkScanner.Tests", Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(directory, "support.json");
+        try
+        {
+            NetworkScanResult result = CreateTopologyExportResult();
+            result.Devices[0].Hostname = "host-secret.example";
+            result.Devices[0].Notes = "note-secret";
+            result.NetworkInterface.Ssid = "ssid-secret";
+            result.NetworkInterface.Bssid = "02:AA:BB:CC:DD:EE";
+
+            await new ExportService().ExportSupportJsonAsync(result, path);
+            string json = await File.ReadAllTextAsync(path);
+            foreach (string secret in new[]
+                     {
+                         "192.168.1.",
+                         "00:11:22:33:44:55",
+                         "00:AA:BB:CC:DD:EE",
+                         "02:AA:BB:CC:DD:EE",
+                         "printer <lab>&",
+                         "host-secret.example",
+                         "note-secret",
+                         "ssid-secret",
+                         "Interface de teste",
+                         "invalid-mac"
+                     })
+            {
+                True(!json.Contains(secret, StringComparison.OrdinalIgnoreCase),
+                    $"O relatório de suporte expôs o identificador '{secret}'.");
+            }
+
+            using JsonDocument document = JsonDocument.Parse(json);
+            JsonElement root = document.RootElement;
+            Equal(1, root.GetProperty("schemaVersion").GetInt32());
+            Equal("LocalNetworkScanner.Support", root.GetProperty("reportType").GetString());
+            Equal(false, root.GetProperty("privacy").GetProperty("containsNetworkIdentifiers").GetBoolean());
+            Equal(1, root.GetProperty("devices").GetProperty("total").GetInt32());
+            Equal(
+                DiagnosticCatalog.InvalidMacAddressCode,
+                root.GetProperty("diagnostics")[0].GetProperty("code").GetString());
         }
         finally
         {
@@ -949,6 +1766,17 @@ static LocalNetworkInterface CreateInterface() => new()
     SpeedBitsPerSecond = 1_000_000_000
 };
 
+static NetworkScanResult CreateResult(
+    IReadOnlyList<NetworkDevice> devices,
+    DateTimeOffset completedAt) => new()
+    {
+        NetworkInterface = CreateInterface(),
+        StartedAt = completedAt.AddSeconds(-1),
+        CompletedAt = completedAt,
+        AddressesScanned = Math.Max(1, devices.Count),
+        Devices = devices
+    };
+
 static NetworkScanResult CreateTopologyExportResult()
 {
     NetworkDevice device = new()
@@ -1063,6 +1891,19 @@ static byte[] BuildSnmpResponse()
     return writer.Encode();
 }
 
+static string VendorCsv(string registry, string assignment, string organization) =>
+    "Registry,Assignment,Organization Name,Organization Address\n" +
+    $"{registry},{assignment},\"{organization.Replace("\"", "\"\"", StringComparison.Ordinal)}\"," +
+    "\"Rua de Teste, Lisboa\"\n";
+
+static HttpResponseMessage CsvResponse(string body) => new(HttpStatusCode.OK)
+{
+    Content = new StringContent(
+        body,
+        new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+        "text/csv")
+};
+
 static void Equal<T>(T expected, T actual)
 {
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
@@ -1109,6 +1950,29 @@ static async Task<TException> ThrowsAsync<TException>(Func<Task> action)
     }
 
     throw new InvalidOperationException($"Era esperada a exceção {typeof(TException).Name}.");
+}
+
+internal sealed class StubHttpMessageHandler : HttpMessageHandler
+{
+    private readonly Func<
+        HttpRequestMessage,
+        CancellationToken,
+        Task<HttpResponseMessage>> _handler;
+
+    public StubHttpMessageHandler(
+        Func<
+            HttpRequestMessage,
+            CancellationToken,
+            Task<HttpResponseMessage>> handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        _handler = handler;
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken) =>
+        _handler(request, cancellationToken);
 }
 
 // Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

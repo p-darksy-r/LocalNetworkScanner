@@ -3,6 +3,7 @@
 <Window x:Class="LocalNetworkScanner.Wpf.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:infra="clr-namespace:LocalNetworkScanner.Wpf.Infrastructure"
         Title="Local Network Scanner"
         Width="1440"
         Height="880"
@@ -15,7 +16,25 @@
         Loaded="OnLoaded"
         Closing="OnClosing"
         PreviewKeyDown="OnPreviewKeyDown"
+        Validation.Error="OnInputValidationError"
         AutomationProperties.Name="Local Network Scanner">
+    <Window.Resources>
+        <Style x:Key="ValidatedNumericTextBoxStyle"
+               TargetType="{x:Type TextBox}"
+               BasedOn="{StaticResource {x:Type TextBox}}">
+            <Style.Triggers>
+                <Trigger Property="Validation.HasError" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                    <Setter Property="ToolTip"
+                            Value="{Binding RelativeSource={RelativeSource Self}, Path=(Validation.Errors)[0].ErrorContent}" />
+                    <Setter Property="AutomationProperties.HelpText"
+                            Value="{Binding RelativeSource={RelativeSource Self}, Path=(Validation.Errors)[0].ErrorContent}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
     <Grid Margin="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -244,8 +263,18 @@
                   Margin="0,10,0,0"
                   IsExpanded="{Binding IsAdvancedMode, Mode=TwoWay}"
                   IsEnabled="{Binding CanEditScanSettings}"
-                  Header="Parâmetros técnicos personalizados"
                   AutomationProperties.Name="Parâmetros técnicos personalizados do scan">
+            <Expander.Header>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Parâmetros técnicos personalizados" />
+                    <TextBlock Margin="10,0,0,0"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource DangerBrush}"
+                               Text="{Binding InputValidationMessage}"
+                               Visibility="{Binding HasBlockingInputValidationErrors, Converter={StaticResource BooleanToVisibilityConverter}}"
+                               AutomationProperties.LiveSetting="Assertive" />
+                </StackPanel>
+            </Expander.Header>
             <ScrollViewer MaxHeight="210"
                           HorizontalScrollBarVisibility="Auto"
                           VerticalScrollBarVisibility="Auto">
@@ -260,33 +289,111 @@
                         </StackPanel>
                         <StackPanel Margin="0,0,10,0">
                             <Label Content="Máx. endereços" />
-                            <TextBox Text="{Binding MaximumHosts, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Máximo de endereços" />
+                            <TextBox Style="{StaticResource ValidatedNumericTextBoxStyle}"
+                                     AutomationProperties.Name="Máximo de endereços">
+                                <TextBox.Text>
+                                    <Binding Path="MaximumHosts"
+                                             UpdateSourceTrigger="PropertyChanged"
+                                             NotifyOnValidationError="True">
+                                        <Binding.ValidationRules>
+                                            <infra:IntegerRangeValidationRule FieldName="Máximo de endereços"
+                                                                              Minimum="1"
+                                                                              Maximum="65536"
+                                                                              ValidationStep="RawProposedValue" />
+                                        </Binding.ValidationRules>
+                                    </Binding>
+                                </TextBox.Text>
+                            </TextBox>
                         </StackPanel>
                         <StackPanel Margin="0,0,10,0">
                             <Label Content="Hosts paralelos" />
-                            <TextBox Text="{Binding MaximumHostConcurrency, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Concorrência máxima por host" />
+                            <TextBox Style="{StaticResource ValidatedNumericTextBoxStyle}"
+                                     AutomationProperties.Name="Concorrência máxima por host">
+                                <TextBox.Text>
+                                    <Binding Path="MaximumHostConcurrency"
+                                             UpdateSourceTrigger="PropertyChanged"
+                                             NotifyOnValidationError="True">
+                                        <Binding.ValidationRules>
+                                            <infra:IntegerRangeValidationRule FieldName="Hosts paralelos"
+                                                                              Minimum="1"
+                                                                              Maximum="512"
+                                                                              ValidationStep="RawProposedValue" />
+                                        </Binding.ValidationRules>
+                                    </Binding>
+                                </TextBox.Text>
+                            </TextBox>
                         </StackPanel>
                         <StackPanel Margin="0,0,10,0">
                             <Label Content="Portas paralelas" />
-                            <TextBox Text="{Binding MaximumPortConcurrency, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Concorrência máxima por porta" />
+                            <TextBox Style="{StaticResource ValidatedNumericTextBoxStyle}"
+                                     AutomationProperties.Name="Concorrência máxima por porta">
+                                <TextBox.Text>
+                                    <Binding Path="MaximumPortConcurrency"
+                                             UpdateSourceTrigger="PropertyChanged"
+                                             NotifyOnValidationError="True">
+                                        <Binding.ValidationRules>
+                                            <infra:IntegerRangeValidationRule FieldName="Portas paralelas"
+                                                                              Minimum="1"
+                                                                              Maximum="512"
+                                                                              ValidationStep="RawProposedValue" />
+                                        </Binding.ValidationRules>
+                                    </Binding>
+                                </TextBox.Text>
+                            </TextBox>
                         </StackPanel>
                         <StackPanel Margin="0,0,10,0">
                             <Label Content="Ping (ms)" />
-                            <TextBox Text="{Binding PingTimeoutMs, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Timeout ICMP em milissegundos" />
+                            <TextBox Style="{StaticResource ValidatedNumericTextBoxStyle}"
+                                     AutomationProperties.Name="Timeout ICMP em milissegundos">
+                                <TextBox.Text>
+                                    <Binding Path="PingTimeoutMs"
+                                             UpdateSourceTrigger="PropertyChanged"
+                                             NotifyOnValidationError="True">
+                                        <Binding.ValidationRules>
+                                            <infra:IntegerRangeValidationRule FieldName="Timeout de ping"
+                                                                              Minimum="50"
+                                                                              Maximum="30000"
+                                                                              ValidationStep="RawProposedValue" />
+                                        </Binding.ValidationRules>
+                                    </Binding>
+                                </TextBox.Text>
+                            </TextBox>
                         </StackPanel>
                         <StackPanel Margin="0,0,10,0">
                             <Label Content="TCP (ms)" />
-                            <TextBox Text="{Binding ConnectTimeoutMs, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Timeout TCP em milissegundos" />
+                            <TextBox Style="{StaticResource ValidatedNumericTextBoxStyle}"
+                                     AutomationProperties.Name="Timeout TCP em milissegundos">
+                                <TextBox.Text>
+                                    <Binding Path="ConnectTimeoutMs"
+                                             UpdateSourceTrigger="PropertyChanged"
+                                             NotifyOnValidationError="True">
+                                        <Binding.ValidationRules>
+                                            <infra:IntegerRangeValidationRule FieldName="Timeout TCP"
+                                                                              Minimum="50"
+                                                                              Maximum="30000"
+                                                                              ValidationStep="RawProposedValue" />
+                                        </Binding.ValidationRules>
+                                    </Binding>
+                                </TextBox.Text>
+                            </TextBox>
                         </StackPanel>
                         <StackPanel>
                             <Label Content="Descoberta (ms)" />
-                            <TextBox Text="{Binding DiscoveryTimeoutMs, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Timeout multicast em milissegundos" />
+                            <TextBox Style="{StaticResource ValidatedNumericTextBoxStyle}"
+                                     AutomationProperties.Name="Timeout multicast em milissegundos">
+                                <TextBox.Text>
+                                    <Binding Path="DiscoveryTimeoutMs"
+                                             UpdateSourceTrigger="PropertyChanged"
+                                             NotifyOnValidationError="True">
+                                        <Binding.ValidationRules>
+                                            <infra:IntegerRangeValidationRule FieldName="Timeout de descoberta"
+                                                                              Minimum="100"
+                                                                              Maximum="30000"
+                                                                              ValidationStep="RawProposedValue" />
+                                        </Binding.ValidationRules>
+                                    </Binding>
+                                </TextBox.Text>
+                            </TextBox>
                         </StackPanel>
                     </UniformGrid>
 
@@ -319,6 +426,12 @@
                                   IsChecked="{Binding EnableSnmpTopology}"
                                   Content="Topologia por SNMP"
                                   AutomationProperties.Name="Ativar consulta SNMP ao switch" />
+                        <CheckBox Margin="0,3,20,3"
+                                  IsChecked="{Binding EnableHistory}"
+                                  Content="Guardar e comparar histórico local"
+                                  ToolTip="Guarda localmente o último snapshot desta rede para detetar alterações no scan seguinte."
+                                  AutomationProperties.Name="Guardar e comparar histórico local"
+                                  AutomationProperties.HelpText="O histórico fica apenas neste computador e pode ser apagado a qualquer momento." />
                     </WrapPanel>
                     <Grid Margin="0,10,0,0"
                           Visibility="{Binding EnableSnmpTopology, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -342,8 +455,21 @@
                         </StackPanel>
                         <StackPanel Grid.Column="2" Margin="0,0,10,0">
                             <Label Content="Timeout (ms)" />
-                            <TextBox Text="{Binding SnmpTimeoutMs, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Timeout SNMP em milissegundos" />
+                            <TextBox Style="{StaticResource ValidatedNumericTextBoxStyle}"
+                                     AutomationProperties.Name="Timeout SNMP em milissegundos">
+                                <TextBox.Text>
+                                    <Binding Path="SnmpTimeoutMs"
+                                             UpdateSourceTrigger="PropertyChanged"
+                                             NotifyOnValidationError="True">
+                                        <Binding.ValidationRules>
+                                            <infra:IntegerRangeValidationRule FieldName="Timeout SNMP"
+                                                                              Minimum="100"
+                                                                              Maximum="30000"
+                                                                              ValidationStep="RawProposedValue" />
+                                        </Binding.ValidationRules>
+                                    </Binding>
+                                </TextBox.Text>
+                            </TextBox>
                         </StackPanel>
                         <TextBlock Grid.Column="3"
                                    VerticalAlignment="Bottom"
@@ -355,17 +481,38 @@
                     </Grid>
                     <DockPanel Margin="0,8,0,0" LastChildFill="True">
                         <Button DockPanel.Dock="Right"
+                                 Margin="12,0,0,0"
+                                 Style="{StaticResource CompactButtonStyle}"
+                                 Command="{Binding UpdateOuiDatabaseCommand}"
+                                 Content="↻  Verificar atualização IEEE"
+                                 ToolTip="A base completa da release já está incorporada. Esta ação procura apenas atribuições publicadas posteriormente."
+                                 AutomationProperties.Name="Verificar atualização opcional da base IEEE" />
+                        <Button DockPanel.Dock="Right"
                                 Margin="12,0,0,0"
                                 Style="{StaticResource CompactButtonStyle}"
-                                Command="{Binding UpdateOuiDatabaseCommand}"
-                                Content="Atualizar fabricantes (IEEE)"
-                                ToolTip="Transfere a base OUI pública oficial para melhorar a identificação de fabricantes"
-                                AutomationProperties.Name="Atualizar base de fabricantes pela IEEE" />
-                        <TextBlock VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   TextWrapping="Wrap"
-                                   Text="Aumentar a concorrência ou analisar todas as portas gera mais tráfego. Usa estas opções apenas em redes que administras." />
+                                Command="{Binding ResetOuiDatabaseCommand}"
+                                Content="Repor base incorporada"
+                                ToolTip="Remove uma atualização local e volta à snapshot incluída nesta versão"
+                                AutomationProperties.Name="Repor a base IEEE incorporada" />
+                        <Button DockPanel.Dock="Right"
+                                Margin="12,0,0,0"
+                                Style="{StaticResource CompactButtonStyle}"
+                                Command="{Binding DeleteHistoryCommand}"
+                                Content="Apagar histórico"
+                                ToolTip="Apaga os snapshots locais usados para comparar scans"
+                                AutomationProperties.Name="Apagar todo o histórico local de scans" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AccentBrush}"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding VendorDatabaseStatus}" />
+                            <TextBlock Margin="0,2,0,0"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap"
+                                       Text="Aumentar a concorrência ou analisar todas as portas gera mais tráfego. Usa estas opções apenas em redes que administras." />
+                        </StackPanel>
                     </DockPanel>
                 </StackPanel>
             </Border>
@@ -505,6 +652,12 @@
                                     Content="HTML"
                                     ToolTip="Exportar relatório HTML pronto a imprimir"
                                     AutomationProperties.Name="Exportar relatório em HTML" />
+                            <Button Margin="4,0"
+                                    Style="{StaticResource CompactButtonStyle}"
+                                    Command="{Binding ExportSupportJsonCommand}"
+                                    Content="Suporte"
+                                    ToolTip="Criar um relatório JSON minimizado para diagnóstico. Revê-o antes de partilhar."
+                                    AutomationProperties.Name="Criar relatório de suporte em JSON" />
                         </StackPanel>
                         <Button Grid.Column="2"
                                 Margin="8,0,0,0"
@@ -546,6 +699,7 @@
                         <DataGrid x:Name="DevicesDataGrid"
                                   ItemsSource="{Binding DevicesView}"
                                   SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
+                                  PreviewMouseRightButtonDown="OnDevicesDataGridPreviewMouseRightButtonDown"
                                   IsReadOnly="True"
                                   FrozenColumnCount="3"
                                   AlternationCount="2"
@@ -593,8 +747,8 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTextColumn Header="IP" Width="122" Binding="{Binding IpAddress, Mode=OneWay}" SortMemberPath="IpAddress" />
-                                <DataGridTemplateColumn Header="MAC / fabricante" Width="190" SortMemberPath="MacAddress">
+                                <DataGridTextColumn Header="IP" Width="122" Binding="{Binding IpAddress, Mode=OneWay}" SortMemberPath="IpSortKey" />
+                                <DataGridTemplateColumn Header="MAC / entidade IEEE" Width="190" SortMemberPath="MacAddress">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <StackPanel>
@@ -604,8 +758,8 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTextColumn Header="Ping" Width="78" Binding="{Binding ResponseTime, Mode=OneWay}" SortMemberPath="ResponseTime" />
-                                <DataGridTemplateColumn Header="Portas / serviços" Width="190" SortMemberPath="OpenPorts">
+                                <DataGridTextColumn Header="Ping" Width="78" Binding="{Binding ResponseTime, Mode=OneWay}" SortMemberPath="ResponseTimeSortKey" />
+                                <DataGridTemplateColumn Header="Portas / serviços" Width="190" SortMemberPath="OpenPortCount">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding OpenPorts}" TextTrimming="CharacterEllipsis" ToolTip="{Binding OpenPorts}" />
@@ -619,7 +773,7 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTemplateColumn Header="Risco" Width="92" SortMemberPath="RiskLevel">
+                                <DataGridTemplateColumn Header="Risco" Width="92" SortMemberPath="RiskScore">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border Padding="8,3"
@@ -675,6 +829,36 @@
                                            TextWrapping="Wrap"
                                            Foreground="{DynamicResource TextSecondaryBrush}"
                                            Text="Seleciona uma interface e inicia um scan. Os dispositivos aparecem aqui à medida que forem encontrados." />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Padding="30"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Visibility="{Binding HasNoVisibleDevices, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock HorizontalAlignment="Center"
+                                           FontFamily="Segoe MDL2 Assets"
+                                           FontSize="32"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Text="&#xE721;" />
+                                <TextBlock Margin="0,12,0,0"
+                                           HorizontalAlignment="Center"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"
+                                           Text="Sem dispositivos correspondentes" />
+                                <TextBlock Margin="0,5,0,0"
+                                           MaxWidth="410"
+                                           HorizontalAlignment="Center"
+                                           TextAlignment="Center"
+                                           TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Text="A pesquisa ou o filtro atual ocultou todos os resultados deste scan." />
+                                <Button Margin="0,13,0,0"
+                                        HorizontalAlignment="Center"
+                                        Style="{StaticResource CompactButtonStyle}"
+                                        Command="{Binding ResetFiltersCommand}"
+                                        Content="Repor pesquisa e filtro"
+                                        AutomationProperties.Name="Repor pesquisa e filtro de dispositivos" />
                             </StackPanel>
                         </Border>
                     </Grid>
@@ -857,7 +1041,7 @@
                                             <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.IpAddress}" />
                                             <TextBlock Grid.Row="2" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="MAC" />
                                             <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.MacAddress}" />
-                                            <TextBlock Grid.Row="3" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Fabricante" />
+                                            <TextBlock Grid.Row="3" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Entidade do prefixo IEEE" />
                                             <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.Manufacturer}" TextWrapping="Wrap" />
                                             <TextBlock Grid.Row="4" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SO provável" />
                                             <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.OsGuess}" TextWrapping="Wrap" />

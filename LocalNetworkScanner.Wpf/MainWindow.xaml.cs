@@ -13,6 +13,7 @@ public partial class MainWindow : Window
 {
     private bool _hasLoaded;
     private TopologyWindow? _topologyWindow;
+    private int _inputValidationErrorCount;
 
     public MainWindow()
     {
@@ -111,6 +112,27 @@ public partial class MainWindow : Window
     {
         if (sender is PasswordBox passwordBox)
             ViewModel.SnmpCommunity = passwordBox.Password;
+    }
+
+    private void OnInputValidationError(object sender, ValidationErrorEventArgs e)
+    {
+        _inputValidationErrorCount = e.Action == ValidationErrorEventAction.Added
+            ? _inputValidationErrorCount + 1
+            : Math.Max(0, _inputValidationErrorCount - 1);
+        ViewModel.SetInputValidationErrorCount(_inputValidationErrorCount);
+    }
+
+    private void OnDevicesDataGridPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not DependencyObject source ||
+            ItemsControl.ContainerFromElement(DevicesDataGrid, source) is not DataGridRow row)
+        {
+            return;
+        }
+
+        DevicesDataGrid.SelectedItem = row.Item;
+        row.IsSelected = true;
+        row.Focus();
     }
 
     private void OnOpenTopologyClick(object sender, RoutedEventArgs e)

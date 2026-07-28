@@ -10,7 +10,9 @@ Uma release só deve ser marcada como concluída quando todos os itens obrigató
 - [ ] `Product`, `Company`, copyright e publisher representam a entidade que vai distribuir a aplicação.
 - [ ] `scripts/check-copyright.ps1` confirma cabeçalho e rodapé em todos os ficheiros comentáveis.
 - [ ] O nome “Local Network Scanner” e o ícone são consistentes na UI, propriedades do EXE e instalador.
-- [ ] A licença MIT continua a ser a licença pretendida para o código e distribuição.
+- [ ] A licença MIT continua a ser a licença pretendida para o código e assets originais; dados IEEE e outros materiais de terceiros permanecem explicitamente fora do âmbito MIT.
+- [ ] `THIRD_PARTY_NOTICES.md` acompanha a release, inclui `IEEE. All rights reserved.`, ausência de endorsement e as fontes MA-L/MA-M/MA-S/IAB.
+- [ ] Existe autorização escrita da IEEE para redistribuir publicamente a snapshot incorporada e a release cumpre integralmente o texto e as condições recebidas.
 - [ ] O `CHANGELOG.md` descreve apenas funcionalidades presentes nessa revisão.
 - [ ] Não existem links placeholder, contactos inexistentes ou alegações de capacidades futuras.
 
@@ -22,6 +24,8 @@ Uma release só deve ser marcada como concluída quando todos os itens obrigató
 - [ ] O build `Release` tem zero warnings e zero errors.
 - [ ] A formatação foi validada com `dotnet format --verify-no-changes --no-restore`.
 - [ ] Dependências novas foram revistas quanto a licença, manutenção e vulnerabilidades.
+- [ ] A snapshot IEEE foi gerada apenas a partir das quatro URLs oficiais; o manifesto regista data, contagens e SHA-256 das fontes.
+- [ ] A snapshot de referência de 2026-07-28 documenta 58 019 linhas de origem e 58 016 prefixos únicos normalizados, ou a alteração é explicada e revista.
 - [ ] Não existem certificados, chaves, dumps, relatórios reais ou credenciais no repositório.
 
 Comando base:
@@ -33,7 +37,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1
 ## 3. Testes
 
 - [ ] Existe pelo menos um projeto de testes; o pipeline falha quando a contagem total é zero.
-- [ ] Testes unitários cobrem intervalos CIDR, parsing de portas, MAC/OUI, VLAN e classificação.
+- [ ] Testes unitários cobrem intervalos CIDR, parsing de portas, MAC/IEEE, VLAN e classificação.
+- [ ] Lookup de titulares testa longest-prefix `/36 → /28 → /24`, MA-S, IAB, MA-M, MA-L, `Private`, MAC local/aleatório, multicast e ausência de correspondência.
+- [ ] CID não é carregado nem apresentado como fabricante de um MAC global.
+- [ ] Sem rede, uma instalação limpa usa a snapshot incorporada; falha/cancelamento da atualização opcional preserva uma base válida.
 - [ ] Testes de integração usam listeners de loopback e dados simulados, sem depender da rede do runner.
 - [ ] Testes reais de rede são opt-in, limitados a um laboratório privado e nunca executados por defeito em CI.
 - [ ] Cancelamento durante descoberta e scan de portas não bloqueia nem deixa tarefas pendentes.
@@ -57,8 +64,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1
 - [ ] O sinal Wi-Fi é identificado como sinal da ligação local, não RSSI de equipamentos remotos.
 - [ ] Protocolos são identificados por descoberta/portas/respostas leves; não é alegada captura de pacotes.
 - [ ] Relatórios e histórico são tratados como inventário sensível.
+- [ ] “Fabricante” é explicado como titular registado do prefixo IEEE, sem prometer a marca física em casos `Private`, local/aleatório, virtual ou OEM.
+- [ ] A atualização IEEE é iniciada explicitamente, não envia telemetria nem inventário e não é necessária para o primeiro lookup.
 - [ ] O utilizador é lembrado de analisar apenas redes autorizadas.
 - [ ] O fluxo normal foi testado sem privilégios de administrador.
+- [ ] O instalador termina sem iniciar automaticamente a UI; um bloqueio App Control no primeiro arranque não é apresentado como falha na cópia/instalação.
+- [ ] O diagnóstico do código `4551` foi validado sem desativar ou alterar Smart App Control, App Control for Business/WDAC, AppLocker ou Defender.
+- [ ] Os eventos Code Integrity `3077`/`3076` e a saída apenas de leitura de `CiTool.exe -lp -json` identificam a política responsável ou são entregues ao administrador do dispositivo.
 
 ## 5. Publish portátil
 
@@ -77,7 +89,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeI
 - [ ] Cada pasta de publish contém os executáveis esperados e não contém PDBs, segredos ou ficheiros temporários.
 - [ ] O smoke test `LocalNetworkScanner.Cli.exe --help` termina com exit code `0` numa máquina da arquitetura publicada; cross-publish ARM64 num host x64 não conta como smoke ARM64.
 - [ ] A UI arranca, inicia e cancela um scan de laboratório e fecha sem processo residual.
-- [ ] O ZIP inclui UI, CLI, README, licença, changelog e limites técnicos.
+- [ ] O ZIP inclui UI, CLI, README, licença, changelog, limites técnicos, `docs/VENDOR_DATABASE.md` e `THIRD_PARTY_NOTICES.md`.
 - [ ] Exports JSON schema v3 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações ou dos diagnósticos documentados.
 - [ ] As opções CLI `--html` e `--graphml` foram verificadas com dados sintéticos ou de laboratório.
 - [ ] O SHA-256 publicado corresponde exatamente ao ZIP.
@@ -85,7 +97,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeI
 Verificação manual do checksum:
 
 ```powershell
-$zip = '.\artifacts\release\LocalNetworkScanner-1.2.0-win-x64.zip'
+$zip = '.\artifacts\release\LocalNetworkScanner-1.3.0-win-x64.zip'
 $expected = (Get-Content "$zip.sha256").Split(' ')[0]
 $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actual -ne $expected) { throw 'SHA-256 invalido.' }
@@ -103,8 +115,11 @@ Se a release for assinada:
 - [ ] O certificado está válido, tem chave privada e identidade correta.
 - [ ] A chave é obtida de um secret store ou serviço de assinatura; não é copiada para o repositório.
 - [ ] UI, CLI e instaladores são assinados antes de calcular checksums e criar a release.
+- [ ] O Inno Setup usa `SignedUninstaller=yes`; depois de uma instalação de QA, o `unins*.exe` extraído foi verificado com o mesmo signer.
 - [ ] A assinatura usa SHA-256 e timestamp de uma autoridade confiável.
-- [ ] `Get-AuthenticodeSignature` devolve `Valid` para todos os executáveis finais.
+- [ ] `signtool verify /pa /tw` e `Get-AuthenticodeSignature` devolvem sucesso/`Valid` para todos os executáveis finais.
+- [ ] O certificado é RSA, tem EKU Code Signing, cadeia válida para uma CA confiável e não é self-signed.
+- [ ] O certificado efémero e o PFX são removidos do runner num passo `always()`.
 
 Uma distribuição que alegue identidade de publisher verificada exige estado `Valid`.
 
@@ -120,9 +135,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -RuntimeI
 - [ ] O instalador usa `PrivilegesRequired=lowest` e instala por utilizador.
 - [ ] Não instala drivers, serviços nem altera o `PATH`.
 - [ ] UI, CLI, documentação e desinstalador estão presentes.
+- [ ] `tools\diagnose-app-control.ps1` e `docs\APP_CONTROL.md` estão presentes.
 - [ ] A desinstalação preserva os dados locais e essa decisão está documentada.
 - [ ] Instalador e respetivo `.sha256` correspondem à arquitetura e versão da tag.
 - [ ] O estado Authenticode é apresentado honestamente na release.
+- [ ] O instalador não tem uma entrada `[Run]` pós-instalação que transforme o bloqueio do EXE (Win32 `4551`) em “erro de instalação”.
 
 Esta checklist não assume que existe um instalador. Se for publicado MSIX:
 
@@ -149,7 +166,9 @@ Se for usado outro instalador, documentar a ferramenta e versão, privilégios p
 ## 9. Publicação e pós-release
 
 - [ ] ZIP, checksum, changelog e instruções de instalação estão anexados à release correta.
+- [ ] A autorização escrita aplicável à redistribuição IEEE foi arquivada com a evidência da release e os avisos exigidos estão presentes no pacote.
 - [ ] Os hashes e assinaturas foram novamente verificados depois do upload.
+- [ ] `SIGNING-STATE.txt` e as notas da release dizem explicitamente `Signed` ou `NotSigned`; releases anteriores conhecidas como não assinadas permanecem documentadas como `NotSigned`.
 - [ ] A release explica arquitetura, versão mínima de Windows suportada e known issues.
 - [ ] Existe um canal privado para vulnerabilidades e um canal normal para suporte.
 - [ ] Foi guardada uma cópia imutável dos artefactos e logs de build.

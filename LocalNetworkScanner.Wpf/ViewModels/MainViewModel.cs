@@ -48,6 +48,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string _searchText = string.Empty;
     private string _customPorts = string.Empty;
     private string _statusMessage = "A preparar a aplicação...";
+    private string _vendorDatabaseStatus = BuildVendorDatabaseStatus();
     private string _progressPhase = "Pronto";
     private string _elapsedText = "00:00";
     private double _progressPercentage;
@@ -69,6 +70,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _enableArp = true;
     private bool _enableMulticastDiscovery = true;
     private bool _enableNetBiosDiscovery = true;
+    private bool _enableHistory = true;
     private bool _enableSnmpTopology;
     private string _snmpSwitchAddress = string.Empty;
     private string _snmpCommunity = string.Empty;
@@ -79,6 +81,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private int _newCount;
     private int _riskCount;
     private int _visibleDeviceCount;
+    private int _inputValidationErrorCount;
 
     public MainViewModel(
         UserDialogService dialogs,
@@ -144,10 +147,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CancelCommand = new RelayCommand(CancelScan, () => IsScanning && !IsCancelling);
         ClearResultsCommand = new RelayCommand(ClearResults, () => !IsScanning && Devices.Count > 0);
         ClearSearchCommand = new RelayCommand(() => SearchText = string.Empty, () => SearchText.Length > 0);
+        ResetFiltersCommand = new RelayCommand(
+            ResetFilters,
+            () => SearchText.Length > 0 || !SelectedFilter.Key.Equals("all", StringComparison.Ordinal));
         ExportCsvCommand = new AsyncRelayCommand(ExportCsvAsync, CanExport, HandleUnexpectedException);
         ExportJsonCommand = new AsyncRelayCommand(ExportJsonAsync, CanExport, HandleUnexpectedException);
         ExportHtmlCommand = new AsyncRelayCommand(ExportHtmlAsync, CanExport, HandleUnexpectedException);
+        ExportSupportJsonCommand = new AsyncRelayCommand(
+            ExportSupportJsonAsync,
+            CanExport,
+            HandleUnexpectedException);
         ExportGraphMlCommand = new AsyncRelayCommand(ExportGraphMlAsync, CanExport, HandleUnexpectedException);
+        DeleteHistoryCommand = new AsyncRelayCommand(
+            DeleteHistoryAsync,
+            () => !IsScanning && !IsLoadingInterfaces,
+            HandleUnexpectedException);
         SaveDeviceMetadataCommand = new AsyncRelayCommand(
             SaveDeviceMetadataAsync,
             () => SelectedDevice is not null && _lastResult is not null && !IsScanning,
@@ -160,6 +174,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             UpdateOuiDatabaseAsync,
             () => !IsScanning && !IsLoadingInterfaces,
             HandleUnexpectedException);
+        ResetOuiDatabaseCommand = new RelayCommand(
+            ResetOuiDatabase,
+            () => !IsScanning &&
+                !IsLoadingInterfaces &&
+                File.Exists(OuiDatabaseService.DatabasePath));
         CopyIpCommand = new RelayCommand(CopyIp, () => SelectedDevice is not null);
         CopyMacCommand = new RelayCommand(CopyMac, () => SelectedDevice?.HasMacAddress == true);
         OpenWebCommand = new RelayCommand(
@@ -198,13 +217,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand CancelCommand { get; }
     public RelayCommand ClearResultsCommand { get; }
     public RelayCommand ClearSearchCommand { get; }
+    public RelayCommand ResetFiltersCommand { get; }
     public AsyncRelayCommand ExportCsvCommand { get; }
     public AsyncRelayCommand ExportJsonCommand { get; }
     public AsyncRelayCommand ExportHtmlCommand { get; }
+    public AsyncRelayCommand ExportSupportJsonCommand { get; }
     public AsyncRelayCommand ExportGraphMlCommand { get; }
+    public AsyncRelayCommand DeleteHistoryCommand { get; }
     public AsyncRelayCommand SaveDeviceMetadataCommand { get; }
     public AsyncRelayCommand WakeOnLanCommand { get; }
     public AsyncRelayCommand UpdateOuiDatabaseCommand { get; }
+    public RelayCommand ResetOuiDatabaseCommand { get; }
     public RelayCommand CopyIpCommand { get; }
     public RelayCommand CopyMacCommand { get; }
     public RelayCommand OpenWebCommand { get; }
@@ -248,7 +271,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         set
         {
             if (value is not null && SetProperty(ref _selectedFilter, value))
+            {
                 RefreshFilter();
+                ResetFiltersCommand.RaiseCanExecuteChanged();
+            }
         }
     }
 
@@ -331,6 +357,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             RefreshFilter();
             ClearSearchCommand.RaiseCanExecuteChanged();
+            ResetFiltersCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -344,6 +371,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         get => _statusMessage;
         private set => SetProperty(ref _statusMessage, value);
+    }
+
+    public string VendorDatabaseStatus
+    {
+        get => _vendorDatabaseStatus;
+        private set => SetProperty(ref _vendorDatabaseStatus, value);
     }
 
     public string ProgressPhase
@@ -374,6 +407,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             OnPropertyChanged(nameof(ModeLabel));
             OnPropertyChanged(nameof(SelectedProfileDescription));
+            OnPropertyChanged(nameof(HasBlockingInputValidationErrors));
+            OnPropertyChanged(nameof(InputValidationMessage));
+            RaiseScanCanExecuteChanged();
         }
     }
 
@@ -387,6 +423,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             OnPropertyChanged(nameof(CanEditScanSettings));
             RefreshInterfacesCommand.RaiseCanExecuteChanged();
+            DeleteHistoryCommand.RaiseCanExecuteChanged();
+            UpdateOuiDatabaseCommand.RaiseCanExecuteChanged();
+            ResetOuiDatabaseCommand.RaiseCanExecuteChanged();
             RaiseScanCanExecuteChanged();
         }
     }
@@ -481,6 +520,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _enableNetBiosDiscovery, value);
     }
 
+    public bool EnableHistory
+    {
+        get => _enableHistory;
+        set => SetProperty(ref _enableHistory, value);
+    }
+
     public bool EnableSnmpTopology
     {
         get => _enableSnmpTopology;
@@ -543,6 +588,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool CanEditScanSettings => !IsScanning && !IsLoadingInterfaces;
     public bool IsNotScanning => !IsScanning;
+    public bool HasNoVisibleDevices => Devices.Count > 0 && VisibleDeviceCount == 0;
+    public bool HasInputValidationErrors => _inputValidationErrorCount > 0;
+    public bool HasBlockingInputValidationErrors => HasInputValidationErrors;
+    public string InputValidationMessage => HasBlockingInputValidationErrors
+        ? _inputValidationErrorCount == 1
+            ? "Existe 1 valor técnico inválido. Corrige o campo assinalado antes de iniciar o scan."
+            : $"Existem {_inputValidationErrorCount:N0} valores técnicos inválidos. Corrige os campos assinalados antes de iniciar o scan."
+        : string.Empty;
     public bool HasDiagnostics => Diagnostics.Count > 0;
     public string DiagnosticSummary => Diagnostics.Count == 1
         ? "1 diagnóstico do scan"
@@ -561,6 +614,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string SelectedInterfaceVlan => SelectedNetworkInterface?.VlanId is int vlan
         ? $"VLAN {vlan} · confiança {ConfidenceToText(SelectedNetworkInterface.VlanConfidence)}"
         : "VLAN não exposta pelo Windows";
+
+    public void SetInputValidationErrorCount(int count)
+    {
+        int normalized = Math.Max(0, count);
+        if (_inputValidationErrorCount == normalized)
+            return;
+
+        _inputValidationErrorCount = normalized;
+        OnPropertyChanged(nameof(HasInputValidationErrors));
+        OnPropertyChanged(nameof(HasBlockingInputValidationErrors));
+        OnPropertyChanged(nameof(InputValidationMessage));
+        RaiseScanCanExecuteChanged();
+    }
 
     public async Task InitializeAsync()
     {
@@ -592,6 +658,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             EnableArp = EnableArp,
             EnableMulticastDiscovery = EnableMulticastDiscovery,
             EnableNetBiosDiscovery = EnableNetBiosDiscovery,
+            EnableHistory = EnableHistory,
             EnableSnmpTopology = EnableSnmpTopology,
             SnmpSwitchAddress = SnmpSwitchAddress,
             SnmpTimeoutMs = SnmpTimeoutMs,
@@ -627,6 +694,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _enableArp = _loadedSettings.EnableArp;
         _enableMulticastDiscovery = _loadedSettings.EnableMulticastDiscovery;
         _enableNetBiosDiscovery = _loadedSettings.EnableNetBiosDiscovery;
+        _enableHistory = _loadedSettings.EnableHistory;
         _enableSnmpTopology = _loadedSettings.EnableSnmpTopology;
         _snmpSwitchAddress = _loadedSettings.SnmpSwitchAddress;
         _snmpTimeoutMs = _loadedSettings.SnmpTimeoutMs;
@@ -751,16 +819,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 _scanCancellation.Token);
 
             FlushPendingDeviceUpdates();
-            ProgressPhase = "Histórico";
-            StatusMessage = "A comparar com o scan anterior...";
-            try
+            if (EnableHistory)
             {
-                await _history.ApplyAndSaveAsync(result, _scanCancellation.Token);
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                result = result.WithAdditionalDiagnostic(
-                    DiagnosticCatalog.OptionalFileOperationFailed("histórico local", "guardar snapshot"));
+                ProgressPhase = "Histórico";
+                StatusMessage = "A comparar com o scan anterior...";
+                try
+                {
+                    await _history.ApplyAndSaveAsync(result, _scanCancellation.Token);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    result = result.WithAdditionalDiagnostic(
+                        DiagnosticCatalog.OptionalFileOperationFailed("histórico local", "guardar snapshot"));
+                }
             }
             await _deviceMetadata.ApplyAsync(result, _scanCancellation.Token);
 
@@ -1121,6 +1192,36 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ElapsedText = "00:00";
     }
 
+    private void ResetFilters()
+    {
+        SearchText = string.Empty;
+        SelectedFilter = Filters[0];
+        StatusMessage = $"Filtros repostos. {Devices.Count:N0} dispositivos disponíveis.";
+    }
+
+    private async Task DeleteHistoryAsync()
+    {
+        if (!_dialogs.Confirm(
+                "Apagar histórico local",
+                "Queres apagar todos os snapshots usados para comparar scans? " +
+                "Esta ação é irreversível, mas não apaga nomes personalizados nem notas dos dispositivos."))
+        {
+            return;
+        }
+
+        try
+        {
+            int deleted = await _history.ClearAsync();
+            StatusMessage = deleted == 0
+                ? "Não existiam snapshots de histórico para apagar."
+                : $"{deleted:N0} snapshots de histórico apagados. O resultado atual não foi alterado.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            ReportException("Não foi possível apagar o histórico", exception, "histórico local");
+        }
+    }
+
     private void ClearResultsCore()
     {
         Devices.Clear();
@@ -1138,6 +1239,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RiskCount = 0;
         VisibleDeviceCount = 0;
         ProgressPercentage = 0;
+        OnPropertyChanged(nameof(HasNoVisibleDevices));
         OnPropertyChanged(nameof(HasDiagnostics));
         OnPropertyChanged(nameof(DiagnosticSummary));
         OnPropertyChanged(nameof(HasWarnings));
@@ -1213,6 +1315,31 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             ReportException("Falha ao exportar HTML", exception, path);
+        }
+    }
+
+    private async Task ExportSupportJsonAsync()
+    {
+        NetworkScanResult? result = _lastResult;
+        if (result is null)
+            return;
+
+        string? path = _dialogs.ChooseExportPath(
+            "Guardar relatório de suporte",
+            $"relatorio-suporte-{DateTime.Now:yyyyMMdd-HHmm}.json",
+            "Relatório de suporte JSON (*.json)|*.json|Todos os ficheiros (*.*)|*.*");
+        if (path is null)
+            return;
+
+        try
+        {
+            await _export.ExportSupportJsonAsync(result, path);
+            StatusMessage =
+                $"Relatório de suporte guardado em {path}. Revê o conteúdo antes de o partilhar.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            ReportException("Falha ao guardar o relatório de suporte", exception, path);
         }
     }
 
@@ -1292,25 +1419,72 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private async Task UpdateOuiDatabaseAsync()
     {
         if (!_dialogs.Confirm(
-                "Atualizar fabricantes",
-                "Transferir a base pública OUI diretamente da IEEE? O ficheiro fica guardado apenas neste computador."))
+                "Atualização IEEE opcional",
+                "A aplicação já inclui a base completa da release e funciona offline. Procurar agora atribuições MA-L, MA-M, MA-S e IAB mais recentes diretamente na IEEE? A cópia atualizada fica apenas neste computador."))
         {
             return;
         }
 
-        StatusMessage = "A transferir a base de fabricantes da IEEE...";
+        StatusMessage = "A verificar as listagens públicas da IEEE...";
         try
         {
-            await _ouiDatabase.UpdateAsync();
+            Progress<double> progress = new(value =>
+                StatusMessage = $"A atualizar a base IEEE... {value:P0}");
+            await _ouiDatabase.UpdateAsync(progress);
             _scanner = new NetworkScannerService();
-            StatusMessage = "Base de fabricantes atualizada. Será usada no próximo scan.";
+            VendorDatabaseStatus = BuildVendorDatabaseStatus();
+            ResetOuiDatabaseCommand.RaiseCanExecuteChanged();
+            StatusMessage = "Base IEEE atualizada e validada. Será usada no próximo scan.";
         }
         catch (Exception exception) when (
             exception is HttpRequestException or IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            ReportException("Não foi possível atualizar fabricantes", exception, OuiDatabaseService.OfficialDatabaseUrl);
-            StatusMessage = "A base integrada de fabricantes continua disponível.";
+            ReportException("Não foi possível atualizar a base IEEE", exception, OuiDatabaseService.OfficialDatabaseUrl);
+            StatusMessage = "A atualização falhou; a base incorporada continua disponível e intacta.";
         }
+    }
+
+    private void ResetOuiDatabase()
+    {
+        if (!_dialogs.Confirm(
+                "Repor base IEEE incorporada",
+                "Remover a atualização local e voltar a usar apenas a snapshot incorporada nesta versão?"))
+        {
+            return;
+        }
+
+        try
+        {
+            bool removed = _ouiDatabase.ResetLocalDatabase();
+            _scanner = new NetworkScannerService();
+            VendorDatabaseStatus = BuildVendorDatabaseStatus();
+            ResetOuiDatabaseCommand.RaiseCanExecuteChanged();
+            StatusMessage = removed
+                ? "Atualização local removida. A base incorporada está ativa."
+                : "A base incorporada já estava ativa.";
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            ReportException(
+                "Não foi possível repor a base IEEE incorporada",
+                exception,
+                OuiDatabaseService.DatabasePath);
+        }
+    }
+
+    private static string BuildVendorDatabaseStatus()
+    {
+        MacVendorService service = new();
+        VendorDatabaseInfo info = service.DatabaseInfo;
+        if (info.IsDegraded)
+            return "Base IEEE degradada · recurso incorporado indisponível; reinstala ou verifica uma atualização";
+
+        string status =
+            $"{info.DisplayText} · MA-L / MA-M / MA-S / IAB · funciona offline";
+        return string.IsNullOrWhiteSpace(service.ExternalDatabaseError)
+            ? status
+            : status + " · uma atualização local inválida foi ignorada";
     }
 
     private void CopyIp()
@@ -1407,12 +1581,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         UpdateVisibleDeviceCount();
     }
 
-    private void UpdateVisibleDeviceCount() =>
+    private void UpdateVisibleDeviceCount()
+    {
         VisibleDeviceCount = DevicesView.Cast<object>().Count();
+        OnPropertyChanged(nameof(HasNoVisibleDevices));
+    }
 
     private bool CanStartScan() =>
         !IsScanning &&
         !IsLoadingInterfaces &&
+        !HasBlockingInputValidationErrors &&
         SelectedNetworkInterface is not null &&
         !string.IsNullOrWhiteSpace(NetworkCidr);
 
@@ -1448,8 +1626,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ExportCsvCommand.RaiseCanExecuteChanged();
         ExportJsonCommand.RaiseCanExecuteChanged();
         ExportHtmlCommand.RaiseCanExecuteChanged();
+        ExportSupportJsonCommand.RaiseCanExecuteChanged();
         ExportGraphMlCommand.RaiseCanExecuteChanged();
+        DeleteHistoryCommand.RaiseCanExecuteChanged();
         UpdateOuiDatabaseCommand.RaiseCanExecuteChanged();
+        ResetOuiDatabaseCommand.RaiseCanExecuteChanged();
         SaveDeviceMetadataCommand.RaiseCanExecuteChanged();
         WakeOnLanCommand.RaiseCanExecuteChanged();
         RaiseSelectionCanExecuteChanged();

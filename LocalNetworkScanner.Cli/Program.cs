@@ -142,6 +142,14 @@ try
             cli.GraphMlPath);
         Console.WriteLine($"GraphML guardado em: {Path.GetFullPath(cli.GraphMlPath)}");
     }
+
+    if (!string.IsNullOrWhiteSpace(cli.SupportPath))
+    {
+        await ExportSafelyAsync(
+            () => exportService.ExportSupportJsonAsync(result, cli.SupportPath, cancellation.Token),
+            cli.SupportPath);
+        Console.WriteLine($"Suporte seguro guardado em: {Path.GetFullPath(cli.SupportPath)}");
+    }
 }
 catch (OperationCanceledException)
 {
@@ -301,7 +309,9 @@ static void PrintResult(NetworkScanResult result)
                 $"{Truncate(device.HostnameDisplay, 29),-29}  " +
                 $"{Truncate(device.MacDisplay, 17),-17}  " +
                 $"{device.RiskLevel,-5}  {device.OpenPortsText}");
-            Console.WriteLine($"                 ↳ {device.DeviceType} · {device.DiscoveryText} · {device.TopologyText}");
+            Console.WriteLine(
+                $"                 ↳ Entidade IEEE: {device.ManufacturerDisplay} · " +
+                $"{device.DeviceType} · {device.DiscoveryText} · {device.TopologyText}");
             foreach (string finding in device.SecurityFindings)
                 Console.WriteLine($"                   ⚠ {finding}");
         }
@@ -386,6 +396,7 @@ static void PrintHelp()
           --csv <ficheiro>               Exportar relatório CSV UTF-8
           --html <ficheiro>              Exportar relatório HTML autónomo
           --graphml <ficheiro>           Exportar grafo de topologia GraphML
+          --support <ficheiro>           Exportar diagnóstico agregado sem identificadores
           --no-history                   Não comparar/guardar snapshot local
           -h, --help                     Mostrar esta ajuda
 
@@ -412,6 +423,7 @@ internal sealed class CliOptions
     public string? CsvPath { get; private set; }
     public string? HtmlPath { get; private set; }
     public string? GraphMlPath { get; private set; }
+    public string? SupportPath { get; private set; }
     public int MaximumHosts { get; private set; } = IpRangeService.DefaultMaximumAddresses;
     public bool SkipHistory { get; private set; }
 
@@ -461,6 +473,9 @@ internal sealed class CliOptions
                     break;
                 case "--graphml":
                     result.GraphMlPath = NextValue(arguments, ref index, argument);
+                    break;
+                case "--support":
+                    result.SupportPath = NextValue(arguments, ref index, argument);
                     break;
                 case "--max-hosts":
                     string value = NextValue(arguments, ref index, argument);

@@ -35,6 +35,7 @@ public static class DiagnosticCatalog
     public const string FileOperationFailedCode = "LNS-APP-002";
     public const string AccessDeniedCode = "LNS-APP-003";
     public const string PacketCaptureUnavailableCode = "LNS-APP-004";
+    public const string ApplicationControlBlockedCode = "LNS-APP-005";
 
     public static ScanDiagnostic InvalidCommand(string? command = null) => new(
         InvalidCommandCode,
@@ -190,8 +191,8 @@ public static class DiagnosticCatalog
         UnknownManufacturerCode,
         DiagnosticCategory.Device,
         DiagnosticSeverity.Warning,
-        "Não foi possível associar o prefixo MAC a um fabricante conhecido.",
-        "Atualiza a base OUI ou valida o fabricante no inventário da organização.",
+        "Não foi possível associar o MAC a um titular de prefixo IEEE conhecido.",
+        "A snapshot offline já foi consultada. Para um MAC global recente, verifica opcionalmente uma atualização IEEE; para entradas Private, locais ou inconclusivas, valida o equipamento no inventário da organização.",
         target,
         Context(("mac", normalizedMac)));
 
@@ -254,6 +255,15 @@ public static class DiagnosticCatalog
         DiagnosticSeverity.Information,
         "Esta versão identifica protocolos por descoberta, portas e banners; não inclui captura integral de pacotes.",
         "Interpreta os protocolos como evidência do scan ativo; para analisar tráfego, usa uma ferramenta dedicada numa rede autorizada.");
+
+    public static ScanDiagnostic ApplicationControlBlocked(string? target = null) => new(
+        ApplicationControlBlockedCode,
+        DiagnosticCategory.Application,
+        DiagnosticSeverity.Error,
+        "Uma política do Windows Application Control bloqueou a execução do ficheiro.",
+        "Usa uma release com assinatura Authenticode confiável ou pede ao administrador que autorize o publisher, hash ou catálogo; não desatives a proteção para contornar o bloqueio.",
+        target,
+        Context(("nativeErrorCode", "4551")));
 
     private static IReadOnlyDictionary<string, string> Context(
         params (string Key, string? Value)[] values) => values

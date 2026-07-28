@@ -13,6 +13,14 @@ using LocalNetworkScanner.Core.Models;
 
 namespace LocalNetworkScanner.Wpf.Controls;
 
+public enum TopologyFilterMode
+{
+    All,
+    Infrastructure,
+    Clients,
+    Alerts
+}
+
 /// <summary>
 /// Native WPF network map renderer. Nodes remain real focusable buttons so the
 /// graph can be explored with the keyboard and accessibility technologies.
@@ -21,8 +29,8 @@ public sealed class NetworkTopologyControl : Grid
 {
     private const double WorldWidth = 1_420;
     private const double WorldHeight = 820;
-    private const double NodeWidth = 190;
-    private const double NodeHeight = 72;
+    private const double NodeWidth = 224;
+    private const double NodeHeight = 94;
 
     public static readonly DependencyProperty MapProperty = DependencyProperty.Register(
         nameof(Map),
@@ -38,6 +46,12 @@ public sealed class NetworkTopologyControl : Grid
             null,
             FrameworkPropertyMetadataOptions.BindsTwoWayByDefault,
             OnSelectedNodeChanged));
+
+    public static readonly DependencyProperty FilterModeProperty = DependencyProperty.Register(
+        nameof(FilterMode),
+        typeof(TopologyFilterMode),
+        typeof(NetworkTopologyControl),
+        new FrameworkPropertyMetadata(TopologyFilterMode.All, OnFilterModeChanged));
 
     private readonly Canvas _canvas = new()
     {
@@ -109,6 +123,57 @@ public sealed class NetworkTopologyControl : Grid
         set => SetValue(SelectedNodeProperty, value);
     }
 
+    public TopologyFilterMode FilterMode
+    {
+        get => (TopologyFilterMode)GetValue(FilterModeProperty);
+        set => SetValue(FilterModeProperty, value);
+    }
+
+    public static bool IsNodeVisible(NetworkMapNode node, TopologyFilterMode filterMode)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        return filterMode switch
+        {
+            TopologyFilterMode.Infrastructure => IsInfrastructure(node),
+            TopologyFilterMode.Clients => IsClient(node),
+            TopologyFilterMode.Alerts => IsAlert(node),
+            _ => true
+        };
+    }
+
+    public static bool IsInfrastructureNode(NetworkMapNode node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        return IsInfrastructure(node);
+    }
+
+    public static bool IsClientNode(NetworkMapNode node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        return IsClient(node);
+    }
+
+    protected override void OnRender(DrawingContext dc)
+    {
+        base.OnRender(dc);
+
+        Rect bounds = new(0, 0, ActualWidth, ActualHeight);
+        LinearGradientBrush background = new(
+            ResourceColor("SurfaceBrush", Colors.White),
+            ResourceColor("SurfaceMutedBrush", Color.FromRgb(248, 250, 252)),
+            new Point(0, 0),
+            new Point(1, 1));
+        dc.DrawRectangle(background, null, bounds);
+
+        Brush dotBrush = ResourceBrush("BorderBrush", Brushes.LightGray);
+        const double spacing = 28;
+        for (double x = spacing; x < ActualWidth; x += spacing)
+        {
+            for (double y = spacing; y < ActualHeight; y += spacing)
+                dc.DrawEllipse(dotBrush, null, new Point(x, y), 0.75, 0.75);
+        }
+    }
+
     public void FitToView()
     {
         if (ActualWidth <= 0 || ActualHeight <= 0 || _nodeCenters.Count == 0)
@@ -171,6 +236,9 @@ public sealed class NetworkTopologyControl : Grid
     private static void OnSelectedNodeChanged(DependencyObject sender, DependencyPropertyChangedEventArgs e) =>
         ((NetworkTopologyControl)sender).RefreshNodeSelection();
 
+    private static void OnFilterModeChanged(DependencyObject sender, DependencyPropertyChangedEventArgs e) =>
+        ((NetworkTopologyControl)sender).RebuildVisuals();
+
     private void RebuildVisuals()
     {
         _canvas.Children.Clear();
@@ -186,14 +254,33 @@ public sealed class NetworkTopologyControl : Grid
             return;
         }
 
-        _emptyMessage.Visibility = Visibility.Collapsed;
-        BuildLayout(map.Nodes);
+        NetworkMapNode[] visibleNodes = map.Nodes
+            .Where(node => IsNodeVisible(node, FilterMode))
+            .ToArray();
+        if (visibleNodes.Length == 0)
+        {
+            _emptyMessage.Text = FilterMode == TopologyFilterMode.Alerts
+                ? "Não existem dispositivos com alertas neste mapa."
+                : "Não existem nós para o filtro selecionado.";
+            _emptyMessage.Visibility = Visibility.Visible;
+            return;
+        }
 
-        bool showEdgeLabels = map.Edges.Count <= 60;
-        foreach (NetworkMapEdge edge in map.Edges)
+        _emptyMessage.Visibility = Visibility.Collapsed;
+        BuildLayout(visibleNodes);
+        AddLayerGuides(visibleNodes);
+
+        HashSet<string> visibleIds = visibleNodes
+            .Select(node => node.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        NetworkMapEdge[] visibleEdges = map.Edges
+            .Where(edge => visibleIds.Contains(edge.SourceId) && visibleIds.Contains(edge.TargetId))
+            .ToArray();
+        bool showEdgeLabels = visibleEdges.Length <= 42;
+        foreach (NetworkMapEdge edge in visibleEdges)
             AddEdge(edge, showEdgeLabels);
 
-        foreach (NetworkMapNode node in map.Nodes)
+        foreach (NetworkMapNode node in visibleNodes)
             AddNode(node);
 
         RefreshNodeSelection();
@@ -203,36 +290,38 @@ public sealed class NetworkTopologyControl : Grid
     private void BuildLayout(IReadOnlyList<NetworkMapNode> nodes)
     {
         NetworkMapNode[] segments = nodes.Where(node => node.Kind == NetworkMapNodeKind.NetworkSegment).ToArray();
+        NetworkMapNode[] gateways = nodes.Where(node => node.Kind == NetworkMapNodeKind.Gateway).ToArray();
         NetworkMapNode[] infrastructure = nodes.Where(node =>
-            node.Kind is NetworkMapNodeKind.LocalHost or NetworkMapNodeKind.Gateway).ToArray();
-        NetworkMapNode[] switches = nodes.Where(node =>
-            node.Kind is NetworkMapNodeKind.ManagedSwitch or NetworkMapNodeKind.LldpNeighbor).ToArray();
-        NetworkMapNode[] devices = nodes.Where(node => node.Kind == NetworkMapNodeKind.Device).ToArray();
+            node.Kind is NetworkMapNodeKind.ManagedSwitch or NetworkMapNodeKind.LldpNeighbor ||
+            node.Kind == NetworkMapNodeKind.Device && IsInfrastructure(node)).ToArray();
+        NetworkMapNode[] clients = nodes.Where(node =>
+            node.Kind == NetworkMapNodeKind.LocalHost ||
+            node.Kind == NetworkMapNodeKind.Device && !IsInfrastructure(node)).ToArray();
 
-        int columns = Math.Clamp((int)Math.Ceiling(Math.Sqrt(Math.Max(1, devices.Length) * 1.8)), 3, 18);
-        double horizontalGap = 210;
+        int columns = Math.Clamp((int)Math.Ceiling(Math.Sqrt(Math.Max(1, clients.Length) * 1.8)), 3, 16);
+        double horizontalGap = 246;
         _canvas.Width = Math.Max(WorldWidth, (columns * horizontalGap) + 100);
 
-        PlaceRow(segments, 95, 500);
-        PlaceRow(infrastructure, 230, 320);
-        PlaceRow(switches, 390, 245);
+        PlaceRow(segments, 78, 520);
+        PlaceRow(gateways, 220, 360);
+        PlaceRow(infrastructure, 390, 270);
 
-        for (int index = 0; index < devices.Length; index++)
+        for (int index = 0; index < clients.Length; index++)
         {
             int row = index / columns;
             int column = index % columns;
-            int rowCount = Math.Min(columns, devices.Length - (row * columns));
+            int rowCount = Math.Min(columns, clients.Length - (row * columns));
             double rowWidth = (rowCount - 1) * horizontalGap;
-            _nodeCenters[devices[index].Id] = new Point(
+            _nodeCenters[clients[index].Id] = new Point(
                 (_canvas.Width / 2) - (rowWidth / 2) + (column * horizontalGap),
-                545 + (row * 120));
+                590 + (row * 132));
         }
 
-        int deviceRows = (int)Math.Ceiling(devices.Length / (double)columns);
-        _canvas.Height = Math.Max(WorldHeight, 655 + (Math.Max(1, deviceRows) * 120));
+        int clientRows = (int)Math.Ceiling(clients.Length / (double)columns);
+        _canvas.Height = Math.Max(WorldHeight, 710 + (Math.Max(1, clientRows) * 132));
 
         NetworkMapNode[] unplaced = nodes.Where(node => !_nodeCenters.ContainsKey(node.Id)).ToArray();
-        PlaceRow(unplaced, 710, 205);
+        PlaceRow(unplaced, 760, 230);
     }
 
     private void PlaceRow(IReadOnlyList<NetworkMapNode> nodes, double y, double maximumGap)
@@ -246,6 +335,51 @@ public sealed class NetworkTopologyControl : Grid
             _nodeCenters[nodes[index].Id] = new Point((_canvas.Width / 2) - (rowWidth / 2) + (index * gap), y);
     }
 
+    private void AddLayerGuides(IReadOnlyList<NetworkMapNode> nodes)
+    {
+        AddLayerGuide("REDE ANALISADA", 18, nodes.Any(node => node.Kind == NetworkMapNodeKind.NetworkSegment));
+        AddLayerGuide("GATEWAY", 152, nodes.Any(node => node.Kind == NetworkMapNodeKind.Gateway));
+        AddLayerGuide("SWITCHING, WI-FI E VIZINHOS", 318, nodes.Any(node =>
+            node.Kind is NetworkMapNodeKind.ManagedSwitch or NetworkMapNodeKind.LldpNeighbor ||
+            node.Kind == NetworkMapNodeKind.Device && IsInfrastructure(node)));
+        AddLayerGuide("CLIENTES", 520, nodes.Any(IsClient));
+    }
+
+    private void AddLayerGuide(string title, double y, bool isVisible)
+    {
+        if (!isVisible)
+            return;
+
+        TextBlock label = new()
+        {
+            Text = title,
+            FontSize = 10,
+            FontWeight = FontWeights.Bold,
+            Foreground = ResourceBrush("TextSecondaryBrush", Brushes.DimGray),
+            Background = ResourceBrush("SurfaceMutedBrush", Brushes.White),
+            Padding = new Thickness(7, 2, 7, 2),
+            IsHitTestVisible = false
+        };
+        Canvas.SetLeft(label, 24);
+        Canvas.SetTop(label, y);
+        Panel.SetZIndex(label, 1);
+        _canvas.Children.Add(label);
+
+        Line separator = new()
+        {
+            X1 = 138,
+            X2 = Math.Max(160, _canvas.Width - 28),
+            Y1 = y + 9,
+            Y2 = y + 9,
+            Stroke = ResourceBrush("BorderBrush", Brushes.LightGray),
+            StrokeThickness = 1,
+            StrokeDashArray = new DoubleCollection([2, 5]),
+            IsHitTestVisible = false
+        };
+        Panel.SetZIndex(separator, 0);
+        _canvas.Children.Add(separator);
+    }
+
     private void AddEdge(NetworkMapEdge edge, bool showLabel)
     {
         if (!_nodeCenters.TryGetValue(edge.SourceId, out Point source) ||
@@ -255,21 +389,32 @@ public sealed class NetworkTopologyControl : Grid
         }
 
         (Brush brush, DoubleCollection? dash, double thickness, string category) = GetEdgeStyle(edge.Kind);
-        Line line = new()
+        PathGeometry geometry = BuildEdgeGeometry(source, target);
+        System.Windows.Shapes.Path halo = new()
         {
-            X1 = source.X,
-            Y1 = source.Y,
-            X2 = target.X,
-            Y2 = target.Y,
+            Data = geometry,
+            Stroke = ResourceBrush("SurfaceBrush", Brushes.White),
+            StrokeThickness = thickness + 4,
+            Opacity = 0.94,
+            IsHitTestVisible = false
+        };
+        Panel.SetZIndex(halo, 1);
+        _canvas.Children.Add(halo);
+
+        System.Windows.Shapes.Path path = new()
+        {
+            Data = geometry,
             Stroke = brush,
             StrokeThickness = thickness,
             StrokeDashArray = dash,
-            SnapsToDevicePixels = true,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
             ToolTip = $"{category}: {edge.Label}\n{edge.Evidence}\nConfiança: {ConfidenceText(edge.Confidence)}",
             IsHitTestVisible = true
         };
-        AutomationProperties.SetName(line, $"Ligação {category}: {edge.Label}");
-        _canvas.Children.Add(line);
+        AutomationProperties.SetName(path, $"Ligação {category}: {edge.Label}");
+        Panel.SetZIndex(path, 2);
+        _canvas.Children.Add(path);
 
         if ((showLabel || edge.Kind == NetworkMapEdgeKind.LldpNeighbor) &&
             edge.Kind is NetworkMapEdgeKind.MacLearned or NetworkMapEdgeKind.Layer2Observed or
@@ -292,8 +437,34 @@ public sealed class NetworkTopologyControl : Grid
             };
             Canvas.SetLeft(label, ((source.X + target.X) / 2) - 35);
             Canvas.SetTop(label, ((source.Y + target.Y) / 2) - 11);
+            Panel.SetZIndex(label, 3);
             _canvas.Children.Add(label);
         }
+    }
+
+    private static PathGeometry BuildEdgeGeometry(Point source, Point target)
+    {
+        PathFigure figure = new() { StartPoint = source, IsClosed = false };
+        if (Math.Abs(target.Y - source.Y) < 70)
+        {
+            double midpointX = (source.X + target.X) / 2;
+            figure.Segments.Add(new BezierSegment(
+                new Point(midpointX, source.Y),
+                new Point(midpointX, target.Y),
+                target,
+                true));
+        }
+        else
+        {
+            double midpointY = (source.Y + target.Y) / 2;
+            figure.Segments.Add(new BezierSegment(
+                new Point(source.X, midpointY),
+                new Point(target.X, midpointY),
+                target,
+                true));
+        }
+
+        return new PathGeometry([figure]);
     }
 
     private void AddNode(NetworkMapNode node)
@@ -302,6 +473,27 @@ public sealed class NetworkTopologyControl : Grid
             return;
 
         string kindLabel = NodeKindText(node.Kind);
+        TextBlock icon = new()
+        {
+            Text = NodeIconGlyph(node),
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = 21,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = NodeBorder(node.Kind)
+        };
+        Border iconFrame = new()
+        {
+            Width = 42,
+            Height = 42,
+            Margin = new Thickness(0, 0, 11, 0),
+            Background = ResourceBrush("SelectionBrush", Brushes.AliceBlue),
+            BorderBrush = NodeBorder(node.Kind),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Child = icon
+        };
+
         TextBlock type = new()
         {
             Text = kindLabel.ToUpperInvariant(),
@@ -313,7 +505,7 @@ public sealed class NetworkTopologyControl : Grid
         TextBlock label = new()
         {
             Text = node.Label,
-            Margin = new Thickness(0, 3, 0, 0),
+            Margin = new Thickness(0, 2, 0, 0),
             FontWeight = FontWeights.SemiBold,
             Foreground = ResourceBrush("TextPrimaryBrush", Brushes.Black),
             TextTrimming = TextTrimming.CharacterEllipsis
@@ -326,10 +518,43 @@ public sealed class NetworkTopologyControl : Grid
             Foreground = ResourceBrush("TextSecondaryBrush", Brushes.DimGray),
             TextTrimming = TextTrimming.CharacterEllipsis
         };
-        StackPanel content = new();
-        content.Children.Add(type);
-        content.Children.Add(label);
-        content.Children.Add(subtitle);
+
+        StackPanel identity = new();
+        identity.Children.Add(type);
+        identity.Children.Add(label);
+        identity.Children.Add(subtitle);
+
+        Border stateChip = CreateChip(
+            node.IsOnline ? "● Online" : "○ Não confirmado",
+            node.IsOnline
+                ? ResourceBrush("SuccessBrush", Brushes.SeaGreen)
+                : ResourceBrush("TextSecondaryBrush", Brushes.DimGray));
+        Border riskChip = CreateChip(
+            $"Risco {node.RiskLevel}",
+            node.RiskLevel.Equals("Alto", StringComparison.OrdinalIgnoreCase)
+                ? ResourceBrush("DangerBrush", Brushes.Firebrick)
+                : node.RiskLevel.Equals("Médio", StringComparison.OrdinalIgnoreCase)
+                    ? ResourceBrush("WarningBrush", Brushes.DarkOrange)
+                    : ResourceBrush("SuccessBrush", Brushes.SeaGreen));
+        WrapPanel chips = new() { Margin = new Thickness(53, 7, 0, 0) };
+        chips.Children.Add(stateChip);
+        chips.Children.Add(riskChip);
+        if (node.VlanId is int vlan)
+            chips.Children.Add(CreateChip($"VLAN {vlan}", ResourceBrush("AccentDarkBrush", Brushes.Navy)));
+
+        Grid top = new();
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        top.Children.Add(iconFrame);
+        Grid.SetColumn(identity, 1);
+        top.Children.Add(identity);
+
+        Grid content = new();
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        content.Children.Add(top);
+        Grid.SetRow(chips, 1);
+        content.Children.Add(chips);
 
         Button button = new()
         {
@@ -349,14 +574,37 @@ public sealed class NetworkTopologyControl : Grid
         button.Click += OnNodeClick;
         AutomationProperties.SetName(
             button,
-            $"{kindLabel}: {node.Label}. {node.Subtitle}. Estado: {(node.IsOnline ? "online" : "não confirmado online")}.");
-        AutomationProperties.SetHelpText(button, "Seleciona o dispositivo e abre os respetivos detalhes.");
+            $"{kindLabel}: {node.Label}. {node.Subtitle}. " +
+            $"Estado: {(node.IsOnline ? "online" : "não confirmado online")}. " +
+            $"Risco {node.RiskLevel}. " +
+            $"{(node.VlanId is int nodeVlan ? $"VLAN {nodeVlan}." : "VLAN não confirmada.")}");
+        AutomationProperties.SetHelpText(
+            button,
+            "Seleciona o nó. Os detalhes resumidos aparecem abaixo e os detalhes completos permanecem na janela principal.");
 
         Canvas.SetLeft(button, center.X - (NodeWidth / 2));
         Canvas.SetTop(button, center.Y - (NodeHeight / 2));
+        Panel.SetZIndex(button, 5);
         _canvas.Children.Add(button);
         _nodeButtons[node.Id] = button;
     }
+
+    private Border CreateChip(string text, Brush foreground) => new()
+    {
+        Margin = new Thickness(0, 0, 5, 0),
+        Padding = new Thickness(5, 1, 5, 1),
+        Background = ResourceBrush("SurfaceMutedBrush", Brushes.WhiteSmoke),
+        BorderBrush = ResourceBrush("BorderBrush", Brushes.LightGray),
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(7),
+        Child = new TextBlock
+        {
+            Text = text,
+            FontSize = 8.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = foreground
+        }
+    };
 
     private void OnNodeClick(object sender, RoutedEventArgs e)
     {
@@ -543,6 +791,57 @@ public sealed class NetworkTopologyControl : Grid
         _ => new Thickness(2)
     };
 
+    private static bool IsInfrastructure(NetworkMapNode node)
+    {
+        if (node.Kind is NetworkMapNodeKind.NetworkSegment or
+            NetworkMapNodeKind.Gateway or
+            NetworkMapNodeKind.ManagedSwitch or
+            NetworkMapNodeKind.LldpNeighbor)
+        {
+            return true;
+        }
+
+        if (node.Kind != NetworkMapNodeKind.Device)
+            return false;
+
+        string descriptor = $"{node.DeviceType} {node.Subtitle}";
+        string[] infrastructureTerms =
+        [
+            "switch",
+            "router",
+            "gateway",
+            "firewall",
+            "access point",
+            "ponto de acesso",
+            "wireless",
+            "wi-fi",
+            "wifi",
+            "bridge",
+            "mesh"
+        ];
+        return infrastructureTerms.Any(term =>
+            descriptor.Contains(term, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsClient(NetworkMapNode node) =>
+        node.Kind == NetworkMapNodeKind.LocalHost ||
+        node.Kind == NetworkMapNodeKind.Device && !IsInfrastructure(node);
+
+    private static bool IsAlert(NetworkMapNode node) =>
+        node.RiskLevel.Equals("Alto", StringComparison.OrdinalIgnoreCase) ||
+        node.RiskLevel.Equals("Médio", StringComparison.OrdinalIgnoreCase);
+
+    private static string NodeIconGlyph(NetworkMapNode node) => node.Kind switch
+    {
+        NetworkMapNodeKind.NetworkSegment => "\uE968",
+        NetworkMapNodeKind.Gateway => "\uE774",
+        NetworkMapNodeKind.ManagedSwitch => "\uE950",
+        NetworkMapNodeKind.LldpNeighbor => "\uE701",
+        NetworkMapNodeKind.LocalHost => "\uE7F8",
+        _ when IsInfrastructure(node) => "\uE701",
+        _ => "\uE7F8"
+    };
+
     private static string NodeKindText(NetworkMapNodeKind kind) => kind switch
     {
         NetworkMapNodeKind.NetworkSegment => "Segmento de rede",
@@ -569,6 +868,9 @@ public sealed class NetworkTopologyControl : Grid
     }
 
     private Brush ResourceBrush(string key, Brush fallback) => TryFindResource(key) as Brush ?? fallback;
+
+    private Color ResourceColor(string key, Color fallback) =>
+        TryFindResource(key) is SolidColorBrush brush ? brush.Color : fallback;
 
     private static string ConfidenceText(ConfidenceLevel confidence) => confidence switch
     {

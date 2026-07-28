@@ -2,215 +2,296 @@
 
 # Local Network Scanner
 
-[![CI](https://github.com/p-darksy-r/LocalNetworkScanner/actions/workflows/ci.yml/badge.svg)](https://github.com/p-darksy-r/LocalNetworkScanner/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/p-darksy-r/LocalNetworkScanner?display_name=tag)](https://github.com/p-darksy-r/LocalNetworkScanner/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![main v1.3.0](https://img.shields.io/badge/main-v1.3.0%20candidate-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/CHANGELOG.md)
+![Windows](https://img.shields.io/badge/Windows-x64%20%7C%20ARM64-0078d4)
+[![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/LICENSE)
 
-Scanner de redes locais para Windows, com uma aplicação gráfica WPF e uma CLI para automação. O objetivo é apresentar uma visão útil da rede sem esconder a qualidade da evidência: o programa distingue aquilo que observou diretamente daquilo que apenas inferiu.
+[CI](https://github.com/p-darksy-r/LocalNetworkScanner/actions/workflows/ci.yml) · [Releases](https://github.com/p-darksy-r/LocalNetworkScanner/releases) · [Instalação](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/INSTALLATION.md) · [Limites técnicos](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/TECHNICAL_LIMITS.md)
 
-O executável publicado é self-contained e inclui o runtime .NET necessário. O utilizador final não precisa de instalar o .NET. É uma aplicação Windows em WPF; “single-file” não significa NativeAOT e algumas bibliotecas internas podem ser extraídas temporariamente pelo runtime ao arrancar.
+Scanner de redes locais para Windows com uma UI WPF simples, uma CLI para automação, diagnósticos acionáveis e topologia opcional. O programa separa observações diretas, dados fornecidos pela infraestrutura e inferências, para que um resultado provável nunca seja apresentado como facto confirmado.
 
-As versões oficiais, quando existirem, serão publicadas na página de [Releases do GitHub](https://github.com/p-darksy-r/LocalNetworkScanner/releases) como ZIP portátil e instalador por utilizador para Windows x64 e ARM64. Consulte [Instalação no Windows](docs/INSTALLATION.md), incluindo a nota sobre binários ainda não assinados.
+> **[Descarregar a release publicada mais recente](https://github.com/p-darksy-r/LocalNetworkScanner/releases/latest)**
+>
+> O repositório é privado: a página e os ficheiros da release exigem uma conta GitHub com acesso. O `main` contém o candidato 1.3.0; uma tag/release nova só deve ser criada depois dos gates de assinatura e redistribuição indicados abaixo.
 
-## Funcionalidades
+![Janela principal com inventário de dispositivos demonstrativos](docs/images/main-window.png)
 
-- seleção da interface IPv4 e da rede privada a analisar;
-- perfis **Rápido**, **Normal** e **Avançado**, com profundidade explícita, limites de concorrência e cancelamento seguro;
-- descoberta por ICMP, tentativa de ligação TCP, ARP e mecanismos locais multicast;
-- endereço IP, latência, hostname, MAC quando disponível e fabricante por heurística OUI;
-- pesquisa de portas TCP e identificação leve de serviços por portas e respostas de aplicação;
-- observações de mDNS, SSDP/UPnP e WS-Discovery quando a rede permite multicast;
-- classificação heurística do tipo de equipamento, sistema operativo provável e risco;
-- histórico local, deteção de alterações e exportação JSON schema v3, CSV, HTML e GraphML;
-- diagnósticos acionáveis com códigos estáveis que distinguem entrada do utilizador, rede, dispositivo e falhas internas da aplicação;
-- informação da ligação Wi-Fi local, incluindo SSID, BSSID, canal e percentagem de sinal quando o Windows a fornece;
-- VLAN da interface local quando exposta pelo nome ou pelas propriedades avançadas do adaptador;
-- indicação prudente de alcance direto em camada 2 quando existe evidência ARP;
-- topologia SNMP v2c opcional, desativada por defeito, para switches geridos autorizados: nome/descrição, observações da FDB Bridge/Q-BRIDGE, porta/interface quando não ambígua e VLAN apenas quando o mapeamento do equipamento é inequívoco;
-- topologia opcional, aberta a pedido numa janela própria através do botão com ícone **Abrir topologia**, com origem e confiança da evidência e enriquecimento LLDP quando disponibilizado pelo switch autorizado;
-- exportação GraphML da topologia para análise em ferramentas externas, preservando o tipo, a origem, a confiança e o resumo da evidência de cada ligação.
+![Topologia opcional hierárquica com dados demonstrativos](docs/images/topology-window.png)
+
+_Imagens geradas com dados sintéticos; não expõem endereços nem identificadores de uma rede real._
+
+## Escolher o download
+
+Cada release disponibiliza uma versão para computadores x64 e outra para Windows ARM64:
+
+| Formato | Ficheiro | Quando usar |
+| --- | --- | --- |
+| **Instalador** | `LocalNetworkScanner-<versão>-<arquitetura>-setup.exe` | instalação por utilizador, entrada no menu Iniciar, desinstalador e atalho opcional |
+| **Portátil** | `LocalNetworkScanner-<versão>-<arquitetura>.zip` | execução sem instalação; extraia primeiro o ZIP e abra `LocalNetworkScanner.exe` |
+
+Os dois formatos incluem a UI, a CLI e o runtime .NET necessário. O instalador não pede privilégios administrativos no fluxo normal, não instala drivers ou serviços e não altera o `PATH`.
+
+### Compatibilidade e validação
+
+| Alvo | Estado |
+| --- | --- |
+| Windows 11 x64 | candidato 1.3.0 gerado; build, 50 testes e smoke do executável x64 concluídos |
+| Windows 11 ARM64 | candidato 1.3.0 gerado por cross-build; validação em hardware ARM64 nativo ainda pendente |
+| Windows 10 | o .NET 10 limita o suporte atual a edições LTSC/Enterprise compatíveis; consulte a [matriz oficial da Microsoft](https://learn.microsoft.com/dotnet/core/install/windows#supported-versions) |
+
+Os executáveis são self-contained, mas não são NativeAOT. Algumas bibliotecas internas podem ser extraídas temporariamente pelo runtime quando a aplicação arranca.
+
+### Aviso de assinatura
+
+Os executáveis e instaladores da versão atual estão **sem assinatura Authenticode (`NotSigned`)**. O Microsoft Defender SmartScreen pode apresentar um aviso de reputação e o Smart App Control ou uma política empresarial pode bloquear completamente o arranque com o código `4551`. Antes de executar:
+
+1. descarregue apenas a partir da [release oficial](https://github.com/p-darksy-r/LocalNetworkScanner/releases/latest);
+2. compare o SHA-256 com `SHA256SUMS.txt` ou com o ficheiro `.sha256` adjacente;
+3. não execute o ficheiro se o hash for diferente.
+
+```powershell
+$file = '.\LocalNetworkScanner-<versão>-win-x64.zip'
+(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+```
+
+Um checksum deteta alterações relativamente ao ficheiro publicado, mas não substitui uma assinatura de código. O código `4551` não deve ser contornado desativando a proteção: use uma release assinada por um publisher autorizado ou peça ao administrador da rede para avaliar a aplicação. Consulte o [guia específico de Windows App Control](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/APP_CONTROL.md) e o [guia de instalação](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/INSTALLATION.md).
+
+## Início rápido
+
+1. Abra `LocalNetworkScanner.exe`.
+2. Escolha a interface IPv4 e confirme o intervalo CIDR.
+3. Use **Rápido** para uma primeira passagem ou **Normal** para o inventário recomendado.
+4. Analise a lista de dispositivos; abra **Topologia** apenas quando quiser explorar o mapa do mesmo scan.
+
+Comece com um intervalo pequeno e use o perfil **Avançado** apenas quando precisar de mais portas e detalhe. Utilize a aplicação somente numa rede própria ou explicitamente autorizada.
+
+## O que o diferencia
+
+- **Resultados honestos:** cada relação de topologia preserva origem, confiança e evidência.
+- **Lista primeiro:** o inventário continua a ser a vista principal depois do scan.
+- **Topologia a pedido:** o mapa abre numa janela separada sem repetir ou alterar o scan.
+- **Diagnósticos pesquisáveis:** códigos `LNS-*` distinguem entrada, rede, dispositivo e falhas internas.
+- **Três profundidades:** Rápido, Normal e Avançado para utilizadores com necessidades diferentes.
+- **Descoberta multicamada:** ICMP, TCP, ARP, mDNS, SSDP/UPnP, WS-Discovery e NetBIOS quando aplicável.
+- **Inventário útil:** IP, hostname, MAC, titular IEEE do prefixo, latência, portas, serviços, protocolos observados e risco heurístico.
+- **Dados locais:** histórico, preferências e metadados permanecem no computador.
+- **Suporte com privacidade:** a CLI pode gerar um diagnóstico agregado sem identificadores da rede.
+- **UI e CLI:** utilização visual para o dia a dia e exportação automatizável para fluxos técnicos.
 
 ## Perfis de scan
 
-Depois de escolher a interface e o intervalo, selecione a profundidade adequada:
+| Capacidade | Rápido | Normal | Avançado |
+| --- | :---: | :---: | :---: |
+| ICMP, TCP, ARP e descoberta multicast | Sim | Sim | Sim |
+| Portas TCP | essenciais | serviços comuns | `1-1024` e catálogo adicional |
+| NetBIOS | Não | Sim | Sim |
+| Probes leves e banners | Não | Sim | Sim |
+| Tolerância de timeout | menor | equilibrada | maior |
+| Utilização recomendada | primeira passagem | inventário habitual | diagnóstico autorizado e dirigido |
 
-| Perfil | Utilização recomendada | Comportamento |
+As opções técnicas da UI podem substituir partes do perfil. A topologia SNMP v2c é independente da profundidade escolhida e permanece desativada até ser configurada explicitamente no modo avançado.
+
+## Funcionalidades
+
+| Área | Informação apresentada | Origem ou limite principal |
 | --- | --- | --- |
-| **Rápido** | primeira passagem e redes maiores | descoberta leve e portas essenciais; minimiza ligações e tempo de espera |
-| **Normal** | inventário habitual | serviços comuns, identidade e avaliação de segurança com equilíbrio entre detalhe e duração; é o perfil recomendado |
-| **Avançado** | diagnóstico autorizado e dirigido | mais portas, recolha leve de banners e maior tolerância de resposta; demora mais e gera mais atividade na rede |
+| Identidade | IP, hostname, NetBIOS, MAC e titular IEEE do prefixo | o titular pode estar indisponível, ser `Private` ou não coincidir com a marca do equipamento |
+| Disponibilidade | latência e métodos de descoberta | firewalls podem bloquear ICMP sem tornar o equipamento offline |
+| Portas e serviços | portas TCP abertas, nome provável e resposta leve | não existe autenticação, exploração ou inspeção profunda |
+| Protocolos | ICMP, ARP, TCP e protocolos associados às respostas observadas | não é uma captura nem uma contagem de pacotes |
+| Equipamento | tipo, sistema operativo provável e risco | classificação heurística, nunca identificação garantida |
+| Wi-Fi | SSID, BSSID, canal, rádio e percentagem de sinal local | sinal do computador para o access point, não de cada dispositivo |
+| VLAN | configuração exposta pelo adaptador ou evidência inequívoca do switch | não captura tags 802.1Q |
+| Camada 2 | alcance direto quando existe evidência ARP | não confirma o switch físico |
+| Histórico | novo, alterado, visto anteriormente, favorito, alias e notas | snapshots locais; MACs aleatórios podem mudar a identidade |
+| Ações | copiar dados, abrir endpoints e Wake-on-LAN | execute apenas ações autorizadas e confirme o alvo |
+| Exportações | JSON schema v3, CSV UTF-8, HTML, GraphML e relatório de suporte agregado | os relatórios de inventário são sensíveis; o relatório de suporte exclui identificadores |
 
-Opções manuais podem substituir partes do perfil. Reveja sempre o intervalo antes de iniciar, sobretudo no modo Avançado. Na CLI, use `quick`, `standard` ou `advanced`; o alias histórico `deep` continua aceite para compatibilidade.
+### Base IEEE incorporada e offline
+
+A aplicação inclui uma snapshot comprimida de MA-L, MA-M, MA-S e IAB: **58 019 linhas oficiais na snapshot de 2026-07-28 e 58 016 prefixos únicos depois da normalização**. A identificação funciona sem Internet e usa correspondência pelo prefixo mais específico, na ordem `/36 → /28 → /24`. O registo CID não é usado como fabricante de MACs globais.
+
+A atualização pela IEEE é opcional e só começa quando o utilizador escolhe **Verificar atualização IEEE**. Não existe telemetria nem envio do inventário durante essa operação. A aplicação apresenta o titular registado do prefixo, não garante o fabricante físico: atribuições `Private`, MACs locais/aleatórios, virtualização, componentes OEM e blocos partilhados podem permanecer desconhecidos ou identificar apenas a interface.
+
+Consulte [Base de entidades MAC](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/VENDOR_DATABASE.md) para fontes, contagens e limites. Os dados IEEE não são licenciados sob MIT; antes de redistribuir publicamente um binário que inclua a snapshot, obtenha autorização escrita da IEEE e consulte [THIRD_PARTY_NOTICES.md](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/THIRD_PARTY_NOTICES.md).
+
+## Topologia opcional
+
+O scan termina sempre na lista de dispositivos. Quando existe um mapa, o botão com ícone **Abrir topologia** abre uma janela própria com:
+
+- zoom, pan, enquadramento automático e vista a 100%;
+- seleção sincronizada com o inventário;
+- distinção visual entre relações observadas, fornecidas e inferidas;
+- exportação PNG e GraphML;
+- enriquecimento LLDP quando um switch autorizado o disponibiliza.
+
+A integração SNMP v2c é opt-in e consulta somente o switch gerido indicado pelo utilizador. Pode recolher identidade, FDB Bridge/Q-BRIDGE, porta/interface, mapeamento VLAN→FDB, PVID e vizinhos LLDP.
+
+Uma entrada FDB confirma apenas que a bridge aprendeu o MAC. Não prova ligação física direta: a porta pode ser de acesso, uplink, trunk, access point, stack ou bridge remota. Observações ambíguas são preservadas em vez de serem reduzidas a uma conclusão falsa. SNMPv3, descoberta automática de switches e topologias multi-switch ainda não são suportados.
+
+Leia os [limites técnicos completos](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/TECHNICAL_LIMITS.md) antes de interpretar ou partilhar o mapa.
 
 ## Diagnósticos e códigos de erro
 
-Um problema é apresentado com um código pesquisável, categoria, severidade, explicação em pt-PT e ação recomendada. Os prefixos indicam a origem provável:
+Um diagnóstico inclui código, categoria, severidade, mensagem em pt-PT, ação recomendada e contexto sanitizado:
 
-- `LNS-USR-*`: configuração ou entrada que o utilizador pode corrigir;
-- `LNS-NET-*`: interface, conectividade ou política da rede;
-- `LNS-DEV-*`: resposta ou identificação de um dispositivo, incluindo MAC inválido, fabricante desconhecido ou tipo não reconhecido;
-- `LNS-APP-*`: falha interna ou inesperada da aplicação.
+| Prefixo | Origem provável |
+| --- | --- |
+| `LNS-USR-*` | opção, intervalo ou configuração que o utilizador pode corrigir |
+| `LNS-NET-*` | interface, conectividade, firewall ou política da rede |
+| `LNS-DEV-*` | resposta ou identidade inválida/desconhecida de um dispositivo |
+| `LNS-APP-*` | ficheiro, acesso ou falha inesperada da aplicação |
 
-Um aviso de dispositivo desconhecido não significa necessariamente que o scan falhou. Copie o código ao pedir suporte, mas remova IPs, MACs, SSIDs e outros identificadores. Consulte o [catálogo de códigos de erro](docs/ERROR_CODES.md).
+Um aviso de fabricante ou dispositivo desconhecido não significa que o scan falhou. O catálogo público documenta os 26 códigos e os exit codes da CLI: [Códigos de erro e diagnóstico](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/ERROR_CODES.md).
 
-## Lista primeiro, topologia a pedido
+Ao pedir suporte, partilhe o código, a versão, a arquitetura e passos mínimos de reprodução. A CLI pode criar um relatório agregado concebido para esse fim:
 
-Após cada scan, a aplicação mantém a lista de dispositivos como vista principal. Se existir um mapa, o botão com ícone **Abrir topologia** fica disponível e abre uma janela separada para esse mesmo resultado. A janela permite zoom, pan, ajuste automático, seleção sincronizada e exportação PNG/GraphML; fechá-la não elimina o scan nem altera a lista.
+```powershell
+LocalNetworkScanner.Cli.exe scan --cidr 192.168.1.0/24 --support .\support.json
+```
 
-## O que os resultados não significam
+Esse relatório omite IPs, MACs, nomes de interface/host/switch, SSIDs, aliases, notas, alvos e contexto bruto dos diagnósticos. Inclui apenas versão/ambiente, contagens, capacidades e códigos agregados. Reveja ainda assim o ficheiro antes de o partilhar; relatórios JSON/CSV/HTML/GraphML normais continuam a conter o inventário completo.
 
-O programa não captura tráfego, não inspeciona todos os pacotes que atravessam a rede e não faz uma análise exaustiva de protocolos. A lista de protocolos é derivada dos métodos de descoberta, das portas abertas e de respostas leves dos serviços.
+## Privacidade e utilização responsável
 
-Uma entrada ARP pode sustentar a inferência de que um dispositivo está no mesmo segmento de camada 2, mas não identifica o switch físico. A integração opcional com um switch gerido também não afirma ligação física direta: uma FDB pode aprender o MAC através de uma porta de acesso, uplink, trunk, access point ou bridge remota.
+O projeto não envia o inventário nem telemetria para um serviço do Local Network Scanner. Um scan comunica diretamente com a rede escolhida; a atualização opcional das listagens IEEE e os links externos são ações explícitas. A atualização não envia MACs, IPs, inventário, SSID ou topologia.
 
-Quando SNMP v2c é explicitamente ativado por um administrador, o motor consulta um único switch indicado e pode confirmar que um MAC foi observado na FDB dessa bridge gerida. MACs com várias observações mantêm todas as alternativas e não recebem uma porta única. Em Q-BRIDGE, um FDB-ID só é apresentado como VLAN depois de uma correspondência única na tabela de mapeamento VLAN→FDB; o PVID da porta aparece apenas como referência e nunca é tratado como a VLAN do dispositivo. O mesmo switch pode enriquecer o mapa com os vizinhos que publica através de LLDP. A funcionalidade não suporta SNMPv3, descoberta automática de switches ou switches não geridos.
-
-A intensidade Wi-Fi apresentada pertence à ligação do computador que executa a aplicação. Não é o RSSI de cada dispositivo remoto.
-
-Consulte [Limites técnicos](docs/TECHNICAL_LIMITS.md) antes de interpretar ou partilhar um relatório.
-
-## Utilização responsável
-
-Utilize o scanner apenas numa rede própria ou numa rede para a qual possui autorização explícita. Um scan abre ligações e envia pedidos de descoberta; pode ser registado por firewalls, sistemas de deteção e equipamentos de rede.
-
-Não é necessário executar a aplicação como administrador para o fluxo normal. Algumas informações do adaptador podem não ser expostas pelo Windows, pelo driver ou pela política da organização. A aplicação deve apresentar esses campos como indisponíveis, nunca inventá-los.
-
-A topologia SNMP é uma funcionalidade avançada e opt-in. Deve ser usada apenas num switch gerido autorizado e numa rede de gestão confiável. Dados de acesso nunca devem ser incluídos em relatórios, argumentos partilhados, logs, screenshots ou no repositório.
-
-## Privacidade e dados locais
-
-O histórico é guardado localmente em:
+O histórico é guardado em:
 
 ```text
 %LOCALAPPDATA%\LocalNetworkScanner\snapshots
 ```
 
-Os ficheiros de histórico e as exportações podem conter IPs, MACs, hostnames, portas e nomes de redes Wi-Fi. Trate-os como inventário sensível. Reveja-os antes de os anexar a issues ou pedidos de suporte.
+Preferências, metadados e uma atualização opcional da base IEEE também ficam sob `%LOCALAPPDATA%\LocalNetworkScanner`. A versão portátil usa a mesma localização: “portátil” descreve a distribuição sem instalador, não um modo sem dados locais.
 
-O projeto não deve adicionar telemetria ou transmissão de inventário sem consentimento explícito, documentação e uma opção clara para desativar.
+JSON, CSV, HTML, GraphML e snapshots podem revelar IPs, MACs, hostnames, portas, serviços, SSIDs e topologia. Guarde-os com controlo de acesso e não os anexe diretamente a uma issue pública.
 
-## Requisitos de desenvolvimento
+SNMP v2c não cifra a community. Use-o apenas numa rede de gestão confiável, com autorização, e nunca coloque credenciais em argumentos partilhados, logs, screenshots, relatórios ou no repositório.
 
-- Windows 10 ou Windows 11;
-- .NET SDK `10.0.301`, selecionado por `global.json`;
-- PowerShell 5.1 ou PowerShell 7 para os scripts;
-- uma interface IPv4 ativa para scans reais.
+## Limitações importantes
 
-O SDK pode usar uma atualização de patch compatível da mesma feature band através de `rollForward: latestPatch`. Builds de release devem registar a versão efetivamente usada por `dotnet --version`.
+- Não existe captura de pacotes, inspeção profunda de tráfego ou exploração de serviços.
+- Um equipamento pode bloquear ICMP e continuar acessível por TCP, ARP ou multicast.
+- O sinal Wi-Fi pertence à ligação local do computador, não aos clientes remotos.
+- A VLAN pode vir do adaptador local ou de dados inequívocos do switch; não é descoberta universal por dispositivo.
+- ARP sustenta uma inferência de segmento L2, mas não identifica o switch físico.
+- O titular IEEE do prefixo, o fabricante físico, o tipo de equipamento, o sistema operativo e o risco não são identificações garantidas.
+- Multicast pode ser bloqueado por firewall, isolamento Wi-Fi, VLANs ou políticas da rede.
+- Os resultados são um retrato temporal, não monitorização contínua.
+- ARM64 é publicado por cross-build e requer ainda validação numa máquina ARM64 real.
+- Os binários atuais não têm assinatura Authenticode.
 
-## Compilar e verificar
+## CLI
 
-Validação completa dos projetos disponíveis:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1
-```
-
-O gate também verifica se todos os ficheiros textuais comentáveis têm o cabeçalho e o rodapé de copyright. Para executar apenas essa verificação:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\check-copyright.ps1
-```
-
-Para omitir o build e a verificação de formato explícitos do projeto gráfico:
+Listar interfaces:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1 -SkipWpf
+LocalNetworkScanner.Cli.exe interfaces
 ```
 
-O script restaura e compila cada projeto explícito, executa os projetos de testes que encontrar e faz um smoke test da ajuda da CLI. A suite atual contém também um smoke WPF, pelo que `-SkipWpf` continua a exigir Windows e pode compilar a UI através dessa dependência de testes; não é um gate de release. A inexistência de testes é assinalada; antes de uma release estável, a checklist exige pelo menos uma suite com contagem verificada.
+Executar um scan e exportar todos os formatos:
 
-## Executar durante o desenvolvimento
+```powershell
+LocalNetworkScanner.Cli.exe scan `
+  --interface 1 `
+  --cidr 192.168.1.0/24 `
+  --profile standard `
+  --json .\report.json `
+  --csv .\report.csv `
+  --html .\report.html `
+  --graphml .\topology.graphml `
+  --support .\support.json
+```
 
-Aplicação gráfica:
+Perfis aceites: `quick`, `standard` e `advanced`; `deep` continua disponível como alias histórico. A especificação de portas aceita listas, intervalos e os aliases `quick`, `top`, `deep` e `all`.
+
+```powershell
+LocalNetworkScanner.Cli.exe --help
+```
+
+Exit codes:
+
+| Código | Resultado |
+| --- | --- |
+| `0` | concluído; pode conter avisos não fatais |
+| `1` | falha da aplicação |
+| `2` | entrada/configuração inválida |
+| `3` | falha de rede |
+| `4` | falha associada a dispositivo/dados |
+| `130` | operação cancelada |
+
+## Desenvolvimento
+
+Requisitos:
+
+- Windows 11, ou uma edição Windows suportada pela matriz atual do .NET 10;
+- .NET SDK `10.0.301` ou patch compatível permitido por `global.json`;
+- PowerShell 5.1 ou PowerShell 7;
+- uma interface IPv4 ativa apenas para testes reais opt-in.
+
+Validação completa:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1 -Configuration Release -VerifyFormat
+```
+
+O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
+
+Executar a UI:
 
 ```powershell
 dotnet run --project .\LocalNetworkScanner.Wpf\LocalNetworkScanner.Wpf.csproj
 ```
 
-Listar interfaces pela CLI:
-
-```powershell
-dotnet run --project .\LocalNetworkScanner.Cli\LocalNetworkScanner.Cli.csproj -- interfaces
-```
-
-Scan interativo:
-
-```powershell
-dotnet run --project .\LocalNetworkScanner.Cli\LocalNetworkScanner.Cli.csproj
-```
-
-Scan não interativo de uma rede privada com exportação:
-
-```powershell
-dotnet run --project .\LocalNetworkScanner.Cli\LocalNetworkScanner.Cli.csproj -- scan --cidr 192.168.1.0/24 --profile standard --json .\report.json --csv .\report.csv --html .\report.html --graphml .\topology.graphml
-```
-
-Ajuda completa:
+Executar a CLI durante o desenvolvimento:
 
 ```powershell
 dotnet run --project .\LocalNetworkScanner.Cli\LocalNetworkScanner.Cli.csproj -- --help
 ```
 
+Consulte o [guia de contribuição](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/CONTRIBUTING.md) e a [política de copyright](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/COPYRIGHT_POLICY.md) antes de alterar o projeto.
+
 ## Publicar para Windows
 
-O script publica a UI e a CLI como executáveis self-contained single-file, valida a ajuda da CLI e o ciclo de vida real da janela WPF, cria um ZIP e escreve o respetivo SHA-256.
-
-O smoke do executável publicado só é executado quando a arquitetura é compatível com o host de build. Um pacote ARM64 criado num PC x64 tem de ser aberto e testado posteriormente num Windows ARM64; o script assinala esse gate em vez de simular sucesso.
-
-Windows x64:
+Pacotes portáteis self-contained:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeIdentifier win-x64
-```
-
-Windows ARM64:
-
-```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeIdentifier win-arm64
 ```
 
-Resultados:
-
-```text
-artifacts\publish\<RID>\
-artifacts\staging\LocalNetworkScanner-1.2.0-<RID>\
-artifacts\release\LocalNetworkScanner-1.2.0-<RID>.zip
-artifacts\release\LocalNetworkScanner-1.2.0-<RID>.zip.sha256
-```
-
-Instalador opcional com [Inno Setup 6](https://jrsoftware.org/isdl.php):
+Instalador Inno Setup:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -RuntimeIdentifier win-x64
 ```
 
-Uma tag `v1.2.0` que coincida com `Directory.Build.props` inicia o workflow de release. O workflow volta a validar copyright, formato, build e testes, cria pacotes x64/ARM64, instaladores e checksums, e publica-os na release correspondente. Não inclui nem simula uma assinatura Authenticode.
+Uma tag `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia o workflow de release. O workflow valida a origem, cria ZIPs e instaladores x64/ARM64, calcula checksums individuais e o manifesto `SHA256SUMS.txt`, e publica a release. Sem credenciais publica explicitamente como `NotSigned`; quando é configurado um certificado RSA de Code Signing confiável, assina e valida a UI, CLI, instalador e desinstalador antes da publicação. Consulte [Windows App Control e erro 4551](docs/APP_CONTROL.md).
 
-Estes ficheiros locais não ficam automaticamente prontos para distribuição pública. A release final deve ter ícone e manifesto revistos, teste num Windows limpo, verificação do checksum e indicação inequívoca do estado Authenticode. Uma assinatura válida continua a ser recomendada para identidade e reputação; até existir, a distribuição permanece explicitamente não assinada. Consulte a [Checklist de release](docs/RELEASE_CHECKLIST.md).
+A [checklist de release](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/RELEASE_CHECKLIST.md) exige validação num Windows limpo, estado de assinatura explícito, verificação pós-upload e teste nativo por arquitetura antes de considerar o suporte totalmente validado.
 
-## Estrutura
+## Estrutura do projeto
 
 ```text
 LocalNetworkScanner.Core/   descoberta, modelos, análise e exportação
 LocalNetworkScanner.Cli/    interface de linha de comandos
 LocalNetworkScanner.Wpf/    aplicação gráfica Windows
-.github/                    CI, release, Dependabot e templates de issues
-docs/                       limites técnicos e processo de release
-installer/                  definição opcional do instalador Inno Setup
-scripts/                    validação e publicação reproduzível
+LocalNetworkScanner.Tests/  harness determinístico e smoke WPF
+.github/                    CI, release, propriedade e templates
+docs/                       instalação, diagnósticos e limites técnicos
+installer/                  instalador por utilizador com Inno Setup
+scripts/                    validação, publish e empacotamento
 ```
 
-Consulte [CONTRIBUTING.md](CONTRIBUTING.md) antes de propor alterações.
+## Suporte, segurança e licença
 
-## Segurança
+- Problemas reproduzíveis: [GitHub Issues](https://github.com/p-darksy-r/LocalNetworkScanner/issues)
+- Vulnerabilidades exploráveis: [Security Advisory privado](https://github.com/p-darksy-r/LocalNetworkScanner/security/advisories/new)
+- Política de segurança: [SECURITY.md](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/SECURITY.md)
+- Changelog: [CHANGELOG.md](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/CHANGELOG.md)
+- Código e assets originais: [MIT](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/LICENSE)
+- Dados e materiais de terceiros: [THIRD_PARTY_NOTICES.md](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/THIRD_PARTY_NOTICES.md)
 
-Leia [SECURITY.md](SECURITY.md) para comunicar uma vulnerabilidade e para conhecer o modelo de segurança do produto.
-
-Issues e pedidos de funcionalidades: [GitHub Issues](https://github.com/p-darksy-r/LocalNetworkScanner/issues). Vulnerabilidades exploráveis devem usar um [Security Advisory privado](https://github.com/p-darksy-r/LocalNetworkScanner/security/advisories/new).
-
-## Licença
-
-Distribuído sob a licença [MIT](LICENSE).
+A licença MIT não abrange nem relicencia a snapshot da IEEE Registration Authority. A presença desses dados não implica certificação, patrocínio ou endorsement pela IEEE.
 
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

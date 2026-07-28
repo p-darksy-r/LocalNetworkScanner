@@ -45,6 +45,7 @@ As exclusões são deliberadas:
 
 - `LICENSE`, para manter intacto o texto canónico da licença MIT;
 - imagens, ícones, executáveis, ZIPs e outros formatos binários, que não têm comentários textuais seguros;
+- a snapshot comprimida `ieee-mac-vendors.tsv.gz`, que contém dados de terceiros e usa avisos de proveniência IEEE no início e no fim do conteúdo descomprimido, sem aplicar a licença MIT do projeto aos dados;
 - JSON estrito diferente de `global.json` e outros formatos textuais sem sintaxe de comentário compatível;
 - conteúdo gerado ou externo em `.git`, `.vs`, `artifacts`, `bin`, `obj`, `packages` e `TestResults`.
 

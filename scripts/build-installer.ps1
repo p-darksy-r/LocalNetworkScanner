@@ -10,7 +10,16 @@ param(
 
     [switch]$SkipChecks,
 
-    [string]$IsccPath
+    [string]$IsccPath,
+
+    [string]$SigningCertificateThumbprint,
+
+    [string]$SignToolPath,
+
+    [ValidateSet("CurrentUser", "LocalMachine")]
+    [string]$SigningCertificateStore = "CurrentUser",
+
+    [string]$TimestampServer = "http://timestamp.digicert.com"
 )
 
 Set-StrictMode -Version Latest
@@ -53,6 +62,138 @@ function Resolve-Iscc {
     return [IO.Path]::GetFullPath($resolved)
 }
 
+function Resolve-SignTool {
+    param([string]$RequestedPath)
+
+    $candidates = @()
+    if (-not [string]::IsNullOrWhiteSpace($RequestedPath)) {
+        $candidates += $RequestedPath
+    }
+
+    $command = Get-Command "signtool.exe" -ErrorAction SilentlyContinue
+    if ($null -ne $command) {
+        $candidates += $command.Source
+    }
+
+    $windowsKitsBin = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+    if (Test-Path -LiteralPath $windowsKitsBin -PathType Container) {
+        $candidates += Get-ChildItem -LiteralPath $windowsKitsBin -Directory -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending |
+            ForEach-Object { Join-Path $_.FullName "x64\signtool.exe" }
+    }
+
+    $resolved = $candidates |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_ -PathType Leaf) } |
+        Select-Object -First 1
+
+    if ([string]::IsNullOrWhiteSpace($resolved)) {
+        throw "Authenticode signing was requested, but signtool.exe was not found. Install the Windows SDK or pass -SignToolPath."
+    }
+
+    return [IO.Path]::GetFullPath($resolved)
+}
+
+function Assert-TimestampServer {
+    param([Parameter(Mandatory = $true)][string]$Uri)
+
+    $parsed = $null
+    if (-not [Uri]::TryCreate($Uri, [UriKind]::Absolute, [ref]$parsed) -or
+        $parsed.Scheme -notin @("http", "https") -or
+        -not [string]::IsNullOrWhiteSpace($parsed.UserInfo)) {
+        throw "TimestampServer must be an absolute HTTP or HTTPS URL without embedded credentials."
+    }
+}
+
+function Resolve-SigningCertificate {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Thumbprint,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Store
+    )
+
+    $normalized = [Regex]::Replace($Thumbprint, "\s", "").ToUpperInvariant()
+    if ($normalized -notmatch "^[0-9A-F]{40}$") {
+        throw "SigningCertificateThumbprint must be a 40-character SHA-1 certificate thumbprint. SHA-1 is used only to select the certificate; file signatures use SHA-256."
+    }
+
+    $certificate = Get-Item -LiteralPath "Cert:\$Store\My\$normalized" -ErrorAction SilentlyContinue
+    if ($null -eq $certificate -or -not $certificate.HasPrivateKey) {
+        throw "Authenticode signing was requested, but a certificate with a private key was not found at $Store\My\$normalized."
+    }
+    if ([DateTime]::Now -lt $certificate.NotBefore -or [DateTime]::Now -gt $certificate.NotAfter) {
+        throw "The signing certificate '$normalized' is not currently valid ($($certificate.NotBefore.ToString('u')) to $($certificate.NotAfter.ToString('u')))."
+    }
+    if ($certificate.Subject -eq $certificate.Issuer) {
+        throw "The signing certificate '$normalized' is self-signed. A certificate chained to a trusted public CA is required for release signing."
+    }
+
+    $rsa = [Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($certificate)
+    if ($null -eq $rsa) {
+        throw "The signing certificate '$normalized' is not an RSA certificate."
+    }
+    $rsa.Dispose()
+
+    $codeSigningOid = "1.3.6.1.5.5.7.3.3"
+    $ekuExtension = $certificate.Extensions |
+        Where-Object { $_.Oid.Value -eq "2.5.29.37" } |
+        Select-Object -First 1
+    $hasCodeSigningEku =
+        $null -ne $ekuExtension -and
+        @($ekuExtension.EnhancedKeyUsages | Where-Object { $_.Value -eq $codeSigningOid }).Count -gt 0
+    if (-not $hasCodeSigningEku) {
+        throw "The certificate '$normalized' is not authorized for Code Signing (EKU $codeSigningOid)."
+    }
+
+    $chain = [Security.Cryptography.X509Certificates.X509Chain]::new()
+    try {
+        $chain.ChainPolicy.RevocationMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::Online
+        $chain.ChainPolicy.RevocationFlag = [Security.Cryptography.X509Certificates.X509RevocationFlag]::ExcludeRoot
+        $chain.ChainPolicy.VerificationFlags = [Security.Cryptography.X509Certificates.X509VerificationFlags]::NoFlag
+        $chain.ChainPolicy.UrlRetrievalTimeout = [TimeSpan]::FromSeconds(30)
+        if (-not $chain.Build($certificate)) {
+            $chainErrors = ($chain.ChainStatus |
+                ForEach-Object { "$($_.Status): $($_.StatusInformation.Trim())" }) -join "; "
+            throw "The signing certificate '$normalized' does not build to a trusted CA or failed revocation checking: $chainErrors"
+        }
+    }
+    finally {
+        $chain.Dispose()
+    }
+
+    return $certificate
+}
+
+function Assert-ExpectedSignature {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedThumbprint,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ToolPath
+    )
+
+    & $ToolPath verify /pa /tw /v $FilePath
+    if ($LASTEXITCODE -ne 0) {
+        throw "signtool verify failed for '$FilePath' with code $LASTEXITCODE."
+    }
+
+    $signature = Get-AuthenticodeSignature -LiteralPath $FilePath
+    $actualThumbprint = if ($null -ne $signature.SignerCertificate) {
+        $signature.SignerCertificate.Thumbprint
+    }
+    else {
+        "<none>"
+    }
+    if ($signature.Status -ne "Valid" -or $actualThumbprint -ne $ExpectedThumbprint) {
+        throw "Authenticode verification failed for '$FilePath': status=$($signature.Status), signer=$actualThumbprint."
+    }
+}
+
 if (-not (Test-Path -LiteralPath $installerScript -PathType Leaf)) {
     throw "Installer definition not found: $installerScript"
 }
@@ -69,12 +210,34 @@ if ($version -notmatch "^\d+\.\d+\.\d+$") {
     throw "The installer requires a stable three-part Version; found '$version'."
 }
 
+$signingEnabled = -not [string]::IsNullOrWhiteSpace($SigningCertificateThumbprint)
+if (-not $signingEnabled -and -not [string]::IsNullOrWhiteSpace($SignToolPath)) {
+    throw "-SignToolPath was provided without -SigningCertificateThumbprint. Signing configuration is incomplete."
+}
+
+$normalizedSigningThumbprint = $null
+$resolvedSignTool = $null
+if ($signingEnabled) {
+    Assert-TimestampServer $TimestampServer
+    $certificate = Resolve-SigningCertificate $SigningCertificateThumbprint $SigningCertificateStore
+    $normalizedSigningThumbprint = $certificate.Thumbprint.ToUpperInvariant()
+    $resolvedSignTool = Resolve-SignTool $SignToolPath
+}
+
 Push-Location $repoRoot
 try {
     if (-not $SkipPublish) {
         $publishArguments = @("-RuntimeIdentifier", $RuntimeIdentifier, "-SkipWpfSmoke")
         if ($SkipChecks) {
             $publishArguments += "-SkipChecks"
+        }
+        if ($signingEnabled) {
+            $publishArguments += @(
+                "-SigningCertificateThumbprint", $normalizedSigningThumbprint,
+                "-SignToolPath", $resolvedSignTool,
+                "-SigningCertificateStore", $SigningCertificateStore,
+                "-TimestampServer", $TimestampServer
+            )
         }
         & $publishScript @publishArguments
         if ($LASTEXITCODE -ne 0) {
@@ -90,14 +253,24 @@ try {
         "LICENSE",
         "CHANGELOG.md",
         "SECURITY.md",
+        "THIRD_PARTY_NOTICES.md",
         "docs\TECHNICAL_LIMITS.md",
         "docs\RELEASE_CHECKLIST.md",
-        "docs\INSTALLATION.md"
+        "docs\INSTALLATION.md",
+        "docs\APP_CONTROL.md",
+        "docs\VENDOR_DATABASE.md",
+        "tools\diagnose-app-control.ps1"
     )
     foreach ($relativePath in $requiredFiles) {
         $candidate = Join-Path $stagingRoot $relativePath
         if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
             throw "The staged release is incomplete: $candidate. Run publish-windows.ps1 first or remove -SkipPublish."
+        }
+    }
+
+    if ($signingEnabled) {
+        foreach ($executableName in @("LocalNetworkScanner.exe", "LocalNetworkScanner.Cli.exe")) {
+            Assert-ExpectedSignature (Join-Path $stagingRoot $executableName) $normalizedSigningThumbprint $resolvedSignTool
         }
     }
 
@@ -115,9 +288,28 @@ try {
         "/DAppVersion=$version",
         "/DRuntimeIdentifier=$RuntimeIdentifier",
         "/DOutputBaseFilename=$outputBaseName",
-        "/DSetupIconFile=$setupIcon",
-        $installerScript
+        "/DSetupIconFile=$setupIcon"
     )
+    if ($signingEnabled) {
+        $signToolName = "LocalNetworkScannerAuthenticode"
+        $escapedSignTool = $resolvedSignTool.Replace('$', '$$')
+        $escapedTimestampServer = $TimestampServer.Replace('$', '$$')
+        $storeArguments = if ($SigningCertificateStore -eq "LocalMachine") {
+            " /s My /sm"
+        }
+        else {
+            " /s My"
+        }
+        $signCommand = '$q' + $escapedSignTool + '$q sign' + $storeArguments + ' /sha1 ' +
+            $normalizedSigningThumbprint + ' /fd SHA256 /tr $q' +
+            $escapedTimestampServer + '$q /td SHA256 /v $f'
+        $compilerArguments += @(
+            "/DSignToolName=$signToolName",
+            "/S$signToolName=$signCommand"
+        )
+    }
+    $compilerArguments += $installerScript
+
     Write-Host ("> ISCC.exe " + ($compilerArguments -join " ")) -ForegroundColor DarkGray
     & $iscc @compilerArguments
     if ($LASTEXITCODE -ne 0) {
@@ -127,16 +319,23 @@ try {
         throw "Inno Setup did not create the expected installer: $installerPath"
     }
 
+    if ($signingEnabled) {
+        Assert-ExpectedSignature $installerPath $normalizedSigningThumbprint $resolvedSignTool
+    }
+
     $hash = Get-FileHash -LiteralPath $installerPath -Algorithm SHA256
     $checksumLine = "{0} *{1}" -f $hash.Hash.ToLowerInvariant(), (Split-Path $installerPath -Leaf)
     Set-Content -LiteralPath $checksumPath -Value $checksumLine -Encoding ascii
 
-    $signature = Get-AuthenticodeSignature -LiteralPath $installerPath
-    if ($signature.Status -ne "Valid") {
-        Write-Warning "Installer is not release-signed: $installerPath ($($signature.Status))"
+    if (-not $signingEnabled) {
+        $signature = Get-AuthenticodeSignature -LiteralPath $installerPath
+        if ($signature.Status -ne "Valid") {
+            Write-Warning "Installer is NotSigned: $installerPath ($($signature.Status))"
+        }
     }
 
     Write-Host "Windows installer created successfully." -ForegroundColor Green
+    Write-Host "Authenticode: $(if ($signingEnabled) { 'Signed (application, CLI, installer and uninstaller)' } else { 'NotSigned' })"
     Write-Host "Installer: $installerPath"
     Write-Host "SHA-256:  $($hash.Hash.ToLowerInvariant())"
 }

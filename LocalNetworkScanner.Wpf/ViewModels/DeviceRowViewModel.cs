@@ -2,6 +2,7 @@
 
 using LocalNetworkScanner.Core.Models;
 using LocalNetworkScanner.Core.Services;
+using LocalNetworkScanner.Core.Utilities;
 using LocalNetworkScanner.Wpf.Infrastructure;
 using System.Globalization;
 
@@ -21,6 +22,7 @@ public sealed class DeviceRowViewModel : ObservableObject
 
     public string StatusText => _device.IsOnline ? "Online" : "Offline";
     public string IpAddress => _device.IpAddressText;
+    public uint IpSortKey => IpAddressHelper.ToUInt32(_device.IpAddress);
     public string Hostname => _device.IdentityDisplay;
     public string HostnameTechnical => _device.HostnameDisplay;
     public string NetBiosName => string.IsNullOrWhiteSpace(_device.NetBiosName) ? "—" : _device.NetBiosName;
@@ -31,6 +33,7 @@ public sealed class DeviceRowViewModel : ObservableObject
     public string MacAddress => _device.MacDisplay;
     public string Manufacturer => _device.ManufacturerDisplay;
     public string ResponseTime => _device.ResponseTimeDisplay;
+    public long ResponseTimeSortKey => _device.ResponseTimeMs ?? long.MaxValue;
     public string DeviceType => _device.DeviceType;
     public string OsGuess => _device.OsGuess;
     public string RiskLevel => _device.RiskLevel;
@@ -39,6 +42,7 @@ public sealed class DeviceRowViewModel : ObservableObject
     public string Discovery => _device.DiscoveryText;
     public string Protocols => _device.ProtocolsText;
     public string OpenPorts => _device.OpenPortsText;
+    public int OpenPortCount => _device.Ports.Count;
     public string Topology => _device.TopologyText;
     public string History => _device.HistoryText;
     public string ReplyTtl => _device.ReplyTtl?.ToString(CultureInfo.CurrentCulture) ?? "—";

@@ -56,9 +56,11 @@ A categoria indica a origem mais provável, não atribui culpa. Uma firewall, po
 | Código | Severidade | Significado | Ação recomendada |
 | --- | --- | --- | --- |
 | `LNS-DEV-001` | Warning | MAC inválido, incompleto ou não-unicast | Confirme a resposta e o endereço no equipamento; o resto do dispositivo pode continuar utilizável. |
-| `LNS-DEV-002` | Warning | Fabricante/OUI desconhecido | Atualize a base OUI quando aplicável ou aceite “desconhecido” para MAC privado/novo. |
+| `LNS-DEV-002` | Warning | Titular IEEE/fabricante não determinado | A snapshot offline já é usada; atualize-a opcionalmente para um MAC global recente ou aceite “desconhecido” quando a atribuição for privada, inexistente ou inconclusiva. |
 | `LNS-DEV-003` | Warning | Tipo de dispositivo não reconhecido | Reveja hostname, fabricante, portas e serviços; não force uma classificação sem evidência. |
 | `LNS-DEV-004` | Information | MAC administrado localmente ou aleatório | A identidade e o fabricante podem mudar ou permanecer desconhecidos por design. |
+
+`LNS-DEV-002` não significa que a base incorporada esteja ausente. A aplicação consulta MA-S/IAB `/36`, MA-M `/28` e MA-L `/24`, por esta ordem. Mesmo com a snapshot completa, a IEEE pode publicar `Private`, um OEM pode não coincidir com a marca do dispositivo e um endereço local/aleatório não oferece atribuição global fiável. CID é deliberadamente excluído e não deve ser usado para forçar uma identificação.
 
 ## Aplicação — `LNS-APP-*`
 
@@ -68,6 +70,7 @@ A categoria indica a origem mais provável, não atribui culpa. Uma firewall, po
 | `LNS-APP-002` | Error / Warning | Falha ao ler ou escrever um ficheiro | Confirme caminho, espaço, bloqueios, permissões e proteção antimalware. É aviso quando apenas o histórico opcional falha e o scan é preservado. |
 | `LNS-APP-003` | Error | O Windows recusou o acesso | Escolha um recurso permitido ou peça ao administrador que reveja a política; não contorne controlos. |
 | `LNS-APP-004` | Information | Captura integral não suportada nesta versão | Interprete a lista de protocolos como evidência do scan ativo; para analisar tráfego, use uma ferramenta dedicada numa rede autorizada. |
+| `LNS-APP-005` | Error | Windows Application Control bloqueou o ficheiro (`CreateProcess` 4551) | Use uma release com assinatura Authenticode confiável ou peça ao administrador que autorize o publisher, hash ou catálogo; não desative a proteção para contornar a política. |
 
 ## CLI e exportações
 

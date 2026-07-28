@@ -13,7 +13,16 @@ param(
 
     [switch]$SkipWpfSmoke,
 
-    [switch]$DisableReadyToRun
+    [switch]$DisableReadyToRun,
+
+    [string]$SigningCertificateThumbprint,
+
+    [string]$SignToolPath,
+
+    [ValidateSet("CurrentUser", "LocalMachine")]
+    [string]$SigningCertificateStore = "CurrentUser",
+
+    [string]$TimestampServer = "http://timestamp.digicert.com"
 )
 
 Set-StrictMode -Version Latest
@@ -23,6 +32,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $checkScript = Join-Path $PSScriptRoot "check.ps1"
 $cliProject = Join-Path $repoRoot "LocalNetworkScanner.Cli\LocalNetworkScanner.Cli.csproj"
 $wpfProject = Join-Path $repoRoot "LocalNetworkScanner.Wpf\LocalNetworkScanner.Wpf.csproj"
+$appControlDiagnosticScript = Join-Path $PSScriptRoot "diagnose-app-control.ps1"
 $artifactsRoot = Join-Path $repoRoot "artifacts"
 $publishRoot = Join-Path $artifactsRoot ("publish\" + $RuntimeIdentifier)
 $wpfPublish = Join-Path $publishRoot "wpf"
@@ -114,6 +124,165 @@ function Invoke-WpfSmokeTest {
     }
 }
 
+function Resolve-SignTool {
+    param([string]$RequestedPath)
+
+    $candidates = @()
+    if (-not [string]::IsNullOrWhiteSpace($RequestedPath)) {
+        $candidates += $RequestedPath
+    }
+
+    $command = Get-Command "signtool.exe" -ErrorAction SilentlyContinue
+    if ($null -ne $command) {
+        $candidates += $command.Source
+    }
+
+    $windowsKitsBin = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+    if (Test-Path -LiteralPath $windowsKitsBin -PathType Container) {
+        $candidates += Get-ChildItem -LiteralPath $windowsKitsBin -Directory -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending |
+            ForEach-Object { Join-Path $_.FullName "x64\signtool.exe" }
+    }
+
+    $resolved = $candidates |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_ -PathType Leaf) } |
+        Select-Object -First 1
+
+    if ([string]::IsNullOrWhiteSpace($resolved)) {
+        throw "Authenticode signing was requested, but signtool.exe was not found. Install the Windows SDK or pass -SignToolPath."
+    }
+
+    return [IO.Path]::GetFullPath($resolved)
+}
+
+function Resolve-SigningCertificate {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Thumbprint,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Store
+    )
+
+    $normalized = [Regex]::Replace($Thumbprint, "\s", "").ToUpperInvariant()
+    if ($normalized -notmatch "^[0-9A-F]{40}$") {
+        throw "SigningCertificateThumbprint must be a 40-character SHA-1 certificate thumbprint. SHA-1 is used only to select the certificate; file signatures use SHA-256."
+    }
+
+    $certificatePath = "Cert:\$Store\My\$normalized"
+    $certificate = Get-Item -LiteralPath $certificatePath -ErrorAction SilentlyContinue
+    if ($null -eq $certificate) {
+        throw "Authenticode signing was requested, but certificate '$normalized' was not found in $Store\My."
+    }
+    if (-not $certificate.HasPrivateKey) {
+        throw "The signing certificate '$normalized' does not expose a private key."
+    }
+    if ([DateTime]::Now -lt $certificate.NotBefore -or [DateTime]::Now -gt $certificate.NotAfter) {
+        throw "The signing certificate '$normalized' is not currently valid ($($certificate.NotBefore.ToString('u')) to $($certificate.NotAfter.ToString('u')))."
+    }
+    if ($certificate.Subject -eq $certificate.Issuer) {
+        throw "The signing certificate '$normalized' is self-signed. A certificate chained to a trusted public CA is required for release signing."
+    }
+
+    $rsa = [Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($certificate)
+    if ($null -eq $rsa) {
+        throw "The signing certificate '$normalized' is not an RSA certificate."
+    }
+    $rsa.Dispose()
+
+    $codeSigningOid = "1.3.6.1.5.5.7.3.3"
+    $ekuExtension = $certificate.Extensions |
+        Where-Object { $_.Oid.Value -eq "2.5.29.37" } |
+        Select-Object -First 1
+    $hasCodeSigningEku =
+        $null -ne $ekuExtension -and
+        @($ekuExtension.EnhancedKeyUsages | Where-Object { $_.Value -eq $codeSigningOid }).Count -gt 0
+    if (-not $hasCodeSigningEku) {
+        throw "The certificate '$normalized' is not authorized for Code Signing (EKU $codeSigningOid)."
+    }
+
+    $chain = [Security.Cryptography.X509Certificates.X509Chain]::new()
+    try {
+        $chain.ChainPolicy.RevocationMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::Online
+        $chain.ChainPolicy.RevocationFlag = [Security.Cryptography.X509Certificates.X509RevocationFlag]::ExcludeRoot
+        $chain.ChainPolicy.VerificationFlags = [Security.Cryptography.X509Certificates.X509VerificationFlags]::NoFlag
+        $chain.ChainPolicy.UrlRetrievalTimeout = [TimeSpan]::FromSeconds(30)
+        if (-not $chain.Build($certificate)) {
+            $chainErrors = ($chain.ChainStatus | ForEach-Object { "$($_.Status): $($_.StatusInformation.Trim())" }) -join "; "
+            throw "The signing certificate '$normalized' does not build to a trusted CA or failed revocation checking: $chainErrors"
+        }
+    }
+    finally {
+        $chain.Dispose()
+    }
+
+    return $certificate
+}
+
+function Assert-TimestampServer {
+    param([Parameter(Mandatory = $true)][string]$Uri)
+
+    $parsed = $null
+    if (-not [Uri]::TryCreate($Uri, [UriKind]::Absolute, [ref]$parsed) -or
+        $parsed.Scheme -notin @("http", "https") -or
+        -not [string]::IsNullOrWhiteSpace($parsed.UserInfo)) {
+        throw "TimestampServer must be an absolute HTTP or HTTPS URL without embedded credentials."
+    }
+}
+
+function Invoke-AuthenticodeSign {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ToolPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Thumbprint,
+
+        [Parameter(Mandatory = $true)]
+        [string]$CertificateStore,
+
+        [Parameter(Mandatory = $true)]
+        [string]$TimestampUri
+    )
+
+    Write-Host "> Authenticode sign $(Split-Path $FilePath -Leaf)" -ForegroundColor DarkGray
+    $signArguments = @("sign", "/s", "My")
+    if ($CertificateStore -eq "LocalMachine") {
+        $signArguments += "/sm"
+    }
+    $signArguments += @(
+        "/sha1", $Thumbprint,
+        "/fd", "SHA256",
+        "/tr", $TimestampUri,
+        "/td", "SHA256",
+        "/v",
+        $FilePath
+    )
+    & $ToolPath @signArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "signtool sign failed for '$FilePath' with code $LASTEXITCODE."
+    }
+
+    & $ToolPath verify /pa /tw /v $FilePath
+    if ($LASTEXITCODE -ne 0) {
+        throw "signtool verify failed for '$FilePath' with code $LASTEXITCODE."
+    }
+
+    $signature = Get-AuthenticodeSignature -LiteralPath $FilePath
+    $actualThumbprint = if ($null -ne $signature.SignerCertificate) {
+        $signature.SignerCertificate.Thumbprint
+    }
+    else {
+        "<none>"
+    }
+    if ($signature.Status -ne "Valid" -or $actualThumbprint -ne $Thumbprint) {
+        throw "Authenticode verification failed for '$FilePath': status=$($signature.Status), signer=$actualThumbprint."
+    }
+}
+
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
     throw "The .NET SDK is required and dotnet was not found on PATH."
 }
@@ -125,6 +294,27 @@ if (-not (Test-Path -LiteralPath $wpfProject)) {
 }
 if (-not (Test-Path -LiteralPath $cliProject)) {
     throw "The CLI project is required for a release package: $cliProject"
+}
+if (-not (Test-Path -LiteralPath $appControlDiagnosticScript -PathType Leaf)) {
+    throw "The App Control diagnostic tool is required for a release package: $appControlDiagnosticScript"
+}
+
+$signingEnabled = -not [string]::IsNullOrWhiteSpace($SigningCertificateThumbprint)
+if (-not $signingEnabled -and -not [string]::IsNullOrWhiteSpace($SignToolPath)) {
+    throw "-SignToolPath was provided without -SigningCertificateThumbprint. Signing configuration is incomplete."
+}
+
+$normalizedSigningThumbprint = $null
+$resolvedSignTool = $null
+if ($signingEnabled) {
+    Assert-TimestampServer $TimestampServer
+    $signingCertificate = Resolve-SigningCertificate $SigningCertificateThumbprint $SigningCertificateStore
+    $normalizedSigningThumbprint = $signingCertificate.Thumbprint.ToUpperInvariant()
+    $resolvedSignTool = Resolve-SignTool $SignToolPath
+    Write-Host "Authenticode signing enabled: $($signingCertificate.Subject)" -ForegroundColor Cyan
+}
+else {
+    Write-Host "Authenticode signing state: NotSigned (no certificate thumbprint supplied)." -ForegroundColor Yellow
 }
 
 Push-Location $repoRoot
@@ -189,6 +379,17 @@ try {
         }
     }
 
+    if ($signingEnabled) {
+        foreach ($executable in @($wpfExe, $cliExe)) {
+            Invoke-AuthenticodeSign `
+                $executable `
+                $resolvedSignTool `
+                $normalizedSigningThumbprint `
+                $SigningCertificateStore `
+                $TimestampServer
+        }
+    }
+
     $hostArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
     $canRunPublishedCli =
         ($RuntimeIdentifier -eq "win-x64" -and $hostArchitecture -in @("X64", "Arm64")) -or
@@ -216,7 +417,7 @@ try {
     Copy-Item -LiteralPath $wpfExe -Destination (Join-Path $stagingRoot "LocalNetworkScanner.exe")
     Copy-Item -LiteralPath $cliExe -Destination (Join-Path $stagingRoot "LocalNetworkScanner.Cli.exe")
 
-    foreach ($file in @("README.md", "LICENSE", "CHANGELOG.md", "SECURITY.md")) {
+    foreach ($file in @("README.md", "LICENSE", "CHANGELOG.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md")) {
         Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination $stagingRoot
     }
 
@@ -229,6 +430,10 @@ try {
     foreach ($document in $documentationFiles) {
         Copy-Item -LiteralPath $document.FullName -Destination $stagingDocs
     }
+
+    $stagingTools = Join-Path $stagingRoot "tools"
+    New-Item -ItemType Directory -Path $stagingTools -Force | Out-Null
+    Copy-Item -LiteralPath $appControlDiagnosticScript -Destination $stagingTools
 
     $archivePath = Join-Path $releaseRoot ($packageName + ".zip")
     $checksumPath = $archivePath + ".sha256"
@@ -246,14 +451,17 @@ try {
     $checksumLine = "{0} *{1}" -f $hash.Hash.ToLowerInvariant(), (Split-Path $archivePath -Leaf)
     Set-Content -LiteralPath $checksumPath -Value $checksumLine -Encoding ascii
 
-    foreach ($executable in @($wpfExe, $cliExe)) {
-        $signature = Get-AuthenticodeSignature -LiteralPath $executable
-        if ($signature.Status -ne "Valid") {
-            Write-Warning "Executable is not release-signed: $executable ($($signature.Status))"
+    if (-not $signingEnabled) {
+        foreach ($executable in @($wpfExe, $cliExe)) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $executable
+            if ($signature.Status -ne "Valid") {
+                Write-Warning "Executable is NotSigned: $executable ($($signature.Status))"
+            }
         }
     }
 
     Write-Host "Windows package created successfully." -ForegroundColor Green
+    Write-Host "Authenticode: $(if ($signingEnabled) { 'Signed' } else { 'NotSigned' })"
     Write-Host "Archive:  $archivePath"
     Write-Host "SHA-256:  $($hash.Hash.ToLowerInvariant())"
     Write-Host "Checksum: $checksumPath"

@@ -27,6 +27,8 @@ public static class DiagnosticMapper
             HttpRequestException or SocketException or NetworkInformationException or TimeoutException =>
                 DiagnosticCatalog.NetworkOperationFailed(target),
             Win32Exception { NativeErrorCode: 5 } => DiagnosticCatalog.AccessDenied(target),
+            Win32Exception { NativeErrorCode: 4_551 } =>
+                DiagnosticCatalog.ApplicationControlBlocked(target),
             Win32Exception win32Exception when IsNetworkError(win32Exception.NativeErrorCode) =>
                 DiagnosticCatalog.NetworkOperationFailed(target),
             Win32Exception win32Exception =>

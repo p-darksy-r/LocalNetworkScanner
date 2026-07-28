@@ -16,14 +16,15 @@
         Loaded="OnLoaded"
         PreviewKeyDown="OnPreviewKeyDown"
         AutomationProperties.Name="Topologia do scan atual">
-    <Grid Margin="18">
+    <Grid Margin="16">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid Margin="2,0,2,13">
+        <Grid Margin="2,0,2,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -71,17 +72,115 @@
         </Grid>
 
         <Border Grid.Row="1"
+                Margin="0,0,0,10"
+                Padding="12,8"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center"
+                           FontWeight="SemiBold"
+                           Text="Mostrar" />
+                <ComboBox x:Name="TopologyFilterComboBox"
+                          Grid.Column="1"
+                          Width="170"
+                          Margin="9,0,0,0"
+                          SelectedIndex="0"
+                          SelectionChanged="OnTopologyFilterChanged"
+                          AutomationProperties.Name="Filtrar nós da topologia">
+                    <ComboBoxItem Content="Todos" Tag="All" />
+                    <ComboBoxItem Content="Infraestrutura" Tag="Infrastructure" />
+                    <ComboBoxItem Content="Clientes" Tag="Clients" />
+                    <ComboBoxItem Content="Alertas" Tag="Alerts" />
+                </ComboBox>
+                <TextBlock x:Name="TopologySummaryText"
+                           Grid.Column="2"
+                           Margin="14,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           AutomationProperties.LiveSetting="Polite"
+                           Text="A preparar a topologia..." />
+                <TextBlock Grid.Column="3"
+                           Margin="14,0,0,0"
+                           VerticalAlignment="Center"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Text="Evidência observada e inferida claramente distinguida" />
+            </Grid>
+        </Border>
+
+        <TabControl x:Name="TopologyViews"
+                    Grid.Row="2"
+                    Margin="0"
+                    SelectionChanged="OnTopologyViewChanged"
+                    AutomationProperties.Name="Vistas da topologia">
+            <TabItem Header="Mapa visual">
+                <Border Margin="0,4,0,0"
                 Background="{DynamicResource SurfaceMutedBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="9">
-            <controls:NetworkTopologyControl x:Name="TopologyGraph"
-                                             Map="{Binding TopologyMap}"
-                                             SelectedNode="{Binding SelectedTopologyNode, Mode=TwoWay}"
-                                             MinHeight="300" />
-        </Border>
+                    <controls:NetworkTopologyControl x:Name="TopologyGraph"
+                                                     Map="{Binding TopologyMap}"
+                                                     SelectedNode="{Binding SelectedTopologyNode, Mode=TwoWay}"
+                                                     MinHeight="280" />
+                </Border>
+            </TabItem>
 
-        <Grid Grid.Row="2" Margin="2,9,2,0">
+            <TabItem Header="Tabela acessível">
+                <Grid Margin="0,7,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="2*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Margin="2,0,0,5"
+                               FontWeight="SemiBold"
+                               Text="Nós visíveis" />
+                    <DataGrid x:Name="TopologyNodesTable"
+                              Grid.Row="1"
+                              IsReadOnly="True"
+                              SelectionChanged="OnTopologyNodeTableSelectionChanged"
+                              AutomationProperties.Name="Nós visíveis na topologia">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Camada" Width="145" Binding="{Binding Kind}" />
+                            <DataGridTextColumn Header="Nome" Width="*" Binding="{Binding Label}" />
+                            <DataGridTextColumn Header="IP" Width="125" Binding="{Binding IpAddress}" />
+                            <DataGridTextColumn Header="Estado" Width="105" Binding="{Binding State}" />
+                            <DataGridTextColumn Header="Risco" Width="90" Binding="{Binding Risk}" />
+                            <DataGridTextColumn Header="VLAN" Width="90" Binding="{Binding Vlan}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <TextBlock Grid.Row="2"
+                               Margin="2,10,0,5"
+                               FontWeight="SemiBold"
+                               Text="Ligações e respetiva evidência" />
+                    <DataGrid x:Name="TopologyEdgesTable"
+                              Grid.Row="3"
+                              IsReadOnly="True"
+                              SelectionMode="Single"
+                              AutomationProperties.Name="Ligações e evidência da topologia">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Origem" Width="*" Binding="{Binding Source}" />
+                            <DataGridTextColumn Header="Destino" Width="*" Binding="{Binding Target}" />
+                            <DataGridTextColumn Header="Tipo" Width="140" Binding="{Binding Kind}" />
+                            <DataGridTextColumn Header="Confiança" Width="100" Binding="{Binding Confidence}" />
+                            <DataGridTextColumn Header="Evidência" Width="2*" Binding="{Binding Evidence}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <Grid Grid.Row="3" Margin="2,9,2,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -97,7 +196,7 @@
                 <TextBlock FontSize="10"
                            Foreground="{DynamicResource TextSecondaryBrush}"
                            TextWrapping="Wrap"
-                           Text="Roda: zoom · arrastar o fundo: mover · Tab: percorrer nós · +/−: zoom · setas: mover · Home: ajustar. A FDB mostra onde o MAC foi aprendido, não prova a ligação física." />
+                           Text="Roda: zoom · arrastar o fundo: mover · Tab: percorrer nós · +/−: zoom · setas: mover · Home: ajustar · Ctrl+1/Ctrl+2: mapa/tabela. A FDB mostra onde o MAC foi aprendido, não prova a ligação física." />
                 <Expander Margin="0,3,0,0"
                           Header="Notas e limites do mapa"
                           AutomationProperties.Name="Notas e limites técnicos da topologia">
@@ -131,7 +230,8 @@
                     <TextBlock Margin="0,2,0,0" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding SelectedTopologyNode.Subtitle}" TextTrimming="CharacterEllipsis" />
                     <WrapPanel Margin="0,3,0,0">
                         <TextBlock Margin="0,0,12,0" FontSize="10" Text="{Binding SelectedTopologyNode.IpAddress, StringFormat=IP: {0}}" />
-                        <TextBlock FontSize="10" Text="{Binding SelectedTopologyNode.VlanId, StringFormat=VLAN: {0}}" />
+                        <TextBlock Margin="0,0,12,0" FontSize="10" Text="{Binding SelectedTopologyNode.VlanId, StringFormat=VLAN: {0}}" />
+                        <TextBlock FontSize="10" Text="{Binding SelectedTopologyNode.RiskLevel, StringFormat=Risco: {0}}" />
                     </WrapPanel>
                 </StackPanel>
             </Border>

@@ -39,7 +39,17 @@ O produto limita o scan explícito da CLI a endereços privados/locais. Isso red
 
 O MAC é normalmente obtido através da vizinhança ARP. ARP opera no domínio de camada 2; para um destino roteado, o computador vê normalmente o MAC do gateway e não o MAC do dispositivo final. Por isso, um MAC remoto pode estar indisponível.
 
-O fabricante é uma correspondência heurística de prefixos OUI. A base local pode não conter todos os fabricantes e endereços privados/aleatórios não identificam de forma fiável a marca do equipamento.
+A aplicação inclui uma snapshot offline das listagens IEEE MA-L, MA-M, MA-S e IAB. A snapshot de 2026-07-28 contém 58 019 linhas de origem e 58 016 prefixos únicos depois da normalização. Não é necessário um download inicial. A resolução usa o prefixo mais longo disponível, na ordem `/36 → /28 → /24`, para que MA-S/IAB e MA-M não sejam escondidos por uma correspondência MA-L menos específica.
+
+O resultado é o **titular registado do prefixo IEEE**. Não confirma o fabricante físico, a marca ou o modelo:
+
+- `Private` significa que a IEEE não publica a identidade do titular;
+- um MAC localmente administrado ou aleatório não permite inferir de forma fiável uma organização;
+- um MAC multicast/grupo não identifica uma interface individual;
+- virtualização, adaptadores USB, componentes OEM, contract manufacturing e blocos partilhados podem identificar apenas a interface ou o titular do bloco;
+- o registo CID é excluído porque não deve ser tratado como origem de um MAC EUI global.
+
+A base incorporada envelhece com a release. A atualização a partir das quatro URLs oficiais é opcional, explícita e substituída apenas depois de validação; uma falha mantém a snapshot funcional. Esta operação não envia telemetria, MACs, IPs, inventário, SSID ou topologia. Consulte [Base de entidades MAC incorporada](VENDOR_DATABASE.md).
 
 ## Portas, serviços e protocolos
 
@@ -152,5 +162,7 @@ O executável self-contained inclui o runtime .NET, mas continua dependente de A
 ## Dados sensíveis
 
 Snapshots e exportações podem conter IPs, MACs, SSIDs, BSSIDs, hostnames, serviços e portas. Estes dados permitem mapear uma rede. Guarde-os com controlo de acesso e remova identificadores antes de pedir suporte público.
+
+Não existe telemetria do produto. Os únicos pedidos externos fora do scan são ações explícitas, como abrir um link ou atualizar opcionalmente as listagens IEEE; a atualização obtém ficheiros públicos sem anexar o inventário da rede.
 
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

@@ -4,9 +4,46 @@
 
 Todas as alterações relevantes deste projeto são registadas neste ficheiro. O formato segue os princípios de Keep a Changelog e o versionamento segue Semantic Versioning.
 
-## [Unreleased]
+## [Unreleased — candidato 1.3.0]
 
-Ainda sem alterações após `1.2.0`.
+Validado em 2026-07-28; ainda não publicado como tag/release.
+
+### Added
+
+- relatório de suporte JSON agregado e sem identificadores de rede, disponível na UI e através de `--support`;
+- snapshot offline comprimida das listagens IEEE MA-L, MA-M, MA-S e IAB, com 58 019 linhas de origem em 2026-07-28 e 58 016 prefixos únicos depois da normalização;
+- lookup de titular IEEE pelo prefixo mais específico (`/36 → /28 → /24`) e atualização opcional das quatro listagens oficiais, sem exigir download no primeiro arranque;
+- controlo de privacidade para desativar a leitura/escrita do histórico e ação explícita para apagar snapshots locais;
+- código `LNS-APP-005` para bloqueios do Windows Application Control, incluindo `CreateProcess` 4551;
+- diagnóstico e documentação dedicados a Smart App Control/App Control, sem recomendar que a proteção seja contornada;
+- suporte de release opcional e fail-closed para assinatura Authenticode quando forem fornecidas credenciais de assinatura confiáveis.
+
+### Changed
+
+- topologia redesenhada com uma hierarquia visual inspirada em controladores de rede modernos, melhor leitura de infraestrutura, clientes, VLAN, risco e evidência;
+- README reorganizado como página de produto, com imagens sintéticas da UI, download, instalação, início rápido, compatibilidade, privacidade, funcionalidades e limites antes da informação de desenvolvimento;
+- histórico e metadados passam a preservar a identidade durante transições IP→MAC, ausência temporária de MAC e alterações da âncora da rede;
+- ordenação da lista usa valores tipados para IP, latência, risco e número de portas;
+- filtros sem correspondências apresentam um estado claro e uma ação para repor pesquisa/filtro;
+- o clique direito seleciona primeiro a linha alvo antes de executar ações do dispositivo;
+- parâmetros numéricos avançados bloqueiam o scan enquanto existirem erros de conversão ou intervalo visíveis;
+- descoberta ARP deixa de criar um processo `arp.exe` por endereço e reutiliza informação de vizinhança ao longo do scan;
+- identificação MAC passa a descrever o titular registado do prefixo em vez de prometer o fabricante físico; CID é excluído e casos `Private`, local/aleatório, virtual ou OEM permanecem explicitamente inconclusivos;
+- repositório documenta diretamente o candidato atual, e o GitHub passa a ter descrição, tópicos e alertas de dependências sem branches automáticos.
+
+### Fixed
+
+- aliases, notas, favoritos e comparação histórica já não desaparecem quando o mesmo dispositivo ganha/perde temporariamente um MAC válido;
+- reutilização do mesmo IP por um MAC diferente deixa de herdar silenciosamente identidade anterior;
+- a execução automática no fim do instalador já não transforma um bloqueio da aplicação pela política do Windows num erro aparente de instalação;
+- releases podem ser reexecutadas sem falhar apenas porque o objeto GitHub Release já existe.
+
+### Security
+
+- relatórios de suporte excluem IPs, MACs, nomes de interface/host/switch, SSID/BSSID, aliases, notas, alvos, contexto e avisos brutos;
+- atualização da base IEEE é sempre explícita e não envia telemetria, MACs, IPs ou inventário; a snapshot remove endereços postais e conserva apenas os campos necessários ao lookup;
+- dados IEEE são documentados separadamente, não são colocados sob MIT e exigem autorização escrita antes de redistribuição pública;
+- o pipeline continua a identificar releases sem assinatura como `NotSigned` e só declara assinatura quando todos os artefactos exigidos forem validados.
 
 ## [1.2.0] - 2026-07-22
 

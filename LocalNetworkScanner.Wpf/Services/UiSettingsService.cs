@@ -75,6 +75,7 @@ public sealed class UiSettings
     public bool EnableArp { get; set; } = true;
     public bool EnableMulticastDiscovery { get; set; } = true;
     public bool EnableNetBiosDiscovery { get; set; } = true;
+    public bool EnableHistory { get; set; } = true;
     public bool EnableSnmpTopology { get; set; }
     public string SnmpSwitchAddress { get; set; } = string.Empty;
     public int SnmpTimeoutMs { get; set; } = 900;

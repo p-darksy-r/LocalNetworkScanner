@@ -54,6 +54,12 @@ VersionInfoCompany={#AppPublisher}
 VersionInfoDescription={#AppName} installer ({#RuntimeIdentifier})
 VersionInfoCopyright=Copyright (c) 2026 p-darksy-r and Local Network Scanner.
 VersionInfoProductName={#AppName}
+#ifdef SignToolName
+SignTool={#SignToolName}
+SignedUninstaller=yes
+#else
+SignedUninstaller=no
+#endif
 
 #if RuntimeIdentifier == "win-x64"
 ArchitecturesAllowed=x64compatible
@@ -79,14 +85,13 @@ Source: "{#SourceRoot}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\SECURITY.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceRoot}\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceRoot}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 Name: "{group}\Documentação"; Filename: "{app}\README.md"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
-
-[Run]
-Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 ; Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

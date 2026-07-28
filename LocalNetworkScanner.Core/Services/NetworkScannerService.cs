@@ -63,6 +63,9 @@ public sealed class NetworkScannerService
         ConcurrentDictionary<IPAddress, NetworkDevice> devices = [];
         ConcurrentDictionary<IPAddress, string> invalidMacAddresses = [];
         HashSet<IPAddress> allowedAddresses = addresses.ToHashSet();
+        await using MacAddressService.ScanSession? macScanSession = options.EnableArp
+            ? _macAddressService.CreateScanSession(networkInterface, cancellationToken)
+            : null;
         int completedHosts = 0;
         int onlineHosts = 0;
 
@@ -106,14 +109,16 @@ public sealed class NetworkScannerService
                         networkInterface.IpAddress,
                         token)
                     : Task.FromResult<int?>(null);
-                Task<string?> arpTask = options.EnableArp
-                    ? _macAddressService.ResolveAsync(address, networkInterface, token)
-                    : Task.FromResult<string?>(null);
 
-                await Task.WhenAll(pingTask, tcpTask, arpTask);
+                // ICMP/TCP fazem o sistema operativo resolver primeiro a vizinhança.
+                // Assim a sessão ARP pode reutilizar a tabela local e só recorre a
+                // SendARP uma vez para endereços que continuem sem entrada.
+                await Task.WhenAll(pingTask, tcpTask);
                 PingProbeResult ping = await pingTask;
                 int? discoveryPort = await tcpTask;
-                string? discoveredMac = await arpTask;
+                string? discoveredMac = options.EnableArp
+                    ? await macScanSession!.ResolveAsync(address, token)
+                    : null;
 
                 if (ping.Success || discoveryPort.HasValue || !string.IsNullOrWhiteSpace(discoveredMac))
                 {
@@ -195,7 +200,7 @@ public sealed class NetworkScannerService
                 : _hostnameResolver.ResolveAsync(device.IpAddress, 1_200, token);
             bool shouldResolveMacWithArp = options.EnableArp && string.IsNullOrWhiteSpace(device.MacAddress);
             Task<string?> macTask = shouldResolveMacWithArp
-                ? _macAddressService.ResolveAsync(device.IpAddress, networkInterface, token)
+                ? macScanSession!.ResolveAsync(device.IpAddress, token)
                 : Task.FromResult(device.MacAddress);
             Task<NetBiosInfo?> netBiosTask = options.EnableNetBiosDiscovery
                 ? _netBiosDiscoveryService.ProbeAsync(

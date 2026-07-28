@@ -10,6 +10,11 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Data\ieee-mac-vendors.tsv.gz"
+                      LogicalName="LocalNetworkScanner.Core.Data.ieee-mac-vendors.tsv.gz" />
+  </ItemGroup>
+
 </Project>
 
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->
