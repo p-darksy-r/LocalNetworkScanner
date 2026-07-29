@@ -227,19 +227,20 @@ if ($signingEnabled) {
 Push-Location $repoRoot
 try {
     if (-not $SkipPublish) {
-        $publishArguments = @("-RuntimeIdentifier", $RuntimeIdentifier, "-SkipWpfSmoke")
+        $publishParameters = @{
+            RuntimeIdentifier = $RuntimeIdentifier
+            SkipWpfSmoke = $true
+        }
         if ($SkipChecks) {
-            $publishArguments += "-SkipChecks"
+            $publishParameters.SkipChecks = $true
         }
         if ($signingEnabled) {
-            $publishArguments += @(
-                "-SigningCertificateThumbprint", $normalizedSigningThumbprint,
-                "-SignToolPath", $resolvedSignTool,
-                "-SigningCertificateStore", $SigningCertificateStore,
-                "-TimestampServer", $TimestampServer
-            )
+            $publishParameters.SigningCertificateThumbprint = $normalizedSigningThumbprint
+            $publishParameters.SignToolPath = $resolvedSignTool
+            $publishParameters.SigningCertificateStore = $SigningCertificateStore
+            $publishParameters.TimestampServer = $TimestampServer
         }
-        & $publishScript @publishArguments
+        & $publishScript @publishParameters
         if ($LASTEXITCODE -ne 0) {
             throw "Portable package publishing failed with code $LASTEXITCODE."
         }

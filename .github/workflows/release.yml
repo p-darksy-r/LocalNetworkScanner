@@ -184,13 +184,15 @@ jobs:
           SIGNING_THUMBPRINT: ${{ steps.signing.outputs.thumbprint }}
           SIGNTOOL_PATH: ${{ steps.signing.outputs.signtool }}
         run: |
-          $publishArguments = @('-RuntimeIdentifier', 'win-x64', '-SkipChecks')
-          if ($env:SIGNING_ENABLED -eq 'true') {
-            $publishArguments += @(
-              '-SigningCertificateThumbprint', $env:SIGNING_THUMBPRINT,
-              '-SignToolPath', $env:SIGNTOOL_PATH)
+          $publishParameters = @{
+            RuntimeIdentifier = 'win-x64'
+            SkipChecks = $true
           }
-          .\scripts\publish-windows.ps1 @publishArguments
+          if ($env:SIGNING_ENABLED -eq 'true') {
+            $publishParameters.SigningCertificateThumbprint = $env:SIGNING_THUMBPRINT
+            $publishParameters.SignToolPath = $env:SIGNTOOL_PATH
+          }
+          .\scripts\publish-windows.ps1 @publishParameters
 
       - name: Publish win-arm64 portable package
         shell: pwsh
@@ -199,16 +201,16 @@ jobs:
           SIGNING_THUMBPRINT: ${{ steps.signing.outputs.thumbprint }}
           SIGNTOOL_PATH: ${{ steps.signing.outputs.signtool }}
         run: |
-          $publishArguments = @(
-            '-RuntimeIdentifier', 'win-arm64',
-            '-SkipChecks',
-            '-SkipWpfSmoke')
-          if ($env:SIGNING_ENABLED -eq 'true') {
-            $publishArguments += @(
-              '-SigningCertificateThumbprint', $env:SIGNING_THUMBPRINT,
-              '-SignToolPath', $env:SIGNTOOL_PATH)
+          $publishParameters = @{
+            RuntimeIdentifier = 'win-arm64'
+            SkipChecks = $true
+            SkipWpfSmoke = $true
           }
-          .\scripts\publish-windows.ps1 @publishArguments
+          if ($env:SIGNING_ENABLED -eq 'true') {
+            $publishParameters.SigningCertificateThumbprint = $env:SIGNING_THUMBPRINT
+            $publishParameters.SignToolPath = $env:SIGNTOOL_PATH
+          }
+          .\scripts\publish-windows.ps1 @publishParameters
 
       - name: Install and verify Inno Setup 6.7.3
         id: inno
@@ -256,16 +258,16 @@ jobs:
           SIGNING_THUMBPRINT: ${{ steps.signing.outputs.thumbprint }}
           SIGNTOOL_PATH: ${{ steps.signing.outputs.signtool }}
         run: |
-          $installerArguments = @(
-            '-RuntimeIdentifier', 'win-x64',
-            '-SkipPublish',
-            '-IsccPath', $env:ISCC_PATH)
-          if ($env:SIGNING_ENABLED -eq 'true') {
-            $installerArguments += @(
-              '-SigningCertificateThumbprint', $env:SIGNING_THUMBPRINT,
-              '-SignToolPath', $env:SIGNTOOL_PATH)
+          $installerParameters = @{
+            RuntimeIdentifier = 'win-x64'
+            SkipPublish = $true
+            IsccPath = $env:ISCC_PATH
           }
-          .\scripts\build-installer.ps1 @installerArguments
+          if ($env:SIGNING_ENABLED -eq 'true') {
+            $installerParameters.SigningCertificateThumbprint = $env:SIGNING_THUMBPRINT
+            $installerParameters.SignToolPath = $env:SIGNTOOL_PATH
+          }
+          .\scripts\build-installer.ps1 @installerParameters
 
       - name: Build win-arm64 installer
         shell: pwsh
@@ -275,16 +277,16 @@ jobs:
           SIGNING_THUMBPRINT: ${{ steps.signing.outputs.thumbprint }}
           SIGNTOOL_PATH: ${{ steps.signing.outputs.signtool }}
         run: |
-          $installerArguments = @(
-            '-RuntimeIdentifier', 'win-arm64',
-            '-SkipPublish',
-            '-IsccPath', $env:ISCC_PATH)
-          if ($env:SIGNING_ENABLED -eq 'true') {
-            $installerArguments += @(
-              '-SigningCertificateThumbprint', $env:SIGNING_THUMBPRINT,
-              '-SignToolPath', $env:SIGNTOOL_PATH)
+          $installerParameters = @{
+            RuntimeIdentifier = 'win-arm64'
+            SkipPublish = $true
+            IsccPath = $env:ISCC_PATH
           }
-          .\scripts\build-installer.ps1 @installerArguments
+          if ($env:SIGNING_ENABLED -eq 'true') {
+            $installerParameters.SigningCertificateThumbprint = $env:SIGNING_THUMBPRINT
+            $installerParameters.SignToolPath = $env:SIGNTOOL_PATH
+          }
+          .\scripts\build-installer.ps1 @installerParameters
 
       - name: Create combined checksum manifest
         shell: pwsh
