@@ -58,6 +58,63 @@ List<(string Name, Func<Task> Run)> tests =
         Equal("22,80,81,82,443", string.Join(',', ServiceCatalog.ParsePortSpecification("443,80-82,22")));
         Throws<FormatException>(() => ServiceCatalog.ParsePortSpecification("0,70000"));
     })),
+    ("ICMP source binding rejects invalid routes without fallback", async () =>
+    {
+        PingScannerService scanner = new();
+
+        PingProbeResult incompatibleSource = await scanner.ProbeAsync(
+            IPAddress.Loopback,
+            timeoutMs: 50,
+            IPAddress.IPv6Loopback,
+            CancellationToken.None);
+        Equal(false, incompatibleSource.Success);
+        Equal<long?>(null, incompatibleSource.RoundtripTimeMs);
+        Equal<int?>(null, incompatibleSource.ReplyTtl);
+
+        if (OperatingSystem.IsWindows())
+        {
+            PingProbeResult loopback = await scanner.ProbeAsync(
+                IPAddress.Loopback,
+                timeoutMs: 1_000,
+                IPAddress.Loopback,
+                CancellationToken.None);
+            Equal(loopback.Success, loopback.RoundtripTimeMs.HasValue);
+            Equal(loopback.Success, loopback.ReplyTtl.HasValue);
+        }
+
+        await ThrowsAsync<ArgumentNullException>(() =>
+            scanner.ProbeAsync(
+                null!,
+                timeoutMs: 50,
+                IPAddress.Loopback,
+                CancellationToken.None));
+        await ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            scanner.ProbeAsync(
+                IPAddress.Loopback,
+                timeoutMs: 0,
+                IPAddress.Loopback,
+                CancellationToken.None));
+
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+        await ThrowsAsync<OperationCanceledException>(() =>
+            scanner.ProbeAsync(
+                IPAddress.Loopback,
+                timeoutMs: 50,
+                IPAddress.Loopback,
+                cancellation.Token));
+
+        MethodInfo? sourceBoundOverload = typeof(PingScannerService).GetMethod(
+            nameof(PingScannerService.ProbeAsync),
+            [
+                typeof(IPAddress),
+                typeof(int),
+                typeof(IPAddress),
+                typeof(CancellationToken)
+            ]);
+        NotNull(sourceBoundOverload);
+        Equal("sourceAddress", sourceBoundOverload!.GetParameters()[2].Name);
+    }),
     ("Diagnostic contract and sanitization", () => Sync(() =>
     {
         ScanDiagnostic diagnostic = new(
@@ -222,6 +279,51 @@ List<(string Name, Func<Task> Run)> tests =
         True(lowerIp.OpenPortCount < higherIp.OpenPortCount,
             "As portas devem ser ordenadas pela contagem.");
     })),
+    ("TLS state is evidence-based and JSON-stable", () => Sync(() =>
+    {
+        PortScanResult conventionalTlsPort = new()
+        {
+            Port = 443,
+            ServiceName = ServiceCatalog.GetServiceName(443)
+        };
+        Equal(TlsProbeStatus.NotProbed, conventionalTlsPort.TlsStatus);
+        Equal<bool?>(null, conventionalTlsPort.IsEncrypted);
+        Equal("\u004E\u00E3o verificado", conventionalTlsPort.TlsStatusDisplay);
+
+        using (JsonDocument document = JsonDocument.Parse(
+                   JsonSerializer.Serialize(conventionalTlsPort)))
+        {
+            JsonElement root = document.RootElement;
+            Equal("NotProbed", root.GetProperty("TlsStatus").GetString());
+            Equal(JsonValueKind.Null, root.GetProperty("IsEncrypted").ValueKind);
+        }
+
+        PortScanResult confirmed = new()
+        {
+            Port = 8443,
+            TlsStatus = TlsProbeStatus.HandshakeSucceeded,
+            TlsProtocol = "TLS 1.3"
+        };
+        Equal<bool?>(true, confirmed.IsEncrypted);
+        Equal("TLS 1.3 confirmado", confirmed.TlsStatusDisplay);
+
+        PortScanResult failed = new()
+        {
+            Port = 443,
+            TlsStatus = TlsProbeStatus.HandshakeFailed,
+            TlsFailureReason = "handshake rejeitado"
+        };
+        Equal<bool?>(null, failed.IsEncrypted);
+        Equal("Indeterminado (handshake rejeitado)", failed.TlsStatusDisplay);
+
+        PortScanResult failedWithoutReason = new()
+        {
+            Port = 443,
+            TlsStatus = TlsProbeStatus.HandshakeFailed
+        };
+        Equal<bool?>(null, failedWithoutReason.IsEncrypted);
+        Equal("Indeterminado (falha)", failedWithoutReason.TlsStatusDisplay);
+    })),
     ("Topology filters distinguish infrastructure clients and alerts", () => Sync(() =>
     {
         NetworkMapNode gateway = new()
@@ -256,6 +358,118 @@ List<(string Name, Func<Task> Run)> tests =
         Equal(true, NetworkTopologyControl.IsNodeVisible(client, TopologyFilterMode.Clients));
         Equal(false, NetworkTopologyControl.IsNodeVisible(client, TopologyFilterMode.Alerts));
         Equal(true, NetworkTopologyControl.IsNodeVisible(alert, TopologyFilterMode.Alerts));
+    })),
+    ("Topology filters preserve matching nodes and ancestor context", () => Sync(() =>
+    {
+        NetworkMapNode unrelated = new()
+        {
+            Id = "unrelated",
+            Kind = NetworkMapNodeKind.Gateway,
+            Label = "Gateway sem liga\u00E7\u00E3o"
+        };
+        NetworkMapNode client = new()
+        {
+            Id = "client",
+            Kind = NetworkMapNodeKind.Device,
+            Label = "Port\u00E1til",
+            DeviceType = "Computador Windows"
+        };
+        NetworkMapNode network = new()
+        {
+            Id = "network",
+            Kind = NetworkMapNodeKind.NetworkSegment,
+            Label = "192.168.1.0/24"
+        };
+        NetworkMapNode managedSwitch = new()
+        {
+            Id = "switch",
+            Kind = NetworkMapNodeKind.ManagedSwitch,
+            Label = "Switch principal"
+        };
+        NetworkMapNode gateway = new()
+        {
+            Id = "gateway",
+            Kind = NetworkMapNodeKind.Gateway,
+            Label = "Gateway"
+        };
+        NetworkMap map = new()
+        {
+            NetworkCidr = "192.168.1.0/24",
+            GeneratedAt = DateTimeOffset.UnixEpoch,
+            Nodes = [unrelated, client, network, managedSwitch, gateway],
+            Edges =
+            [
+                new NetworkMapEdge
+                {
+                    SourceId = "network",
+                    TargetId = "gateway",
+                    Kind = NetworkMapEdgeKind.Contains,
+                    Label = "cont\u00E9m",
+                    Evidence = "teste"
+                },
+                new NetworkMapEdge
+                {
+                    SourceId = "gateway",
+                    TargetId = "switch",
+                    Kind = NetworkMapEdgeKind.Layer2Observed,
+                    Label = "liga",
+                    Evidence = "teste"
+                },
+                new NetworkMapEdge
+                {
+                    SourceId = "switch",
+                    TargetId = "client",
+                    Kind = NetworkMapEdgeKind.Layer2Observed,
+                    Label = "liga",
+                    Evidence = "teste"
+                },
+                new NetworkMapEdge
+                {
+                    SourceId = "client",
+                    TargetId = "gateway",
+                    Kind = NetworkMapEdgeKind.IpReachability,
+                    Label = "ciclo",
+                    Evidence = "teste"
+                },
+                new NetworkMapEdge
+                {
+                    SourceId = "ghost",
+                    TargetId = "client",
+                    Kind = NetworkMapEdgeKind.Layer2Observed,
+                    Label = "origem desconhecida",
+                    Evidence = "teste"
+                },
+                new NetworkMapEdge
+                {
+                    SourceId = "client",
+                    TargetId = "missing",
+                    Kind = NetworkMapEdgeKind.Layer2Observed,
+                    Label = "destino desconhecido",
+                    Evidence = "teste"
+                }
+            ]
+        };
+
+        IReadOnlyList<NetworkMapNode> visible = NetworkTopologyControl.GetVisibleNodes(
+            map,
+            TopologyFilterMode.Clients,
+            out int matchingCount);
+
+        Equal(1, matchingCount);
+        Equal("client,network,switch,gateway", string.Join(',', visible.Select(node => node.Id)));
+        Equal(true, NetworkTopologyControl.IsNodeVisible(client, TopologyFilterMode.Clients));
+        Equal(false, NetworkTopologyControl.IsNodeVisible(network, TopologyFilterMode.Clients));
+        Equal(false, NetworkTopologyControl.IsNodeVisible(managedSwitch, TopologyFilterMode.Clients));
+        Equal(false, NetworkTopologyControl.IsNodeVisible(gateway, TopologyFilterMode.Clients));
+
+        IReadOnlyList<NetworkMapNode> all = NetworkTopologyControl.GetVisibleNodes(
+            map,
+            TopologyFilterMode.All,
+            out int allMatchingCount);
+        Equal(map.Nodes.Count, allMatchingCount);
+        Equal(
+            string.Join(',', map.Nodes.Select(node => node.Id)),
+            string.Join(',', all.Select(node => node.Id)));
     })),
     ("ARP neighbor table parsing", () => Sync(() =>
     {
@@ -978,6 +1192,162 @@ List<(string Name, Func<Task> Run)> tests =
         Equal("printer.local", records[0].Hostname);
         Equal(IPAddress.Parse("192.168.1.50"), records[0].Address);
     })),
+    ("mDNS compressed DNS-SD records preserve typed evidence", () => Sync(() =>
+    {
+        byte[] packet = BuildCompressedDnsSdResponse();
+        True(
+            MdnsDiscoveryService.IsValidResponse(packet, sourcePort: 5353),
+            "Uma resposta mDNS autoritativa com ID zero e origem 5353 deveria ser aceite.");
+
+        byte[] queryPacket = (byte[])packet.Clone();
+        BinaryPrimitives.WriteUInt16BigEndian(queryPacket.AsSpan(2, 2), 0);
+        True(!MdnsDiscoveryService.IsValidResponse(queryPacket, sourcePort: 5353),
+            "Uma query UDP não pode ser acumulada como resposta mDNS.");
+
+        byte[] foreignTransaction = (byte[])packet.Clone();
+        BinaryPrimitives.WriteUInt16BigEndian(foreignTransaction.AsSpan(0, 2), 7);
+        True(!MdnsDiscoveryService.IsValidResponse(foreignTransaction, sourcePort: 5353),
+            "Uma transação alheia não pode ser acumulada.");
+
+        byte[] unsupportedOpcode = (byte[])packet.Clone();
+        BinaryPrimitives.WriteUInt16BigEndian(unsupportedOpcode.AsSpan(2, 2), 0x8800);
+        True(!MdnsDiscoveryService.IsValidResponse(unsupportedOpcode, sourcePort: 5353),
+            "Um opcode DNS não suportado deve ser rejeitado.");
+        True(!MdnsDiscoveryService.IsValidResponse(packet, sourcePort: 9999),
+            "A resposta deve ter origem na porta mDNS.");
+
+        MdnsDiscoveryService.MdnsMessage message = MdnsDiscoveryService.ParseMessage(packet);
+
+        Equal(5, message.Records.Count);
+
+        MdnsDiscoveryService.MdnsResourceRecord pointer =
+            message.Records.Single(record => record.Type == 12);
+        Equal("_ipp._tcp.local", pointer.Owner);
+        Equal("Office Printer._ipp._tcp.local", pointer.DomainName);
+        Equal((ushort)1, pointer.RecordClass);
+        Equal(120u, pointer.TimeToLive);
+
+        MdnsDiscoveryService.MdnsResourceRecord service =
+            message.Records.Single(record => record.Type == 33);
+        Equal("Office Printer._ipp._tcp.local", service.Owner);
+        Equal("printer.local", service.DomainName);
+        Equal((ushort?)631, service.Port);
+        Equal((ushort?)0, service.Priority);
+        Equal((ushort?)5, service.Weight);
+
+        MdnsDiscoveryService.MdnsResourceRecord text =
+            message.Records.Single(record => record.Type == 16);
+        NotNull(text.Text);
+        Equal("ty=Laser,note=Lab", string.Join(',', text.Text!));
+
+        MdnsDiscoveryService.MdnsResourceRecord ipv4 =
+            message.Records.Single(record => record.Type == 1);
+        Equal((ushort)1, ipv4.RecordClass);
+        Equal(0u, ipv4.TimeToLive);
+        Equal(IPAddress.Parse("192.168.1.50"), ipv4.Address);
+
+        MdnsDiscoveryService.MdnsResourceRecord ipv6 =
+            message.Records.Single(record => record.Type == 28);
+        Equal(IPAddress.Parse("fd00::50"), ipv6.Address);
+        Equal(60u, ipv6.TimeToLive);
+
+        IReadOnlyList<(IPAddress Address, string? Hostname)> addresses =
+            MdnsDiscoveryService.ParseAddressRecords(packet);
+        Equal(2, addresses.Count);
+        True(
+            addresses.Any(record =>
+                record.Address.Equals(IPAddress.Parse("192.168.1.50")) &&
+                record.Hostname == "printer.local"),
+            "O registo A comprimido deveria manter o hostname.");
+        True(
+            addresses.Any(record =>
+                record.Address.Equals(IPAddress.Parse("fd00::50")) &&
+                record.Hostname == "printer.local"),
+            "O registo AAAA comprimido deveria manter o hostname.");
+
+        IReadOnlyList<DiscoveryObservation> observations =
+            MdnsDiscoveryService.CorrelateRecords(message.Records);
+        Equal(2, observations.Count);
+        Equal(IPAddress.Parse("fd00::50"), observations[0].IpAddress);
+        Equal("printer.local", observations[0].Hostname);
+        Equal("Office Printer._ipp._tcp.local", observations[1].Hostname);
+        True(
+            observations.All(observation =>
+                !observation.IpAddress.Equals(IPAddress.Parse("192.168.1.50"))),
+            "Um registo com TTL zero não pode criar uma observação final.");
+
+        MdnsDiscoveryService.MdnsResourceRecord addressEvidence = new(
+            "camera.local",
+            1,
+            1,
+            120,
+            Address: IPAddress.Parse("192.168.1.80"));
+        MdnsDiscoveryService.MdnsResourceRecord serviceEvidence = new(
+            "Front Door._rtsp._tcp.local",
+            33,
+            1,
+            120,
+            DomainName: "camera.local",
+            Port: 554);
+        MdnsDiscoveryService.MdnsResourceRecord serviceGoodbye =
+            serviceEvidence with { TimeToLive = 0 };
+        IReadOnlyList<DiscoveryObservation> hostOnly =
+            MdnsDiscoveryService.CorrelateRecords(
+                [addressEvidence, serviceEvidence, serviceGoodbye]);
+        Equal(1, hostOnly.Count);
+        Equal("camera.local", hostOnly[0].Hostname);
+
+        MdnsDiscoveryService.MdnsResourceRecord addressGoodbye =
+            addressEvidence with { TimeToLive = 0 };
+        Equal(
+            0,
+            MdnsDiscoveryService.CorrelateRecords(
+                [addressEvidence, serviceEvidence, addressGoodbye]).Count);
+    })),
+    ("mDNS parser and query limits fail closed", () => Sync(() =>
+    {
+        byte[] excessiveQuestions = new byte[12];
+        BinaryPrimitives.WriteUInt16BigEndian(excessiveQuestions.AsSpan(4, 2), 65);
+        Equal(0, MdnsDiscoveryService.ParseMessage(excessiveQuestions).Records.Count);
+
+        byte[] excessiveRecords = new byte[12];
+        BinaryPrimitives.WriteUInt16BigEndian(excessiveRecords.AsSpan(6, 2), 257);
+        Equal(0, MdnsDiscoveryService.ParseMessage(excessiveRecords).Records.Count);
+
+        byte[] oversizedPacket = new byte[(16 * 1024) + 1];
+        Equal(0, MdnsDiscoveryService.ParseMessage(oversizedPacket).Records.Count);
+
+        byte[] cyclicPointer = new byte[18];
+        BinaryPrimitives.WriteUInt16BigEndian(cyclicPointer.AsSpan(4, 2), 1);
+        cyclicPointer[12] = 0xC0;
+        cyclicPointer[13] = 0x0C;
+        Equal(0, MdnsDiscoveryService.ParseMessage(cyclicPointer).Records.Count);
+
+        byte[] truncatedPointer = new byte[13];
+        BinaryPrimitives.WriteUInt16BigEndian(truncatedPointer.AsSpan(4, 2), 1);
+        truncatedPointer[12] = 0xC0;
+        Equal(0, MdnsDiscoveryService.ParseMessage(truncatedPointer).Records.Count);
+
+        Throws<ArgumentException>(() => MdnsDiscoveryService.BuildQuery(" "));
+        Throws<ArgumentOutOfRangeException>(() =>
+            MdnsDiscoveryService.BuildQuery("_ipp._tcp.local", 0));
+        Throws<ArgumentException>(() =>
+            MdnsDiscoveryService.BuildQuery($"{new string('a', 64)}.local"));
+        Throws<ArgumentException>(() =>
+            MdnsDiscoveryService.BuildQuery(
+                string.Join('.', Enumerable.Repeat(new string('a', 63), 4))));
+
+        byte[] serviceQuery = MdnsDiscoveryService.BuildQuery("_ipp._tcp.local.", 33);
+        Equal((ushort)1, BinaryPrimitives.ReadUInt16BigEndian(serviceQuery.AsSpan(4, 2)));
+        Equal((ushort)33, BinaryPrimitives.ReadUInt16BigEndian(
+            serviceQuery.AsSpan(serviceQuery.Length - 4, 2)));
+        Equal((ushort)0x8001, BinaryPrimitives.ReadUInt16BigEndian(
+            serviceQuery.AsSpan(serviceQuery.Length - 2, 2)));
+
+        byte[] pointerQuery = MdnsDiscoveryService.BuildQuery("_ipp._tcp.local");
+        Equal((ushort)12, BinaryPrimitives.ReadUInt16BigEndian(
+            pointerQuery.AsSpan(pointerQuery.Length - 4, 2)));
+    })),
     ("Risk score", () => Sync(() =>
     {
         NetworkDevice device = new()
@@ -1492,18 +1862,33 @@ List<(string Name, Func<Task> Run)> tests =
         try
         {
             NetworkScanResult result = CreateTopologyExportResult();
+            result.Devices[0].Ports =
+            [
+                new PortScanResult { Port = 443 },
+                new PortScanResult
+                {
+                    Port = 8443,
+                    TlsStatus = TlsProbeStatus.HandshakeSucceeded,
+                    TlsProtocol = "TLS 1.3"
+                }
+            ];
             await new ExportService().ExportJsonAsync(result, path);
 
             await using FileStream stream = File.OpenRead(path);
             using JsonDocument document = await JsonDocument.ParseAsync(stream);
             JsonElement root = document.RootElement;
-            Equal(3, root.GetProperty("schemaVersion").GetInt32());
+            Equal(4, root.GetProperty("schemaVersion").GetInt32());
             JsonElement diagnostics = root.GetProperty("scan").GetProperty("diagnostics");
             Equal(1, diagnostics.GetArrayLength());
             Equal(DiagnosticCatalog.InvalidMacAddressCode,
                 diagnostics[0].GetProperty("code").GetString());
             True(diagnostics[0].GetProperty("recommendedAction").GetString()?.Length > 0,
                 "O JSON deve incluir a ação recomendada.");
+            JsonElement ports = root.GetProperty("devices")[0].GetProperty("ports");
+            Equal("NotProbed", ports[0].GetProperty("TlsStatus").GetString());
+            Equal(JsonValueKind.Null, ports[0].GetProperty("IsEncrypted").ValueKind);
+            Equal("HandshakeSucceeded", ports[1].GetProperty("TlsStatus").GetString());
+            Equal(true, ports[1].GetProperty("IsEncrypted").GetBoolean());
             JsonElement map = root.GetProperty("topologyMap");
             True(map.GetProperty("nodes").GetArrayLength() >= 3,
                 "O JSON deveria conter os nós do mapa de topologia.");
@@ -1709,6 +2094,12 @@ List<(string Name, Func<Task> Run)> tests =
     }))
 ];
 
+if (tests.Count == 0)
+{
+    Console.Error.WriteLine("FAIL  A suite de testes não contém casos registados.");
+    return 1;
+}
+
 int passed = 0;
 foreach ((string name, Func<Task> run) in tests)
 {
@@ -1867,6 +2258,152 @@ static byte[] BuildMdnsResponse()
     stream.Write([0, 0, 0, 60]);
     stream.Write([0, 4, 192, 168, 1, 50]);
     return stream.ToArray();
+}
+
+static byte[] BuildCompressedDnsSdResponse()
+{
+    using MemoryStream stream = new();
+    byte[] header = new byte[12];
+    BinaryPrimitives.WriteUInt16BigEndian(header.AsSpan(2, 2), 0x8400);
+    BinaryPrimitives.WriteUInt16BigEndian(header.AsSpan(6, 2), 5);
+    stream.Write(header);
+
+    List<(int LengthOffset, int DataOffset, int DataEnd)> recordData = [];
+
+    int serviceTypeOffset = checked((int)stream.Position);
+    WriteDnsName(stream, "_ipp", "_tcp", "local");
+    int pointerLengthOffset = WriteDnsRecordHeader(
+        stream,
+        type: 12,
+        recordClass: 0x8001,
+        timeToLive: 120);
+    int pointerDataOffset = checked((int)stream.Position);
+    WriteDnsLabel(stream, "Office Printer");
+    WriteDnsPointer(stream, serviceTypeOffset);
+    recordData.Add((
+        pointerLengthOffset,
+        pointerDataOffset,
+        checked((int)stream.Position)));
+
+    int instanceOffset = checked((int)stream.Position);
+    WriteDnsLabel(stream, "Office Printer");
+    WriteDnsPointer(stream, serviceTypeOffset);
+    int serviceLengthOffset = WriteDnsRecordHeader(
+        stream,
+        type: 33,
+        recordClass: 0x8001,
+        timeToLive: 120);
+    int serviceDataOffset = checked((int)stream.Position);
+    WriteDnsUInt16(stream, 0);
+    WriteDnsUInt16(stream, 5);
+    WriteDnsUInt16(stream, 631);
+    int hostOffset = checked((int)stream.Position);
+    WriteDnsName(stream, "printer", "local");
+    recordData.Add((
+        serviceLengthOffset,
+        serviceDataOffset,
+        checked((int)stream.Position)));
+
+    WriteDnsPointer(stream, instanceOffset);
+    int textLengthOffset = WriteDnsRecordHeader(
+        stream,
+        type: 16,
+        recordClass: 0x8001,
+        timeToLive: 120);
+    int textDataOffset = checked((int)stream.Position);
+    WriteDnsText(stream, "ty=Laser");
+    WriteDnsText(stream, "note=Lab");
+    recordData.Add((
+        textLengthOffset,
+        textDataOffset,
+        checked((int)stream.Position)));
+
+    WriteDnsPointer(stream, hostOffset);
+    int addressLengthOffset = WriteDnsRecordHeader(
+        stream,
+        type: 1,
+        recordClass: 0x8001,
+        timeToLive: 0);
+    int addressDataOffset = checked((int)stream.Position);
+    stream.Write(IPAddress.Parse("192.168.1.50").GetAddressBytes());
+    recordData.Add((
+        addressLengthOffset,
+        addressDataOffset,
+        checked((int)stream.Position)));
+
+    WriteDnsPointer(stream, hostOffset);
+    int addressV6LengthOffset = WriteDnsRecordHeader(
+        stream,
+        type: 28,
+        recordClass: 1,
+        timeToLive: 60);
+    int addressV6DataOffset = checked((int)stream.Position);
+    stream.Write(IPAddress.Parse("fd00::50").GetAddressBytes());
+    recordData.Add((
+        addressV6LengthOffset,
+        addressV6DataOffset,
+        checked((int)stream.Position)));
+
+    byte[] packet = stream.ToArray();
+    foreach ((int lengthOffset, int dataOffset, int dataEnd) in recordData)
+    {
+        BinaryPrimitives.WriteUInt16BigEndian(
+            packet.AsSpan(lengthOffset, 2),
+            checked((ushort)(dataEnd - dataOffset)));
+    }
+
+    return packet;
+}
+
+static int WriteDnsRecordHeader(
+    MemoryStream stream,
+    ushort type,
+    ushort recordClass,
+    uint timeToLive)
+{
+    WriteDnsUInt16(stream, type);
+    WriteDnsUInt16(stream, recordClass);
+    Span<byte> ttl = stackalloc byte[4];
+    BinaryPrimitives.WriteUInt32BigEndian(ttl, timeToLive);
+    stream.Write(ttl);
+    int lengthOffset = checked((int)stream.Position);
+    WriteDnsUInt16(stream, 0);
+    return lengthOffset;
+}
+
+static void WriteDnsName(MemoryStream stream, params string[] labels)
+{
+    foreach (string label in labels)
+        WriteDnsLabel(stream, label);
+
+    stream.WriteByte(0);
+}
+
+static void WriteDnsLabel(MemoryStream stream, string label)
+{
+    byte[] bytes = Encoding.UTF8.GetBytes(label);
+    stream.WriteByte(checked((byte)bytes.Length));
+    stream.Write(bytes);
+}
+
+static void WriteDnsPointer(MemoryStream stream, int offset)
+{
+    True(offset is >= 0 and < 0x4000, "O offset DNS deve caber num ponteiro comprimido.");
+    WriteDnsUInt16(stream, checked((ushort)(0xC000 | offset)));
+}
+
+static void WriteDnsText(MemoryStream stream, string text)
+{
+    byte[] bytes = Encoding.UTF8.GetBytes(text);
+    stream.WriteByte(checked((byte)bytes.Length));
+    stream.Write(bytes);
+}
+
+static void WriteDnsUInt16(MemoryStream stream, ushort value)
+{
+    Span<byte> buffer = stackalloc byte[2];
+    BinaryPrimitives.WriteUInt16BigEndian(buffer, value);
+    stream.Write(buffer);
 }
 
 static byte[] BuildSnmpResponse()

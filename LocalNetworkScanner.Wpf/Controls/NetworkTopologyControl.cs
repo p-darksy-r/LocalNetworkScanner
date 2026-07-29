@@ -141,6 +141,57 @@ public sealed class NetworkTopologyControl : Grid
         };
     }
 
+    public static IReadOnlyList<NetworkMapNode> GetVisibleNodes(
+        NetworkMap map,
+        TopologyFilterMode filterMode,
+        out int matchingCount)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+
+        NetworkMapNode[] matchingNodes = map.Nodes
+            .Where(node => IsNodeVisible(node, filterMode))
+            .ToArray();
+        matchingCount = matchingNodes.Length;
+        if (filterMode == TopologyFilterMode.All || matchingNodes.Length == 0)
+            return matchingNodes;
+
+        HashSet<string> knownNodeIds = map.Nodes
+            .Select(node => node.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        HashSet<string> visibleNodeIds = matchingNodes
+            .Select(node => node.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        Dictionary<string, string[]> parentIdsByTarget = map.Edges
+            .Where(edge =>
+                knownNodeIds.Contains(edge.SourceId) &&
+                knownNodeIds.Contains(edge.TargetId))
+            .GroupBy(edge => edge.TargetId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .Select(edge => edge.SourceId)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray(),
+                StringComparer.Ordinal);
+
+        Queue<string> pendingNodeIds = new(visibleNodeIds);
+        while (pendingNodeIds.TryDequeue(out string? nodeId))
+        {
+            if (!parentIdsByTarget.TryGetValue(nodeId, out string[]? parentIds))
+                continue;
+
+            foreach (string parentId in parentIds)
+            {
+                if (visibleNodeIds.Add(parentId))
+                    pendingNodeIds.Enqueue(parentId);
+            }
+        }
+
+        return map.Nodes
+            .Where(node => visibleNodeIds.Contains(node.Id))
+            .ToArray();
+    }
+
     public static bool IsInfrastructureNode(NetworkMapNode node)
     {
         ArgumentNullException.ThrowIfNull(node);
@@ -254,10 +305,11 @@ public sealed class NetworkTopologyControl : Grid
             return;
         }
 
-        NetworkMapNode[] visibleNodes = map.Nodes
-            .Where(node => IsNodeVisible(node, FilterMode))
-            .ToArray();
-        if (visibleNodes.Length == 0)
+        IReadOnlyList<NetworkMapNode> visibleNodes = GetVisibleNodes(
+            map,
+            FilterMode,
+            out int matchingCount);
+        if (matchingCount == 0)
         {
             _emptyMessage.Text = FilterMode == TopologyFilterMode.Alerts
                 ? "Não existem dispositivos com alertas neste mapa."

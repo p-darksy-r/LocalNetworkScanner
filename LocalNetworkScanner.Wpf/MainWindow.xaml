@@ -584,7 +584,7 @@
                                          Padding="30,6,34,6"
                                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                          AutomationProperties.Name="Pesquisar dispositivos"
-                                         AutomationProperties.HelpText="Filtra por nome, IP, MAC, fabricante, tipo, porta ou protocolo." />
+                                         AutomationProperties.HelpText="Filtra por nome, IP, MAC, entidade IEEE, tipo, porta ou protocolo." />
                                 <TextBlock Margin="10,0,0,0"
                                            VerticalAlignment="Center"
                                            FontFamily="Segoe MDL2 Assets"
@@ -725,7 +725,18 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal">
-                                                <Ellipse Width="8" Height="8" Margin="0,0,7,0" Fill="{DynamicResource SuccessBrush}" />
+                                                <Ellipse Width="8" Height="8" Margin="0,0,7,0">
+                                                    <Ellipse.Style>
+                                                        <Style TargetType="Ellipse">
+                                                            <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsOnline}" Value="True">
+                                                                    <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Ellipse.Style>
+                                                </Ellipse>
                                                 <TextBlock VerticalAlignment="Center" Text="{Binding StatusText}" />
                                             </StackPanel>
                                         </DataTemplate>
@@ -1105,7 +1116,7 @@
                                                 <GridViewColumn Width="58" Header="Porta" DisplayMemberBinding="{Binding Port}" />
                                                 <GridViewColumn Width="62" Header="Proto." DisplayMemberBinding="{Binding Protocol}" />
                                                 <GridViewColumn Width="112" Header="Serviço" DisplayMemberBinding="{Binding ServiceName}" />
-                                                <GridViewColumn Width="92" Header="TLS" DisplayMemberBinding="{Binding TlsProtocol}" />
+                                                <GridViewColumn Width="190" Header="TLS" DisplayMemberBinding="{Binding TlsStatusDisplay}" />
                                             </GridView>
                                         </ListView.View>
                                         <ListView.ItemContainerStyle>

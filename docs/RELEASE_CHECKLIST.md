@@ -90,7 +90,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeI
 - [ ] O smoke test `LocalNetworkScanner.Cli.exe --help` termina com exit code `0` numa máquina da arquitetura publicada; cross-publish ARM64 num host x64 não conta como smoke ARM64.
 - [ ] A UI arranca, inicia e cancela um scan de laboratório e fecha sem processo residual.
 - [ ] O ZIP inclui UI, CLI, README, licença, changelog, limites técnicos, `docs/VENDOR_DATABASE.md` e `THIRD_PARTY_NOTICES.md`.
-- [ ] Exports JSON schema v3 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações ou dos diagnósticos documentados.
+- [ ] Exports JSON schema v4 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações, diagnósticos ou estado TLS documentados.
 - [ ] As opções CLI `--html` e `--graphml` foram verificadas com dados sintéticos ou de laboratório.
 - [ ] O SHA-256 publicado corresponde exatamente ao ZIP.
 
@@ -105,12 +105,12 @@ if ($actual -ne $expected) { throw 'SHA-256 invalido.' }
 
 ## 6. Assinatura e reputação
 
-- [ ] Foi escolhido e documentado um dos dois estados: release não assinada ou release Authenticode assinada.
-- [ ] Numa release não assinada, página da release, README e instruções de instalação indicam claramente `NotSigned` e o possível aviso do SmartScreen.
+- [ ] Artefactos privados de workflow sem assinatura indicam claramente `NotSigned` e não são publicados como GitHub Release.
+- [ ] Uma GitHub Release publicada contém apenas artefactos Authenticode `Signed`.
 - [ ] Checksums não são apresentados como substitutos de Authenticode nem como prova da identidade do publisher.
 - [ ] O artefacto foi testado com SmartScreen/Defender numa máquina sem histórico do produto.
 
-Se a release for assinada:
+Para uma release publicada:
 
 - [ ] O certificado está válido, tem chave privada e identidade correta.
 - [ ] A chave é obtida de um secret store ou serviço de assinatura; não é copiada para o repositório.
@@ -120,6 +120,7 @@ Se a release for assinada:
 - [ ] `signtool verify /pa /tw` e `Get-AuthenticodeSignature` devolvem sucesso/`Valid` para todos os executáveis finais.
 - [ ] O certificado é RSA, tem EKU Code Signing, cadeia válida para uma CA confiável e não é self-signed.
 - [ ] O certificado efémero e o PFX são removidos do runner num passo `always()`.
+- [ ] O job de build/package conserva apenas `contents: read`; a permissão `contents: write` existe somente no job de publicação.
 
 Uma distribuição que alegue identidade de publisher verificada exige estado `Valid`.
 
@@ -158,7 +159,11 @@ Se for usado outro instalador, documentar a ferramenta e versão, privilégios p
 - [ ] Windows 11 ARM64 suportado: execução nativa ou limitação documentada.
 - [ ] Ethernet, Wi-Fi e uma interface virtual foram verificadas.
 - [ ] Rede sem ICMP, multicast bloqueado e adaptador sem VLAN exposta produzem resultados honestos.
+- [ ] Com duas interfaces/VPN, o ICMP IPv4 usa a origem escolhida e não descobre um alvo através de uma rota diferente.
+- [ ] Portas TLS testadas distinguem handshake confirmado, não verificado e falha indeterminada; o número da porta não cria evidência.
+- [ ] DNS-SD resolve PTR/SRV/TXT/A/AAAA válidos e limita respostas comprimidas, truncadas ou excessivas.
 - [ ] Switch SNMP indisponível, credenciais rejeitadas e tabelas FDB incompletas produzem avisos sem interromper o scan base.
+- [ ] Os filtros da topologia conservam o caminho de infraestrutura até às correspondências sem contar os nós de contexto como resultados.
 - [ ] Modo offline/sem interface ativa mostra uma mensagem acionável.
 - [ ] Entrada inválida, interface ausente, MAC inválido, fabricante/tipo desconhecido e falha inesperada apresentam o código correto sem expor dados sensíveis.
 - [ ] Nomes, SSIDs e hostnames com Unicode não quebram a UI nem CSV/JSON.
@@ -167,11 +172,14 @@ Se for usado outro instalador, documentar a ferramenta e versão, privilégios p
 
 - [ ] ZIP, checksum, changelog e instruções de instalação estão anexados à release correta.
 - [ ] A autorização escrita aplicável à redistribuição IEEE foi arquivada com a evidência da release e os avisos exigidos estão presentes no pacote.
+- [ ] A variável do repositório `IEEE_REDISTRIBUTION_APPROVED` foi definida como `true` apenas depois de arquivar essa autorização.
 - [ ] Os hashes e assinaturas foram novamente verificados depois do upload.
-- [ ] `SIGNING-STATE.txt` e as notas da release dizem explicitamente `Signed` ou `NotSigned`; releases anteriores conhecidas como não assinadas permanecem documentadas como `NotSigned`.
+- [ ] O job de publicação recebeu exatamente 10 assets, voltou a validar `SHA256SUMS.txt`, checksums individuais, timestamps e um único signer, e só depois retirou o estado draft.
+- [ ] `SIGNING-STATE.txt` e as notas da release publicada dizem explicitamente `Signed`; releases anteriores conhecidas como não assinadas permanecem documentadas como `NotSigned`.
 - [ ] A release explica arquitetura, versão mínima de Windows suportada e known issues.
 - [ ] Existe um canal privado para vulnerabilidades e um canal normal para suporte.
 - [ ] Foi guardada uma cópia imutável dos artefactos e logs de build.
+- [ ] A tag/release não existia antes da publicação; assets já publicados nunca são substituídos com `--clobber`.
 - [ ] Foi preparado um plano de rollback ou retirada da release.
 
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

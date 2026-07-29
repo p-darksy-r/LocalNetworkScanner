@@ -153,7 +153,7 @@ public sealed class ExportService
         NetworkMap topologyMap = new NetworkTopologyMapService().Build(result);
         object payload = new
         {
-            schemaVersion = 3,
+            schemaVersion = 4,
             generatedAt = DateTimeOffset.UtcNow,
             network = new
             {

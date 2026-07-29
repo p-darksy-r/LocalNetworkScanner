@@ -38,6 +38,12 @@ public sealed class ServiceProbeService
         IPAddress? localAddress,
         CancellationToken cancellationToken)
     {
+        bool tlsHandshakeAttempted = false;
+        bool tlsHandshakeSucceeded = false;
+        bool expectsTls = ServiceCatalog.IsTlsPort(result.Port);
+        if (expectsTls)
+            ClearTlsEvidence(result);
+
         using CancellationTokenSource timeout =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(timeoutMs);
@@ -50,8 +56,9 @@ public sealed class ServiceProbeService
             await client.ConnectAsync(address, result.Port, timeout.Token);
             await using NetworkStream networkStream = client.GetStream();
 
-            if (ServiceCatalog.IsTlsPort(result.Port))
+            if (expectsTls)
             {
+                tlsHandshakeAttempted = true;
                 SslPolicyErrors certificateErrors = SslPolicyErrors.None;
                 await using SslStream sslStream = new(
                     networkStream,
@@ -70,7 +77,8 @@ public sealed class ServiceProbeService
                 };
 
                 await sslStream.AuthenticateAsClientAsync(options, timeout.Token);
-                result.IsEncrypted = true;
+                tlsHandshakeSucceeded = true;
+                result.TlsStatus = TlsProbeStatus.HandshakeSucceeded;
                 result.TlsProtocol = sslStream.SslProtocol.ToString();
                 result.CertificateTrusted = certificateErrors == SslPolicyErrors.None;
                 result.CertificatePolicyErrors = certificateErrors == SslPolicyErrors.None
@@ -105,11 +113,39 @@ public sealed class ServiceProbeService
         {
             throw;
         }
-        catch
+        catch (Exception exception)
         {
+            if (tlsHandshakeAttempted && !tlsHandshakeSucceeded)
+            {
+                ClearTlsEvidence(result);
+                result.TlsStatus = TlsProbeStatus.HandshakeFailed;
+                result.TlsFailureReason = GetTlsFailureReason(exception);
+            }
+
             // A porta continua confirmada como aberta; banners e TLS são enriquecimento opcional.
         }
     }
+
+    private static void ClearTlsEvidence(PortScanResult result)
+    {
+        result.TlsStatus = TlsProbeStatus.NotProbed;
+        result.TlsProtocol = null;
+        result.TlsFailureReason = null;
+        result.CertificateSubject = null;
+        result.CertificateIssuer = null;
+        result.CertificateExpiresAt = null;
+        result.CertificateTrusted = null;
+        result.CertificatePolicyErrors = null;
+    }
+
+    private static string GetTlsFailureReason(Exception exception) => exception switch
+    {
+        OperationCanceledException => "tempo limite",
+        AuthenticationException => "handshake rejeitado",
+        IOException => "falha de transporte",
+        SocketException => "falha de ligação",
+        _ => "falha inesperada"
+    };
 
     private static async Task<string?> ProbeHttpAsync(
         Stream stream,

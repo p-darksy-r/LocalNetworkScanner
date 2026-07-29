@@ -85,7 +85,7 @@ A CLI mostra código, categoria, severidade, mensagem, ação, alvo e contexto d
 | `4` | falha fatal associada a dispositivo (`LNS-DEV-*`) |
 | `130` | operação cancelada (`LNS-USR-009`) |
 
-O JSON schema v3 inclui os diagnósticos de forma estruturada em `scan.diagnostics`. HTML apresenta-os numa secção própria e GraphML usa o atributo de grafo `g_diagnostics`. Consumidores automáticos devem decidir pelo código/categoria e não fazer parsing do texto em pt-PT.
+O JSON schema v4 inclui os diagnósticos de forma estruturada em `scan.diagnostics`. HTML apresenta-os numa secção própria e GraphML usa o atributo de grafo `g_diagnostics`. Consumidores automáticos devem decidir pelo código/categoria e não fazer parsing do texto em pt-PT.
 
 ## Pedir suporte
 

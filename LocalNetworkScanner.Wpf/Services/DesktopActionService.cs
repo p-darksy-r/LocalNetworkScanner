@@ -15,7 +15,11 @@ public sealed class DesktopActionService
         if (port is null)
             throw new InvalidOperationException("O dispositivo não expõe uma interface Web conhecida.");
 
-        string scheme = port.IsEncrypted || ServiceCatalog.IsTlsPort(port.Port) ? "https" : "http";
+        // A convenção da porta ajuda apenas a escolher o URL quando não houve probe.
+        // Nunca é convertida em evidência de que o serviço está cifrado.
+        string scheme = port.IsEncrypted == true || ServiceCatalog.IsTlsPort(port.Port)
+            ? "https"
+            : "http";
         Uri uri = new UriBuilder(scheme, device.IpAddressText, port.Port).Uri;
         Start(uri.AbsoluteUri);
     }

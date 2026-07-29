@@ -20,7 +20,7 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -31,6 +31,10 @@ jobs:
     name: Build Windows packages
     runs-on: windows-latest
     timeout-minutes: 45
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_tag: ${{ steps.version.outputs.is_tag }}
+      signing_state: ${{ steps.signing.outputs.state }}
 
     steps:
       - name: Checkout
@@ -176,6 +180,21 @@ jobs:
           'enabled=true' >> $env:GITHUB_OUTPUT
           'state=Signed' >> $env:GITHUB_OUTPUT
           Write-Host "Authenticode signing enabled for subject: $($certificate.Subject)"
+
+      - name: Validate public release policy
+        if: steps.version.outputs.is_tag == 'true' && (github.event_name == 'push' || inputs.publish_release)
+        shell: pwsh
+        env:
+          SIGNING_STATE: ${{ steps.signing.outputs.state }}
+          IEEE_REDISTRIBUTION_APPROVED: ${{ vars.IEEE_REDISTRIBUTION_APPROVED }}
+        run: |
+          if ($env:SIGNING_STATE -ne 'Signed') {
+            throw 'Public releases require a valid trusted Authenticode signature. Generate private workflow artifacts instead.'
+          }
+          if ($env:IEEE_REDISTRIBUTION_APPROVED -ne 'true') {
+            throw 'Public releases containing the bundled IEEE snapshot require repository variable IEEE_REDISTRIBUTION_APPROVED=true after written authorization has been archived.'
+          }
+          Write-Host 'Public release gates passed: Authenticode Signed and IEEE redistribution approved.'
 
       - name: Publish win-x64 portable package
         shell: pwsh
@@ -324,57 +343,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish GitHub Release
-        if: steps.version.outputs.is_tag == 'true' && (github.event_name == 'push' || inputs.publish_release)
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          SIGNING_STATE: ${{ steps.signing.outputs.state }}
-        run: |
-          $signatureNote = if ($env:SIGNING_STATE -eq 'Signed') {
-            'Authenticode: `Signed`. Valide o signer e o timestamp depois do download.'
-          }
-          else {
-            'Authenticode: `NotSigned`. Estes binários não afirmam identidade de publisher; confirme `SHA256SUMS.txt` antes de executar.'
-          }
-          $notes = @(
-            "Windows desktop release $env:RELEASE_VERSION.",
-            '',
-            '- `win-x64`: Windows 10/11 em computadores Intel/AMD de 64 bits.',
-            '- `win-arm64`: Windows 11 em computadores ARM64 (cross-build; validação em hardware ARM64 nativo ainda pendente).',
-            '- `*-setup.exe`: instalador por utilizador.',
-            '- `*.zip`: versão portátil, sem instalação.',
-            '',
-            $signatureNote,
-            '',
-            'O instalador não inicia automaticamente a aplicação. Se o Windows apresentar o código 4551, consulte `docs/APP_CONTROL.md`; não desative a política de Controlo de Aplicações.',
-            'Consulte também o changelog e as limitações técnicas incluídos no pacote.'
-          ) -join [Environment]::NewLine
-
-          $assets = @(
-            Get-ChildItem .\artifacts\release -File |
-              Where-Object {
-                $_.Extension -in '.zip', '.exe', '.sha256' -or
-                $_.Name -in 'SHA256SUMS.txt', 'SIGNING-STATE.txt'
-              } |
-              ForEach-Object { $_.FullName })
-          gh release view $env:RELEASE_TAG *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $env:RELEASE_TAG @assets --clobber
-            if ($LASTEXITCODE -ne 0) {
-              throw "Unable to replace assets on release $env:RELEASE_TAG."
-            }
-            gh release edit $env:RELEASE_TAG --title "Local Network Scanner $env:RELEASE_VERSION" --notes $notes
-          }
-          else {
-            gh release create $env:RELEASE_TAG @assets --title "Local Network Scanner $env:RELEASE_VERSION" --notes $notes --verify-tag
-          }
-          if ($LASTEXITCODE -ne 0) {
-            throw "Unable to create or update release $env:RELEASE_TAG."
-          }
-
       - name: Remove ephemeral signing material
         if: always()
         shell: pwsh
@@ -389,5 +357,191 @@ jobs:
             }
           }
           Remove-Item -LiteralPath $pfxPath, $thumbprintsPath -Force -ErrorAction SilentlyContinue
+
+  publish:
+    name: Publish immutable GitHub Release
+    if: needs.package.outputs.is_tag == 'true' && (github.event_name == 'push' || inputs.publish_release)
+    needs: package
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Download validated release artifact
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          gh run download $env:GITHUB_RUN_ID `
+            --repo $env:GITHUB_REPOSITORY `
+            --name "LocalNetworkScanner-$env:RELEASE_VERSION-windows" `
+            --dir .\artifacts\release
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Unable to download the validated release artifact from this workflow run.'
+          }
+
+      - name: Revalidate release payload
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          $releaseRoot = (Resolve-Path .\artifacts\release).Path
+          $binaryNames = @(
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-x64.zip",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-arm64.zip",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-x64-setup.exe",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-arm64-setup.exe"
+          )
+          $expectedNames = @(
+            $binaryNames
+            $binaryNames | ForEach-Object { "$_.sha256" }
+            'SHA256SUMS.txt'
+            'SIGNING-STATE.txt'
+          ) | Sort-Object
+          $actualNames = @(
+            Get-ChildItem -LiteralPath $releaseRoot -File |
+              Select-Object -ExpandProperty Name |
+              Sort-Object)
+          $payloadDifference = @(
+            Compare-Object -ReferenceObject $expectedNames -DifferenceObject $actualNames)
+          if ($payloadDifference.Count -ne 0) {
+            throw "Release payload does not match the exact 10-file contract: $($payloadDifference | Out-String)"
+          }
+
+          $manifestLines = @(Get-Content -LiteralPath (Join-Path $releaseRoot 'SHA256SUMS.txt'))
+          if ($manifestLines.Count -ne $binaryNames.Count) {
+            throw "SHA256SUMS.txt must contain exactly $($binaryNames.Count) entries."
+          }
+          foreach ($binaryName in $binaryNames) {
+            $binaryPath = Join-Path $releaseRoot $binaryName
+            $expectedLine = '{0} *{1}' -f (
+              Get-FileHash -LiteralPath $binaryPath -Algorithm SHA256
+            ).Hash.ToLowerInvariant(), $binaryName
+            $individualLine = (
+              Get-Content -LiteralPath "$binaryPath.sha256" -Raw
+            ).Trim()
+            if ($individualLine -cne $expectedLine) {
+              throw "Individual checksum mismatch for $binaryName."
+            }
+            if ($manifestLines -cnotcontains $expectedLine) {
+              throw "Combined checksum manifest mismatch for $binaryName."
+            }
+          }
+
+          $signingState = @(
+            Get-Content -LiteralPath (Join-Path $releaseRoot 'SIGNING-STATE.txt'))
+          if ($signingState -cnotcontains "Version: $env:RELEASE_VERSION" -or
+              $signingState -cnotcontains 'Authenticode: Signed') {
+            throw 'SIGNING-STATE.txt does not identify this version as Authenticode Signed.'
+          }
+
+          function Assert-ValidSignature {
+            param([Parameter(Mandatory = $true)][string]$Path)
+            $signature = Get-AuthenticodeSignature -LiteralPath $Path
+            if ($signature.Status -ne 'Valid' -or
+                $null -eq $signature.SignerCertificate -or
+                $null -eq $signature.TimeStamperCertificate) {
+              throw "Authenticode revalidation failed for '$Path': status=$($signature.Status)."
+            }
+            return $signature.SignerCertificate.Thumbprint
+          }
+
+          $signerThumbprints = @()
+          foreach ($installerName in $binaryNames | Where-Object { $_.EndsWith('-setup.exe') }) {
+            $signerThumbprints += Assert-ValidSignature (Join-Path $releaseRoot $installerName)
+          }
+
+          $extractRoot = Join-Path $env:RUNNER_TEMP 'LocalNetworkScanner-release-revalidation'
+          try {
+            foreach ($archiveName in $binaryNames | Where-Object { $_.EndsWith('.zip') }) {
+              $destination = Join-Path $extractRoot $archiveName
+              Expand-Archive -LiteralPath (Join-Path $releaseRoot $archiveName) `
+                -DestinationPath $destination
+              $executables = @(Get-ChildItem -LiteralPath $destination -Recurse -File -Filter *.exe)
+              if ($executables.Count -ne 2 -or
+                  $executables.Name -notcontains 'LocalNetworkScanner.exe' -or
+                  $executables.Name -notcontains 'LocalNetworkScanner.Cli.exe') {
+                throw "Archive $archiveName does not contain exactly the expected UI and CLI executables."
+              }
+              foreach ($executable in $executables) {
+                $signerThumbprints += Assert-ValidSignature $executable.FullName
+              }
+            }
+          }
+          finally {
+            Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+          $uniqueSigners = @($signerThumbprints | Sort-Object -Unique)
+          if ($uniqueSigners.Count -ne 1) {
+            throw 'Release executables do not share one Authenticode signer.'
+          }
+          Write-Host "Release payload revalidated with signer $($uniqueSigners[0])."
+
+      - name: Publish signed immutable release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ needs.package.outputs.version }}
+          SIGNING_STATE: ${{ needs.package.outputs.signing_state }}
+        run: |
+          if ($env:SIGNING_STATE -ne 'Signed') {
+            throw 'The publish job received an artifact that is not Authenticode Signed.'
+          }
+          $notes = @(
+            "Windows desktop release $env:RELEASE_VERSION.",
+            '',
+            '- `win-x64`: Windows 11 e edições Windows 10 LTSC/Enterprise atualmente suportadas pelo .NET 10.',
+            '- `win-arm64`: Windows 11 em computadores ARM64 (cross-build; validação em hardware ARM64 nativo ainda pendente).',
+            '- `*-setup.exe`: instalador por utilizador.',
+            '- `*.zip`: versão portátil, sem instalação.',
+            '',
+            'Authenticode: `Signed`. Valide o signer e o timestamp depois do download.',
+            '',
+            'O instalador não inicia automaticamente a aplicação. Se o Windows apresentar o código 4551, consulte `docs/APP_CONTROL.md`; não desative a política de Controlo de Aplicações.',
+            'Consulte também o changelog e as limitações técnicas incluídos no pacote.'
+          ) -join [Environment]::NewLine
+
+          $binaryNames = @(
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-x64.zip",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-arm64.zip",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-x64-setup.exe",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-arm64-setup.exe"
+          )
+          $assetNames = @(
+            $binaryNames
+            $binaryNames | ForEach-Object { "$_.sha256" }
+            'SHA256SUMS.txt'
+            'SIGNING-STATE.txt'
+          )
+          $assets = @($assetNames | ForEach-Object {
+            (Resolve-Path (Join-Path .\artifacts\release $_)).Path
+          })
+
+          gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Release $env:RELEASE_TAG already exists. Published release assets are immutable; create a new version instead."
+          }
+
+          gh release create $env:RELEASE_TAG @assets `
+            --repo $env:GITHUB_REPOSITORY `
+            --title "Local Network Scanner $env:RELEASE_VERSION" `
+            --notes $notes `
+            --draft `
+            --verify-tag
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to create draft release $env:RELEASE_TAG."
+          }
+
+          gh release edit $env:RELEASE_TAG `
+            --repo $env:GITHUB_REPOSITORY `
+            --draft=false
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release $env:RELEASE_TAG remains a draft because final publication failed."
+          }
 
 # Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

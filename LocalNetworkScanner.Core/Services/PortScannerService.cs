@@ -140,8 +140,7 @@ public sealed class PortScannerService
                 PortScanResult result = new()
                 {
                     Port = port,
-                    ServiceName = ServiceCatalog.GetServiceName(port),
-                    IsEncrypted = ServiceCatalog.IsTlsPort(port)
+                    ServiceName = ServiceCatalog.GetServiceName(port)
                 };
 
                 if (enableServiceProbes)

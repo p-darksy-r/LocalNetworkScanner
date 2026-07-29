@@ -1,6 +1,16 @@
 // Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
 
+using System.Text.Json.Serialization;
+
 namespace LocalNetworkScanner.Core.Models;
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum TlsProbeStatus
+{
+    NotProbed,
+    HandshakeSucceeded,
+    HandshakeFailed
+}
 
 public sealed class PortScanResult
 {
@@ -14,9 +24,17 @@ public sealed class PortScanResult
 
     public string? Banner { get; set; }
 
-    public bool IsEncrypted { get; set; }
+    public TlsProbeStatus TlsStatus { get; set; } = TlsProbeStatus.NotProbed;
+
+    public bool? IsEncrypted => TlsStatus switch
+    {
+        TlsProbeStatus.HandshakeSucceeded => true,
+        _ => null
+    };
 
     public string? TlsProtocol { get; set; }
+
+    public string? TlsFailureReason { get; set; }
 
     public string? CertificateSubject { get; set; }
 
@@ -27,6 +45,17 @@ public sealed class PortScanResult
     public bool? CertificateTrusted { get; set; }
 
     public string? CertificatePolicyErrors { get; set; }
+
+    public string TlsStatusDisplay => TlsStatus switch
+    {
+        TlsProbeStatus.HandshakeSucceeded when !string.IsNullOrWhiteSpace(TlsProtocol) =>
+            $"{TlsProtocol} confirmado",
+        TlsProbeStatus.HandshakeSucceeded => "TLS confirmado",
+        TlsProbeStatus.HandshakeFailed when !string.IsNullOrWhiteSpace(TlsFailureReason) =>
+            $"Indeterminado ({TlsFailureReason})",
+        TlsProbeStatus.HandshakeFailed => "Indeterminado (falha)",
+        _ => "Não verificado"
+    };
 
     public string Display => $"{Port}/{Protocol.ToLowerInvariant()} {ServiceName}";
 }

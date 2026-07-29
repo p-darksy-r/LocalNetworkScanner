@@ -33,6 +33,8 @@ Diagnósticos não fatais preservam o inventário que foi possível obter. Um c�
 - A ausência de resposta não prova que o endereço está livre ou que o dispositivo está desligado.
 - NAT, routing, VPNs, firewalls e isolamento de clientes alteram aquilo que é visível.
 
+No Windows e em IPv4, o pedido ICMP usa explicitamente o endereço da interface escolhida através da API assíncrona do sistema, sem reservar uma thread por host enquanto espera. Se essa origem não puder ser respeitada, o probe falha de forma fechada em vez de sair silenciosamente por outra interface ou VPN. O timeout/cancelamento devolvido à UI é imediato; uma operação nativa já iniciada pode terminar isoladamente em background até ao seu timeout para libertar os recursos com segurança.
+
 O produto limita o scan explícito da CLI a endereços privados/locais. Isso reduz erros de utilização, mas não substitui autorização.
 
 ## Endereços MAC e fabricante
@@ -58,6 +60,7 @@ O scan de portas atual usa ligações TCP. Uma porta aberta significa apenas que
 - Não é um scan exaustivo de UDP.
 - Não executa exploração nem confirma vulnerabilidades.
 - O nome do serviço pode resultar do número da porta ou de uma resposta leve e pode estar errado quando a aplicação usa uma porta não convencional.
+- Uma porta habitualmente associada a TLS não é marcada como cifrada sem um handshake concluído. “Falha” significa que a verificação foi tentada mas ficou indeterminada; não prova que o serviço esteja em texto simples.
 - O risco apresentado é uma priorização heurística, não uma auditoria de conformidade nem um parecer de segurança.
 
 A coluna de protocolos resume evidências de descoberta, portas e respostas de serviço. Não representa tipos ou contagens de todos os pacotes existentes na rede. Não existe captura de pacotes nem inspeção profunda de tráfego.
@@ -117,11 +120,11 @@ SNMP v2c não protege os dados de acesso ao nível do protocolo. A opção deve 
 
 O grafo combina entidades observadas pelo scan com relações fornecidas pela infraestrutura ou inferidas. Cada ligação preserva o seu tipo, a origem, a confiança e um resumo da evidência; a aparência visual não transforma uma inferência em facto.
 
-A lista de dispositivos é a vista principal do resultado. O grafo só é criado visualmente quando o utilizador escolhe **Abrir topologia** e aparece numa janela separada. Abrir ou fechar essa janela não executa um novo scan, não promove inferências a factos e não altera o inventário subjacente.
+A lista de dispositivos é a vista principal do resultado. O grafo só é criado visualmente quando o utilizador escolhe **Abrir topologia** e aparece numa janela separada. Abrir ou fechar essa janela não executa um novo scan, não promove inferências a factos e não altera o inventário subjacente. Ao filtrar clientes ou alertas, a vista conserva os ancestrais de infraestrutura que ligam cada correspondência ao mapa; estes nós são contexto visual, não correspondências adicionais.
 
 A exportação GraphML transporta estes atributos para ferramentas externas. Uma ferramenta que ignore os atributos ou aplique o seu próprio layout pode fazer relações fracas parecerem tão fortes como relações confirmadas. Ao analisar ou partilhar o ficheiro, mantenha visíveis a origem e a confiança e consulte a evidência textual.
 
-O JSON schema v3 inclui a topologia e os diagnósticos estruturados além do inventário. Consumidores automáticos devem verificar `schemaVersion` e não assumir compatibilidade estrutural com exports de versões anteriores. HTML e GraphML podem incluir diagnósticos relevantes, mas não substituem o contexto completo do JSON.
+O JSON schema v4 inclui a topologia, os diagnósticos estruturados e o estado TLS triestado além do inventário. Consumidores automáticos devem verificar `schemaVersion` e não assumir compatibilidade estrutural com exports de versões anteriores. HTML e GraphML podem incluir diagnósticos relevantes, mas não substituem o contexto completo do JSON.
 
 LLDP descreve aquilo que um equipamento participante anuncia e o switch autorizado expõe. Pode revelar vizinhos de infraestrutura e portas, mas não garante um caminho completo de extremo a extremo: dispositivos finais frequentemente não anunciam LLDP, tabelas podem estar incompletas e equipamentos intermédios não consultados continuam desconhecidos.
 
@@ -135,7 +138,9 @@ mDNS, SSDP/UPnP e WS-Discovery dependem de multicast ou broadcast local. Os resu
 - snooping ou filtragem multicast;
 - serviços desativados no dispositivo.
 
-Uma resposta pode revelar apenas um nome ou endpoint e não garante que todos os serviços do equipamento foram identificados.
+O browse DNS-SD começa pela enumeração PTR e faz consultas dirigidas e limitadas aos tipos, instâncias, registos SRV/TXT e endereços A/AAAA anunciados. Só acumula datagramas com cabeçalho e origem mDNS compatíveis; nomes comprimidos, referências inválidas, pacotes truncados e respostas excessivas são rejeitados ou limitados para que uma resposta multicast não possa criar trabalho ilimitado. Um registo “goodbye” com TTL zero retira a evidência correspondente já observada durante o scan.
+
+Uma resposta pode revelar apenas um nome, metadados declarados pelo dispositivo ou endpoint e não garante que todos os serviços do equipamento foram identificados. TXT é informação anunciada e não é tratada como identidade autenticada.
 
 ## Tipo de dispositivo e sistema operativo
 

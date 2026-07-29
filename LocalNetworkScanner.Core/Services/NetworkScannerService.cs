@@ -99,7 +99,11 @@ public sealed class NetworkScannerService
             else
             {
                 Task<PingProbeResult> pingTask = options.EnableIcmp
-                    ? _pingScanner.ProbeAsync(address, options.PingTimeoutMs, token)
+                    ? _pingScanner.ProbeAsync(
+                        address,
+                        options.PingTimeoutMs,
+                        networkInterface.IpAddress,
+                        token)
                     : Task.FromResult(new PingProbeResult(false, null, null));
                 Task<int?> tcpTask = options.EnableTcpDiscovery
                     ? _portScanner.FindAnyOpenPortAsync(

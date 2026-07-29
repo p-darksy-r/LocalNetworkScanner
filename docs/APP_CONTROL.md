@@ -67,7 +67,7 @@ Se o PC for gerido, o administrador deve decidir se autoriza o publisher, o hash
 
 ## Assinatura das releases
 
-Os artefactos oficiais já publicados sem certificado, incluindo a release `v1.2.0`, são explicitamente **`NotSigned`**. Cada release inclui `SIGNING-STATE.txt`; confirme sempre esse estado e valide localmente com `Get-AuthenticodeSignature`. Um checksum confirma que o ficheiro é igual ao publicado, mas não substitui Authenticode nem prova a identidade do publisher.
+Os artefactos oficiais históricos já publicados sem certificado, incluindo a release `v1.2.0`, são explicitamente **`NotSigned`**. As novas GitHub Releases são bloqueadas se os binários não estiverem `Signed`; artefactos privados de QA podem continuar `NotSigned`. Confirme sempre `SIGNING-STATE.txt` e valide localmente com `Get-AuthenticodeSignature`. Um checksum confirma que o ficheiro é igual ao publicado, mas não substitui Authenticode nem prova a identidade do publisher.
 
 O pipeline suporta assinatura opcional com um certificado RSA de Code Signing emitido por uma CA confiável:
 
@@ -76,7 +76,7 @@ O pipeline suporta assinatura opcional com um certificado RSA de Code Signing em
 - usa SHA-256 e timestamp RFC 3161;
 - valida cadeia, revogação, EKU, signer e timestamp;
 - falha explicitamente se a assinatura for pedida mas a configuração estiver ausente ou inválida;
-- mantém o estado `NotSigned` quando a assinatura não é pedida, sem simular sucesso.
+- mantém o estado `NotSigned` nos artefactos privados de QA quando a assinatura não é pedida, sem os publicar nem simular sucesso.
 
 Configuração no GitHub:
 

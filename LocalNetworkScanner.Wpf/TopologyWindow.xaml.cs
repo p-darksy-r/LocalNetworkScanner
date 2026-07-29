@@ -143,8 +143,8 @@ public partial class TopologyWindow : Window
             return;
         }
 
-        NetworkMapNode[] visibleNodes = map.Nodes
-            .Where(node => NetworkTopologyControl.IsNodeVisible(node, filterMode))
+        NetworkMapNode[] visibleNodes = NetworkTopologyControl
+            .GetVisibleNodes(map, filterMode, out int matchingCount)
             .OrderBy(NodeLayer)
             .ThenBy(node => node.Label, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
@@ -182,8 +182,11 @@ public partial class TopologyWindow : Window
         int alertCount = visibleNodes.Count(node =>
             node.RiskLevel.Equals("Alto", StringComparison.OrdinalIgnoreCase) ||
             node.RiskLevel.Equals("Médio", StringComparison.OrdinalIgnoreCase));
-        TopologySummaryText.Text =
-            $"{visibleNodes.Length:N0} nós · {visibleEdges.Length:N0} ligações · {alertCount:N0} com alertas";
+        int contextCount = visibleNodes.Length - matchingCount;
+        TopologySummaryText.Text = filterMode == TopologyFilterMode.All
+            ? $"{visibleNodes.Length:N0} nós · {visibleEdges.Length:N0} ligações · {alertCount:N0} com alertas"
+            : $"{matchingCount:N0} correspondências · {contextCount:N0} nós de contexto · " +
+              $"{visibleEdges.Length:N0} ligações · {alertCount:N0} com alertas";
         SynchronizeTableSelection();
         Dispatcher.BeginInvoke(TopologyGraph.FitToView);
     }

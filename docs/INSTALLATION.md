@@ -8,7 +8,7 @@ O primeiro arranque e a identificação de titulares de prefixos IEEE não exige
 
 ## Escolher a arquitetura
 
-- `win-x64`: Windows 10/11 em computadores Intel ou AMD de 64 bits;
+- `win-x64`: Windows 11, ou uma edição Windows 10 ainda suportada pelo .NET 10, em computadores Intel ou AMD de 64 bits;
 - `win-arm64`: Windows 11 em computadores ARM64.
 
 Confirme em **Definições > Sistema > Acerca de > Tipo de sistema** quando tiver dúvidas.
@@ -55,7 +55,7 @@ Não desligue Smart App Control, App Control for Business/WDAC, AppLocker ou Mic
 
 ## Assinatura, App Control e SmartScreen
 
-Os artefactos da release `v1.2.0` estão explicitamente marcados **`NotSigned`**. O Microsoft Defender SmartScreen ou uma política App Control podem recusá-los. Cada release indica `Signed` ou `NotSigned` em `SIGNING-STATE.txt`; considere-a não assinada salvo indicação explícita e confirmação local de `Get-AuthenticodeSignature`.
+Os artefactos históricos da release `v1.2.0` estão explicitamente marcados **`NotSigned`**. O Microsoft Defender SmartScreen ou uma política App Control podem recusá-los. As novas GitHub Releases são bloqueadas se não estiverem `Signed`; artefactos privados de QA podem continuar `NotSigned`. Confirme sempre `SIGNING-STATE.txt` e o resultado local de `Get-AuthenticodeSignature`.
 
 O checksum deteta alterações no ficheiro relativamente à release publicada, mas não substitui uma assinatura de código nem confirma, sozinho, a identidade do publisher.
 

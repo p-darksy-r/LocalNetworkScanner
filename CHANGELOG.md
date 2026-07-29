@@ -6,7 +6,7 @@ Todas as alterações relevantes deste projeto são registadas neste ficheiro. O
 
 ## [Unreleased — candidato 1.3.0]
 
-Validado em 2026-07-28; ainda não publicado como tag/release.
+Validado em 2026-07-29; ainda não publicado como tag/release.
 
 ### Added
 
@@ -16,7 +16,8 @@ Validado em 2026-07-28; ainda não publicado como tag/release.
 - controlo de privacidade para desativar a leitura/escrita do histórico e ação explícita para apagar snapshots locais;
 - código `LNS-APP-005` para bloqueios do Windows Application Control, incluindo `CreateProcess` 4551;
 - diagnóstico e documentação dedicados a Smart App Control/App Control, sem recomendar que a proteção seja contornada;
-- suporte de release opcional e fail-closed para assinatura Authenticode quando forem fornecidas credenciais de assinatura confiáveis.
+- suporte de release opcional e fail-closed para assinatura Authenticode quando forem fornecidas credenciais de assinatura confiáveis;
+- descoberta DNS-SD progressiva e dirigida, com parsing limitado e defensivo de registos PTR, SRV, TXT, A e AAAA.
 
 ### Changed
 
@@ -28,6 +29,10 @@ Validado em 2026-07-28; ainda não publicado como tag/release.
 - o clique direito seleciona primeiro a linha alvo antes de executar ações do dispositivo;
 - parâmetros numéricos avançados bloqueiam o scan enquanto existirem erros de conversão ou intervalo visíveis;
 - descoberta ARP deixa de criar um processo `arp.exe` por endereço e reutiliza informação de vizinhança ao longo do scan;
+- pedidos ICMP IPv4 no Windows usam I/O nativo assíncrono ligado à origem da interface escolhida, sem ocupar uma thread por host nem mudar silenciosamente para outra interface ou VPN;
+- o estado TLS separa “não verificado”, “handshake confirmado” e “handshake falhou”, sem transformar o número convencional da porta em prova de cifragem;
+- exports JSON usam schema v4 para representar o estado TLS triestado sem reutilizar a semântica booleana do schema anterior;
+- filtros da topologia preservam os nós de infraestrutura que são ancestrais dos clientes ou alertas encontrados;
 - identificação MAC passa a descrever o titular registado do prefixo em vez de prometer o fabricante físico; CID é excluído e casos `Private`, local/aleatório, virtual ou OEM permanecem explicitamente inconclusivos;
 - repositório documenta diretamente o candidato atual, e o GitHub passa a ter descrição, tópicos e alertas de dependências sem branches automáticos.
 
@@ -36,14 +41,15 @@ Validado em 2026-07-28; ainda não publicado como tag/release.
 - aliases, notas, favoritos e comparação histórica já não desaparecem quando o mesmo dispositivo ganha/perde temporariamente um MAC válido;
 - reutilização do mesmo IP por um MAC diferente deixa de herdar silenciosamente identidade anterior;
 - a execução automática no fim do instalador já não transforma um bloqueio da aplicação pela política do Windows num erro aparente de instalação;
-- releases podem ser reexecutadas sem falhar apenas porque o objeto GitHub Release já existe.
+- o indicador de estado da lista já não apresenta dispositivos offline com o mesmo ponto verde dos dispositivos online.
 
 ### Security
 
 - relatórios de suporte excluem IPs, MACs, nomes de interface/host/switch, SSID/BSSID, aliases, notas, alvos, contexto e avisos brutos;
 - atualização da base IEEE é sempre explícita e não envia telemetria, MACs, IPs ou inventário; a snapshot remove endereços postais e conserva apenas os campos necessários ao lookup;
 - dados IEEE são documentados separadamente, não são colocados sob MIT e exigem autorização escrita antes de redistribuição pública;
-- o pipeline continua a identificar releases sem assinatura como `NotSigned` e só declara assinatura quando todos os artefactos exigidos forem validados.
+- artefactos privados de QA continuam a identificar honestamente `NotSigned`, mas a publicação de uma GitHub Release exige Authenticode `Signed` e aprovação explícita da redistribuição IEEE;
+- a publicação usa um job com permissão de escrita isolada, exige exatamente os dez assets previstos, volta a validar hashes/assinaturas e recusa substituir assets de uma release existente.
 
 ## [1.2.0] - 2026-07-22
 

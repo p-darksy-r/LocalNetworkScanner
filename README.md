@@ -35,7 +35,7 @@ Os dois formatos incluem a UI, a CLI e o runtime .NET necessário. O instalador 
 
 | Alvo | Estado |
 | --- | --- |
-| Windows 11 x64 | candidato 1.3.0 gerado; build, 50 testes e smoke do executável x64 concluídos |
+| Windows 11 x64 | candidato 1.3.0 gerado; build, 55 testes e smoke do executável x64 concluídos |
 | Windows 11 ARM64 | candidato 1.3.0 gerado por cross-build; validação em hardware ARM64 nativo ainda pendente |
 | Windows 10 | o .NET 10 limita o suporte atual a edições LTSC/Enterprise compatíveis; consulte a [matriz oficial da Microsoft](https://learn.microsoft.com/dotnet/core/install/windows#supported-versions) |
 
@@ -72,7 +72,7 @@ Comece com um intervalo pequeno e use o perfil **Avançado** apenas quando preci
 - **Topologia a pedido:** o mapa abre numa janela separada sem repetir ou alterar o scan.
 - **Diagnósticos pesquisáveis:** códigos `LNS-*` distinguem entrada, rede, dispositivo e falhas internas.
 - **Três profundidades:** Rápido, Normal e Avançado para utilizadores com necessidades diferentes.
-- **Descoberta multicamada:** ICMP, TCP, ARP, mDNS, SSDP/UPnP, WS-Discovery e NetBIOS quando aplicável.
+- **Descoberta multicamada:** ICMP ligado à interface escolhida, TCP, ARP, mDNS/DNS-SD, SSDP/UPnP, WS-Discovery e NetBIOS quando aplicável.
 - **Inventário útil:** IP, hostname, MAC, titular IEEE do prefixo, latência, portas, serviços, protocolos observados e risco heurístico.
 - **Dados locais:** histórico, preferências e metadados permanecem no computador.
 - **Suporte com privacidade:** a CLI pode gerar um diagnóstico agregado sem identificadores da rede.
@@ -97,7 +97,7 @@ As opções técnicas da UI podem substituir partes do perfil. A topologia SNMP 
 | --- | --- | --- |
 | Identidade | IP, hostname, NetBIOS, MAC e titular IEEE do prefixo | o titular pode estar indisponível, ser `Private` ou não coincidir com a marca do equipamento |
 | Disponibilidade | latência e métodos de descoberta | firewalls podem bloquear ICMP sem tornar o equipamento offline |
-| Portas e serviços | portas TCP abertas, nome provável e resposta leve | não existe autenticação, exploração ou inspeção profunda |
+| Portas e serviços | portas TCP abertas, nome provável, resposta leve e estado TLS verificado | uma porta convencional não prova cifragem; não existe autenticação, exploração ou inspeção profunda |
 | Protocolos | ICMP, ARP, TCP e protocolos associados às respostas observadas | não é uma captura nem uma contagem de pacotes |
 | Equipamento | tipo, sistema operativo provável e risco | classificação heurística, nunca identificação garantida |
 | Wi-Fi | SSID, BSSID, canal, rádio e percentagem de sinal local | sinal do computador para o access point, não de cada dispositivo |
@@ -105,7 +105,7 @@ As opções técnicas da UI podem substituir partes do perfil. A topologia SNMP 
 | Camada 2 | alcance direto quando existe evidência ARP | não confirma o switch físico |
 | Histórico | novo, alterado, visto anteriormente, favorito, alias e notas | snapshots locais; MACs aleatórios podem mudar a identidade |
 | Ações | copiar dados, abrir endpoints e Wake-on-LAN | execute apenas ações autorizadas e confirme o alvo |
-| Exportações | JSON schema v3, CSV UTF-8, HTML, GraphML e relatório de suporte agregado | os relatórios de inventário são sensíveis; o relatório de suporte exclui identificadores |
+| Exportações | JSON schema v4, CSV UTF-8, HTML, GraphML e relatório de suporte agregado | os relatórios de inventário são sensíveis; o relatório de suporte exclui identificadores |
 
 ### Base IEEE incorporada e offline
 
@@ -121,6 +121,7 @@ O scan termina sempre na lista de dispositivos. Quando existe um mapa, o botão 
 
 - zoom, pan, enquadramento automático e vista a 100%;
 - seleção sincronizada com o inventário;
+- filtros de infraestrutura, clientes e alertas que preservam o caminho de contexto até ao nó correspondente;
 - distinção visual entre relações observadas, fornecidas e inferidas;
 - exportação PNG e GraphML;
 - enriquecimento LLDP quando um switch autorizado o disponibiliza.
@@ -266,7 +267,9 @@ Instalador Inno Setup:
 powershell -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -RuntimeIdentifier win-x64
 ```
 
-Uma tag `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia o workflow de release. O workflow valida a origem, cria ZIPs e instaladores x64/ARM64, calcula checksums individuais e o manifesto `SHA256SUMS.txt`, e publica a release. Sem credenciais publica explicitamente como `NotSigned`; quando é configurado um certificado RSA de Code Signing confiável, assina e valida a UI, CLI, instalador e desinstalador antes da publicação. Consulte [Windows App Control e erro 4551](docs/APP_CONTROL.md).
+Uma tag `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia o workflow de release. O workflow valida a origem, cria ZIPs e instaladores x64/ARM64, calcula checksums individuais e o manifesto `SHA256SUMS.txt`. Artefactos privados de workflow podem ser gerados como `NotSigned` para QA, mas uma **GitHub Release publicada só é criada** quando todos os binários têm assinatura Authenticode confiável e a autorização de redistribuição da snapshot IEEE foi registada através do gate `IEEE_REDISTRIBUTION_APPROVED=true`.
+
+A publicação corre num job separado com permissão de escrita mínima, exige o conjunto exato de assets, volta a verificar hashes, timestamps e o mesmo signer e prepara tudo como draft antes de tornar a release visível. Uma tag que já tenha uma GitHub Release não é alterada nem recebe assets substituídos: publique uma versão nova em vez de modificar binários já distribuídos. Consulte [Windows App Control e erro 4551](docs/APP_CONTROL.md).
 
 A [checklist de release](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/RELEASE_CHECKLIST.md) exige validação num Windows limpo, estado de assinatura explícito, verificação pós-upload e teste nativo por arquitetura antes de considerar o suporte totalmente validado.
 
