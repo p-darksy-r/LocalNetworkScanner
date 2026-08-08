@@ -92,6 +92,7 @@ Source: "{#SourceRoot}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion re
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 Name: "{group}\Documentação"; Filename: "{app}\README.md"
+Name: "{group}\Ajuda - erro 4551 e App Control"; Filename: "{app}\docs\APP_CONTROL.md"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 ; Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

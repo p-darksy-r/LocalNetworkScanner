@@ -32,6 +32,20 @@ public sealed class DeviceRowViewModel : ObservableObject
         : _device.WsDiscoveryTypes;
     public string MacAddress => _device.MacDisplay;
     public string Manufacturer => _device.ManufacturerDisplay;
+    public string MacAssignee => _device.MacAssigneeDisplay;
+    public string MacAssignment => BuildMacAssignment();
+    public string Model => _device.ModelDisplay;
+    public string FriendlyName => ValueOrDash(_device.FriendlyName);
+    public string SerialNumber => ValueOrDash(_device.SerialNumber);
+    public string Firmware => ValueOrDash(_device.Firmware);
+    public string HardwareRevision => ValueOrDash(_device.HardwareRevision);
+    public string IdentityDescription => ValueOrDash(_device.IdentityDescription);
+    public string IdentityConfidence => _device.IdentityConfidenceDisplay;
+    public string SsdpServiceType => ValueOrDash(_device.SsdpServiceType);
+    public string SsdpUniqueServiceName => ValueOrDash(_device.SsdpUniqueServiceName);
+    public string SsdpEndpoint => BuildEndpoint(_device.SsdpServer, _device.SsdpLocation);
+    public string SnmpIdentity => BuildEndpoint(_device.SnmpDescription, _device.SnmpObjectIdentifier);
+    public string NmapIdentity => ValueOrDash(_device.NmapSummary);
     public string ResponseTime => _device.ResponseTimeDisplay;
     public long ResponseTimeSortKey => _device.ResponseTimeMs ?? long.MaxValue;
     public string DeviceType => _device.DeviceType;
@@ -76,6 +90,13 @@ public sealed class DeviceRowViewModel : ObservableObject
     public IReadOnlyList<string> SecurityFindings => _device.SecurityFindings;
     public IReadOnlyList<string> Changes => _device.Changes;
     public IReadOnlyList<string> MdnsNames => _device.MdnsNames;
+    public IReadOnlyList<string> IdentityEvidenceLines => _device.IdentityEvidence
+        .OrderByDescending(evidence => evidence.Confidence)
+        .ThenBy(evidence => evidence.Source, StringComparer.CurrentCultureIgnoreCase)
+        .Select(BuildIdentityEvidenceLine)
+        .ToArray();
+
+    public string IdentitySearchText => string.Join(' ', IdentityEvidenceLines);
 
     public bool IsOnline => _device.IsOnline;
     public bool IsNew => _device.IsNew;
@@ -121,6 +142,7 @@ public sealed class DeviceRowViewModel : ObservableObject
     public bool HasSecurityFindings => _device.SecurityFindings.Count > 0;
     public bool HasChanges => _device.Changes.Count > 0;
     public bool HasPorts => _device.Ports.Count > 0;
+    public bool HasIdentityEvidence => _device.IdentityEvidence.Count > 0;
     public bool HasMacAddress => MacAddressService.TryNormalizeDeviceAddress(_device.MacAddress, out _);
     public bool CanOpenWeb => _device.Ports.Any(item => ServiceCatalog.IsHttpPort(item.Port));
     public bool CanOpenExplorer => _device.Ports.Any(item => item.Port is 139 or 445);
@@ -140,6 +162,75 @@ public sealed class DeviceRowViewModel : ObservableObject
         ConfidenceLevel.Low => "Confiança baixa",
         _ => "Sem evidência suficiente"
     };
+
+    private string BuildMacAssignment()
+    {
+        List<string> parts = [];
+        if (!string.IsNullOrWhiteSpace(_device.MacRegistry))
+            parts.Add(_device.MacRegistry);
+        if (!string.IsNullOrWhiteSpace(_device.MacAssignmentPrefix))
+            parts.Add($"prefixo {_device.MacAssignmentPrefix}");
+
+        return parts.Count == 0 ? "—" : string.Join(" · ", parts);
+    }
+
+    private static string BuildEndpoint(string? primary, string? secondary)
+    {
+        if (string.IsNullOrWhiteSpace(primary))
+            return ValueOrDash(secondary);
+        if (string.IsNullOrWhiteSpace(secondary) ||
+            string.Equals(primary, secondary, StringComparison.OrdinalIgnoreCase))
+        {
+            return primary;
+        }
+
+        return $"{primary} · {secondary}";
+    }
+
+    private static string BuildIdentityEvidenceLine(DeviceIdentityEvidence evidence)
+    {
+        List<string> details = [];
+        AddEvidenceDetail(details, "fabricante", evidence.Manufacturer);
+        AddEvidenceDetail(details, "modelo", evidence.Model);
+        AddEvidenceDetail(details, "nome", evidence.FriendlyName);
+        AddEvidenceDetail(details, "série", evidence.SerialNumber);
+        AddEvidenceDetail(details, "firmware", evidence.Firmware);
+        AddEvidenceDetail(details, "hardware", evidence.HardwareRevision);
+        AddEvidenceDetail(details, "descrição", evidence.Description);
+        AddEvidenceDetail(details, "tipo", evidence.DeviceType);
+        AddEvidenceDetail(details, "SO", evidence.OperatingSystem);
+        AddEvidenceDetail(details, "origem", evidence.Endpoint);
+
+        string heading = $"{evidence.Source} · {MethodToText(evidence.Method)} · " +
+            ConfidenceToText(evidence.Confidence);
+        return details.Count == 0
+            ? heading
+            : $"{heading}: {string.Join(" · ", details)}";
+    }
+
+    private static void AddEvidenceDetail(List<string> details, string label, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+            details.Add($"{label}: {value}");
+    }
+
+    private static string MethodToText(DiscoveryMethod method) => method switch
+    {
+        DiscoveryMethod.Icmp => "ICMP",
+        DiscoveryMethod.Tcp => "TCP",
+        DiscoveryMethod.Arp => "ARP/IEEE",
+        DiscoveryMethod.Mdns => "mDNS/DNS-SD",
+        DiscoveryMethod.Ssdp => "SSDP/UPnP",
+        DiscoveryMethod.NetBios => "NetBIOS",
+        DiscoveryMethod.WsDiscovery => "WS-Discovery",
+        DiscoveryMethod.Snmp => "SNMP",
+        DiscoveryMethod.Nmap => "Nmap",
+        DiscoveryMethod.LocalHost => "Windows local",
+        _ => method.ToString()
+    };
+
+    private static string ValueOrDash(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "—" : value;
 }
 
 // Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

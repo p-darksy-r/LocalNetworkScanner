@@ -40,17 +40,37 @@ public static class ScanRequestValidator
         ValidateRange(options.ConnectTimeoutMs, 50, 30_000, nameof(options.ConnectTimeoutMs));
         ValidateRange(options.DiscoveryTimeoutMs, 100, 60_000, nameof(options.DiscoveryTimeoutMs));
 
-        if (options.EnableSnmpTopology)
+        if (options.EnableSnmpTopology || options.EnableSnmpDeviceDiscovery)
         {
-            if (options.SnmpSwitchAddress is null || !IpAddressHelper.IsPrivate(options.SnmpSwitchAddress))
+            if (options.EnableSnmpTopology &&
+                (options.SnmpSwitchAddress is null || !IpAddressHelper.IsPrivate(options.SnmpSwitchAddress)))
+            {
                 throw new ScanInputException(
                     DiagnosticCatalog.InvalidScanConfiguration(nameof(options.SnmpSwitchAddress)),
                     nameof(options));
+            }
             if (string.IsNullOrWhiteSpace(options.SnmpCommunity))
                 throw new ScanInputException(
                     DiagnosticCatalog.InvalidScanConfiguration("SNMP"),
                     nameof(options));
             ValidateRange(options.SnmpTimeoutMs, 100, 30_000, nameof(options.SnmpTimeoutMs));
+        }
+
+        if (options.EnableNmapDiscovery)
+        {
+            if (options.Profile != ScanProfile.Deep)
+                throw new ScanInputException(
+                    DiagnosticCatalog.InvalidScanConfiguration("Nmap requer o perfil avançado"),
+                    nameof(options));
+            if (!string.IsNullOrWhiteSpace(options.NmapExecutablePath) &&
+                !NmapDiscoveryService.IsSafeExplicitExecutablePath(options.NmapExecutablePath))
+            {
+                throw new ScanInputException(
+                    DiagnosticCatalog.InvalidScanConfiguration(
+                        "o caminho Nmap tem de ser um nmap.exe local existente"),
+                    nameof(options));
+            }
+            ValidateRange(options.NmapTimeoutMs, 5_000, 600_000, nameof(options.NmapTimeoutMs));
         }
 
         ValidatePorts(options.Ports, nameof(options.Ports));

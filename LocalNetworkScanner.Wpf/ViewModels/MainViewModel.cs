@@ -69,12 +69,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _enableTcpDiscovery = true;
     private bool _enableArp = true;
     private bool _enableMulticastDiscovery = true;
+    private bool _enableUpnpDescription = true;
     private bool _enableNetBiosDiscovery = true;
     private bool _enableHistory = true;
+    private bool _enableSnmpDeviceDiscovery;
     private bool _enableSnmpTopology;
     private string _snmpSwitchAddress = string.Empty;
     private string _snmpCommunity = string.Empty;
     private int _snmpTimeoutMs = 900;
+    private bool _enableNmapDiscovery;
+    private string _nmapExecutablePath = string.Empty;
+    private int _nmapTimeoutMs = 120_000;
     private bool _enableServiceProbes = true;
     private int _scannedCount;
     private int _onlineCount;
@@ -103,21 +108,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 ScanProfile.Quick,
                 "Rápido",
                 "Confirma rapidamente quais os equipamentos disponíveis.",
-                "Descoberta leve e portas essenciais",
+                "Ping, ARP e portas essenciais",
                 "Mais rápido",
                 "VISÃO RÁPIDA"),
             new ScanProfileOption(
                 ScanProfile.Standard,
                 "Normal",
                 "Equilibra velocidade e detalhe para a maioria das redes.",
-                "Serviços comuns, identidade e segurança",
+                "mDNS, SSDP/UPnP, serviços e identidade",
                 "Equilibrado",
                 "RECOMENDADO"),
             new ScanProfileOption(
                 ScanProfile.Deep,
                 "Avançado",
                 "Produz um inventário mais completo quando precisas de investigar.",
-                "Mais portas, banners e maior tolerância",
+                "Mais portas; SNMP e Nmap opcionais",
                 "Mais demorado",
                 "ANÁLISE PROFUNDA")
         ];
@@ -260,8 +265,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get => _selectedProfile;
         set
         {
-            if (value is not null && SetProperty(ref _selectedProfile, value))
-                OnPropertyChanged(nameof(SelectedProfileDescription));
+            if (value is null || !SetProperty(ref _selectedProfile, value))
+                return;
+
+            if (!IsNmapProfileEligible)
+                EnableNmapDiscovery = false;
+
+            OnPropertyChanged(nameof(SelectedProfileDescription));
+            OnPropertyChanged(nameof(IsNmapProfileEligible));
+            OnPropertyChanged(nameof(HasNmapPathValidationError));
+            OnPropertyChanged(nameof(HasBlockingInputValidationErrors));
+            OnPropertyChanged(nameof(InputValidationMessage));
+            RaiseScanCanExecuteChanged();
         }
     }
 
@@ -407,6 +422,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             OnPropertyChanged(nameof(ModeLabel));
             OnPropertyChanged(nameof(SelectedProfileDescription));
+            OnPropertyChanged(nameof(HasNmapPathValidationError));
             OnPropertyChanged(nameof(HasBlockingInputValidationErrors));
             OnPropertyChanged(nameof(InputValidationMessage));
             RaiseScanCanExecuteChanged();
@@ -511,7 +527,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool EnableMulticastDiscovery
     {
         get => _enableMulticastDiscovery;
-        set => SetProperty(ref _enableMulticastDiscovery, value);
+        set
+        {
+            if (!SetProperty(ref _enableMulticastDiscovery, value))
+                return;
+
+            if (!value)
+                EnableUpnpDescription = false;
+        }
+    }
+
+    public bool EnableUpnpDescription
+    {
+        get => _enableUpnpDescription;
+        set => SetProperty(ref _enableUpnpDescription, value);
     }
 
     public bool EnableNetBiosDiscovery
@@ -526,10 +555,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _enableHistory, value);
     }
 
+    public bool EnableSnmpDeviceDiscovery
+    {
+        get => _enableSnmpDeviceDiscovery;
+        set
+        {
+            if (SetProperty(ref _enableSnmpDeviceDiscovery, value))
+                OnPropertyChanged(nameof(IsSnmpEnabled));
+        }
+    }
+
     public bool EnableSnmpTopology
     {
         get => _enableSnmpTopology;
-        set => SetProperty(ref _enableSnmpTopology, value);
+        set
+        {
+            if (SetProperty(ref _enableSnmpTopology, value))
+                OnPropertyChanged(nameof(IsSnmpEnabled));
+        }
     }
 
     public string SnmpSwitchAddress
@@ -548,6 +591,34 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         get => _snmpTimeoutMs;
         set => SetProperty(ref _snmpTimeoutMs, value);
+    }
+
+    public bool EnableNmapDiscovery
+    {
+        get => _enableNmapDiscovery;
+        set
+        {
+            if (!SetProperty(ref _enableNmapDiscovery, value && IsNmapProfileEligible))
+                return;
+
+            NotifyNmapValidationChanged();
+        }
+    }
+
+    public string NmapExecutablePath
+    {
+        get => _nmapExecutablePath;
+        set
+        {
+            if (SetProperty(ref _nmapExecutablePath, value ?? string.Empty))
+                NotifyNmapValidationChanged();
+        }
+    }
+
+    public int NmapTimeoutMs
+    {
+        get => _nmapTimeoutMs;
+        set => SetProperty(ref _nmapTimeoutMs, value);
     }
 
     public bool EnableServiceProbes
@@ -590,17 +661,28 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool IsNotScanning => !IsScanning;
     public bool HasNoVisibleDevices => Devices.Count > 0 && VisibleDeviceCount == 0;
     public bool HasInputValidationErrors => _inputValidationErrorCount > 0;
-    public bool HasBlockingInputValidationErrors => HasInputValidationErrors;
+    public bool HasNmapPathValidationError => IsAdvancedMode &&
+        EnableNmapDiscovery &&
+        !string.IsNullOrWhiteSpace(NmapExecutablePath) &&
+        !IsNmapExecutablePathValid(NmapExecutablePath);
+    public bool HasBlockingInputValidationErrors =>
+        HasInputValidationErrors || HasNmapPathValidationError;
     public string InputValidationMessage => HasBlockingInputValidationErrors
-        ? _inputValidationErrorCount == 1
-            ? "Existe 1 valor técnico inválido. Corrige o campo assinalado antes de iniciar o scan."
-            : $"Existem {_inputValidationErrorCount:N0} valores técnicos inválidos. Corrige os campos assinalados antes de iniciar o scan."
+        ? HasNmapPathValidationError && _inputValidationErrorCount == 0
+            ? "O caminho explícito do Nmap é inválido. Corrige-o ou deixa-o vazio para autodeteção."
+            : HasNmapPathValidationError
+                ? "Existem valores técnicos inválidos, incluindo o caminho do Nmap. Corrige os campos assinalados."
+                : _inputValidationErrorCount == 1
+                    ? "Existe 1 valor técnico inválido. Corrige o campo assinalado antes de iniciar o scan."
+                    : $"Existem {_inputValidationErrorCount:N0} valores técnicos inválidos. Corrige os campos assinalados antes de iniciar o scan."
         : string.Empty;
     public bool HasDiagnostics => Diagnostics.Count > 0;
     public string DiagnosticSummary => Diagnostics.Count == 1
         ? "1 diagnóstico do scan"
         : $"{Diagnostics.Count:N0} diagnósticos do scan";
     public bool HasWarnings => Warnings.Count > 0;
+    public bool IsSnmpEnabled => EnableSnmpDeviceDiscovery || EnableSnmpTopology;
+    public bool IsNmapProfileEligible => SelectedProfile.Value == ScanProfile.Deep;
     public string ModeLabel => IsAdvancedMode ? "Ocultar ajustes técnicos" : "Personalizar scan";
     public string SelectedProfileDescription => IsAdvancedMode
         ? $"{SelectedProfile.Description}. As opções abaixo substituem o perfil."
@@ -657,11 +739,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             EnableTcpDiscovery = EnableTcpDiscovery,
             EnableArp = EnableArp,
             EnableMulticastDiscovery = EnableMulticastDiscovery,
+            EnableUpnpDescription = EnableUpnpDescription,
             EnableNetBiosDiscovery = EnableNetBiosDiscovery,
             EnableHistory = EnableHistory,
+            EnableSnmpDeviceDiscovery = EnableSnmpDeviceDiscovery,
             EnableSnmpTopology = EnableSnmpTopology,
             SnmpSwitchAddress = SnmpSwitchAddress,
             SnmpTimeoutMs = SnmpTimeoutMs,
+            EnableNmapDiscovery = EnableNmapDiscovery,
+            NmapExecutablePath = NmapExecutablePath,
+            NmapTimeoutMs = NmapTimeoutMs,
             EnableServiceProbes = EnableServiceProbes
         });
     }
@@ -693,11 +780,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _enableTcpDiscovery = _loadedSettings.EnableTcpDiscovery;
         _enableArp = _loadedSettings.EnableArp;
         _enableMulticastDiscovery = _loadedSettings.EnableMulticastDiscovery;
+        _enableUpnpDescription = _loadedSettings.EnableUpnpDescription;
         _enableNetBiosDiscovery = _loadedSettings.EnableNetBiosDiscovery;
         _enableHistory = _loadedSettings.EnableHistory;
+        _enableSnmpDeviceDiscovery = _loadedSettings.EnableSnmpDeviceDiscovery;
         _enableSnmpTopology = _loadedSettings.EnableSnmpTopology;
         _snmpSwitchAddress = _loadedSettings.SnmpSwitchAddress;
         _snmpTimeoutMs = _loadedSettings.SnmpTimeoutMs;
+        _enableNmapDiscovery = _loadedSettings.EnableNmapDiscovery &&
+            _selectedProfile.Value == ScanProfile.Deep;
+        _nmapExecutablePath = _loadedSettings.NmapExecutablePath;
+        _nmapTimeoutMs = _loadedSettings.NmapTimeoutMs;
         _enableServiceProbes = _loadedSettings.EnableServiceProbes;
     }
 
@@ -929,6 +1022,26 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 return null;
             }
 
+            if (EnableSnmpDeviceDiscovery && !_dialogs.Confirm(
+                    "Confirmar identidade SNMP v2c",
+                    "O SNMP v2c envia a community sem cifragem a cada dispositivo online consultado. " +
+                    "Utiliza uma community dedicada e apenas de leitura numa rede de gestão confiável. " +
+                    "Confirma que administras estes dispositivos e autorizas esta consulta."))
+            {
+                return null;
+            }
+
+            if (IsAdvancedMode && EnableNmapDiscovery && !_dialogs.Confirm(
+                    "Confirmar enriquecimento Nmap",
+                    "O Nmap é uma ferramenta externa e executará sondas TCP ativas nos dispositivos online. " +
+                    (string.IsNullOrWhiteSpace(NmapExecutablePath)
+                        ? "A autodeteção está limitada às instalações em Program Files; PATH e caminhos de rede não são usados. "
+                        : $"Executável local: {Path.GetFullPath(Environment.ExpandEnvironmentVariables(NmapExecutablePath.Trim().Trim('\"')))}. ") +
+                    "Confirma o publisher/assinatura do ficheiro no Windows e que autorizas este tráfego adicional."))
+            {
+                return null;
+            }
+
             return new PreparedScan(
                 SelectedNetworkInterface,
                 addresses,
@@ -966,13 +1079,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             EnableTcpDiscovery = EnableTcpDiscovery,
             EnableArp = EnableArp,
             EnableMulticastDiscovery = EnableMulticastDiscovery,
+            EnableUpnpDescription = EnableUpnpDescription,
             EnableNetBiosDiscovery = EnableNetBiosDiscovery,
+            EnableSnmpDeviceDiscovery = EnableSnmpDeviceDiscovery,
             EnableSnmpTopology = EnableSnmpTopology,
             SnmpSwitchAddress = EnableSnmpTopology
                 ? IPAddress.Parse(SnmpSwitchAddress)
                 : null,
-            SnmpCommunity = EnableSnmpTopology ? SnmpCommunity : null,
+            SnmpCommunity = IsSnmpEnabled ? SnmpCommunity : null,
             SnmpTimeoutMs = SnmpTimeoutMs,
+            EnableNmapDiscovery = EnableNmapDiscovery && IsNmapProfileEligible,
+            NmapExecutablePath = EnableNmapDiscovery &&
+                !string.IsNullOrWhiteSpace(NmapExecutablePath)
+                    ? NmapExecutablePath.Trim()
+                    : null,
+            NmapTimeoutMs = NmapTimeoutMs,
             EnableServiceProbes = EnableServiceProbes,
             DiscoveryPorts = defaults.DiscoveryPorts,
             Ports = ports
@@ -992,18 +1113,28 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ValidateRange(DiscoveryTimeoutMs, 100, 30_000, "Timeout de descoberta");
         ValidateRange(SnmpTimeoutMs, 100, 30_000, "Timeout SNMP");
 
+        if (EnableNmapDiscovery)
+            ValidateRange(NmapTimeoutMs, 5_000, 600_000, "Timeout Nmap");
+
         if (!EnableIcmp && !EnableTcpDiscovery && !EnableMulticastDiscovery)
         {
             throw new ScanInputException(
                 DiagnosticCatalog.InvalidScanConfiguration("métodos de descoberta"));
         }
 
-
-        if (EnableSnmpTopology)
+        if (EnableUpnpDescription && !EnableMulticastDiscovery)
         {
-            if (!IPAddress.TryParse(SnmpSwitchAddress, out IPAddress? switchAddress) ||
-                switchAddress.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork ||
-                !IpAddressHelper.IsPrivate(switchAddress))
+            throw new ScanInputException(
+                DiagnosticCatalog.InvalidScanConfiguration(
+                    "descrições UPnP requerem a descoberta SSDP/multicast"));
+        }
+
+        if (IsSnmpEnabled)
+        {
+            if (EnableSnmpTopology &&
+                (!IPAddress.TryParse(SnmpSwitchAddress, out IPAddress? switchAddress) ||
+                 switchAddress.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork ||
+                 !IpAddressHelper.IsPrivate(switchAddress)))
             {
                 throw new ScanInputException(
                     DiagnosticCatalog.InvalidScanConfiguration("endereço do switch SNMP"));
@@ -1015,6 +1146,43 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     DiagnosticCatalog.InvalidScanConfiguration("configuração SNMP"));
             }
         }
+
+        if (EnableNmapDiscovery)
+        {
+            if (!IsNmapProfileEligible)
+            {
+                throw new ScanInputException(
+                    DiagnosticCatalog.InvalidScanConfiguration(
+                        "Nmap requer o perfil Avançado"));
+            }
+
+            ValidateNmapExecutablePath(NmapExecutablePath);
+        }
+    }
+
+    private static void ValidateNmapExecutablePath(string executablePath)
+    {
+        if (string.IsNullOrWhiteSpace(executablePath))
+            return;
+
+        if (!IsNmapExecutablePathValid(executablePath))
+        {
+            throw new ScanInputException(
+                DiagnosticCatalog.InvalidScanConfiguration("caminho do executável Nmap"));
+        }
+    }
+
+    private static bool IsNmapExecutablePathValid(string executablePath)
+    {
+        return NmapDiscoveryService.IsSafeExplicitExecutablePath(executablePath);
+    }
+
+    private void NotifyNmapValidationChanged()
+    {
+        OnPropertyChanged(nameof(HasNmapPathValidationError));
+        OnPropertyChanged(nameof(HasBlockingInputValidationErrors));
+        OnPropertyChanged(nameof(InputValidationMessage));
+        RaiseScanCanExecuteChanged();
     }
 
     private static void ValidateRange(int value, int minimum, int maximum, string label)
@@ -1564,6 +1732,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             device.IpAddress,
             device.MacAddress,
             device.Manufacturer,
+            device.MacAssignee,
+            device.MacAssignment,
+            device.Model,
+            device.FriendlyName,
+            device.SerialNumber,
+            device.Firmware,
+            device.HardwareRevision,
+            device.IdentityDescription,
+            device.SsdpServiceType,
+            device.SsdpUniqueServiceName,
+            device.SnmpIdentity,
+            device.NmapIdentity,
+            device.IdentitySearchText,
             device.DeviceType,
             device.OpenPorts,
             device.Protocols,

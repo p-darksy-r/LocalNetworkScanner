@@ -4,9 +4,9 @@
 
 Todas as alterações relevantes deste projeto são registadas neste ficheiro. O formato segue os princípios de Keep a Changelog e o versionamento segue Semantic Versioning.
 
-## [Unreleased — candidato 1.3.0]
+## [1.3.0] - 2026-08-08
 
-Validado em 2026-07-29; ainda não publicado como tag/release.
+Tag de código e QA privado preparada em 2026-08-08. A existência da tag não transforma artefactos `NotSigned` numa release pública confiável; a publicação instalável continua sujeita aos gates de assinatura e redistribuição documentados.
 
 ### Added
 
@@ -17,7 +17,16 @@ Validado em 2026-07-29; ainda não publicado como tag/release.
 - código `LNS-APP-005` para bloqueios do Windows Application Control, incluindo `CreateProcess` 4551;
 - diagnóstico e documentação dedicados a Smart App Control/App Control, sem recomendar que a proteção seja contornada;
 - suporte de release opcional e fail-closed para assinatura Authenticode quando forem fornecidas credenciais de assinatura confiáveis;
-- descoberta DNS-SD progressiva e dirigida, com parsing limitado e defensivo de registos PTR, SRV, TXT, A e AAAA.
+- códigos de release `LNS-REL-001` a `LNS-REL-009`, com ações concretas para gates, OIDC, assinatura, dados IEEE, arquiteturas, assets e proveniência da tag;
+- diagnóstico App Control schema v2, que distingue alvo ausente, ficheiro sem assinatura, assinatura inválida, publisher válido mas bloqueado e ausência de evento correlacionado;
+- guia de assinatura com configuração segura das credenciais, alternativas cloud/Store e explicação do bloqueio Win32 `4551` antes do arranque da aplicação;
+- descoberta DNS-SD progressiva e dirigida, com parsing limitado e defensivo de registos PTR, SRV, TXT, A e AAAA;
+- modelo de identidade com fabricante, titular IEEE separado, modelo, nome anunciado, série, firmware, revisão de hardware, fonte e confiança;
+- descrição UPnP limitada ao IP privado que respondeu por SSDP, sem redirects/proxy/credenciais e com XML protegido contra DTD/XXE;
+- consulta opcional de identidade SNMP v2c através de MIB-II e ENTITY-MIB, sem guessing nem persistência da community;
+- integração opcional com um Nmap instalado separadamente, limitada a TCP Connect/version-light sem privilégios, NSE, UDP ou raw sockets;
+- códigos `LNS-NET-008` a `LNS-NET-010` para identidade SNMP/Nmap e `LNS-DEV-005` para evidência contraditória;
+- limites globais de datagramas, bytes, registos, hosts e enriquecimentos para descoberta multicast hostil ou excessiva.
 
 ### Changed
 
@@ -31,17 +40,29 @@ Validado em 2026-07-29; ainda não publicado como tag/release.
 - descoberta ARP deixa de criar um processo `arp.exe` por endereço e reutiliza informação de vizinhança ao longo do scan;
 - pedidos ICMP IPv4 no Windows usam I/O nativo assíncrono ligado à origem da interface escolhida, sem ocupar uma thread por host nem mudar silenciosamente para outra interface ou VPN;
 - o estado TLS separa “não verificado”, “handshake confirmado” e “handshake falhou”, sem transformar o número convencional da porta em prova de cifragem;
-- exports JSON usam schema v4 para representar o estado TLS triestado sem reutilizar a semântica booleana do schema anterior;
+- exports JSON usam schema v5 para representar estado TLS triestado e evidências de identidade sem reutilizar a semântica booleana dos schemas anteriores;
 - filtros da topologia preservam os nós de infraestrutura que são ancestrais dos clientes ou alertas encontrados;
 - identificação MAC passa a descrever o titular registado do prefixo em vez de prometer o fabricante físico; CID é excluído e casos `Private`, local/aleatório, virtual ou OEM permanecem explicitamente inconclusivos;
-- repositório documenta diretamente o candidato atual, e o GitHub passa a ter descrição, tópicos e alertas de dependências sem branches automáticos.
+- CI e release passam a exigir build, testes e smoke num runner Windows ARM64 nativo, confirmando `OSArchitecture=Arm64` antes de aceitar o resultado;
+- assinatura pública passa de PFX exportável para Microsoft Artifact Signing por OIDC, mantendo a chave no serviço e assinando também o diagnóstico PowerShell e o desinstalador Inno;
+- release valida os ZIPs e instaladores exatos, incluindo instalação, smoke da UI/CLI e remoção em Windows x64 e ARM64, antes de promover o payload;
+- repositório documenta diretamente o candidato atual, e o GitHub passa a ter descrição, tópicos e alertas de dependências sem branches automáticos;
+- histórico passa a comparar alterações de fabricante, modelo e firmware;
+- a grelha mantém o titular IEEE separado, enquanto o novo separador Identidade expõe fontes/confiança e detalhes técnicos sem colocar o número de série na lista principal;
+- a identidade consolidada é resolvida por campo, com desempate determinístico e confiança global conservadora, sem depender da ordem de chegada das respostas.
 
 ### Fixed
 
 - aliases, notas, favoritos e comparação histórica já não desaparecem quando o mesmo dispositivo ganha/perde temporariamente um MAC válido;
 - reutilização do mesmo IP por um MAC diferente deixa de herdar silenciosamente identidade anterior;
 - a execução automática no fim do instalador já não transforma um bloqueio da aplicação pela política do Windows num erro aparente de instalação;
-- o indicador de estado da lista já não apresenta dispositivos offline com o mesmo ponto verde dos dispositivos online.
+- o indicador de estado da lista já não apresenta dispositivos offline com o mesmo ponto verde dos dispositivos online;
+- WS-Discovery já não permite que um `XAddr` anunciado faça outro IP parecer online e passa a usar parsing XML limitado com entidades externas desativadas;
+- respostas SSDP inválidas, sem correlação ou excessivas passam a ser rejeitadas antes de alimentar a identidade;
+- dispositivos SSDP com vários documentos/serviços preservam até oito descrições distintas por IP, sem perder ST/USN válidos;
+- endereços apenas anunciados em registos mDNS A/AAAA já não são promovidos a dispositivos online sem evidência direta do remetente;
+- produtos de serviços Nmap deixam de ser apresentados como modelos físicos e o vendor MAC autodeclarado pelo Nmap deixa de substituir o titular IEEE;
+- ENTITY-MIB faz fallback limitado para uma entidade filha quando o chassis existe mas não publica fabricante, modelo ou série.
 
 ### Security
 
@@ -49,7 +70,11 @@ Validado em 2026-07-29; ainda não publicado como tag/release.
 - atualização da base IEEE é sempre explícita e não envia telemetria, MACs, IPs ou inventário; a snapshot remove endereços postais e conserva apenas os campos necessários ao lookup;
 - dados IEEE são documentados separadamente, não são colocados sob MIT e exigem autorização escrita antes de redistribuição pública;
 - artefactos privados de QA continuam a identificar honestamente `NotSigned`, mas a publicação de uma GitHub Release exige Authenticode `Signed` e aprovação explícita da redistribuição IEEE;
-- a publicação usa um job com permissão de escrita isolada, exige exatamente os dez assets previstos, volta a validar hashes/assinaturas e recusa substituir assets de uma release existente.
+- o preflight de release pública falha antes do build quando falta Artifact Signing/OIDC, autorização IEEE, tag correspondente ou proveniência no HEAD atual de `main`;
+- a publicação usa um job com permissão de escrita isolada, exige exatamente os dez assets previstos, volta a validar hashes/assinaturas e recusa substituir assets de uma release existente;
+- metadados UPnP, DNS-SD, WS-Discovery, SNMP e Nmap são tratados como evidência não autenticada, sanitizados e limitados; conflitos permanecem visíveis em vez de serem ocultados;
+- Nmap deixa de ser autodetetado através do `PATH` e recusa caminhos UNC/device; a UI mostra o caminho local e pede confirmação do publisher;
+- a UI avisa e pede consentimento específico antes de enviar uma community SNMP v2c sem cifragem a cada dispositivo consultado.
 
 ## [1.2.0] - 2026-07-22
 

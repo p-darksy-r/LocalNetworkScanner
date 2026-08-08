@@ -52,4 +52,54 @@ jobs:
       - name: CLI smoke test
         run: dotnet run --project .\LocalNetworkScanner.Cli\LocalNetworkScanner.Cli.csproj --configuration Release --no-build -- --help
 
+  validate-arm64:
+    name: Native Windows ARM64 validation
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install .NET SDK from global.json
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Assert native ARM64 host
+        shell: pwsh
+        run: |
+          $architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          if ($architecture -ne [Runtime.InteropServices.Architecture]::Arm64) {
+            throw "LNS-REL-007: expected a native ARM64 runner; received $architecture."
+          }
+          Write-Host "Native Windows ARM64 runner confirmed."
+
+      - name: Build and test natively
+        shell: pwsh
+        run: .\scripts\check.ps1 -Configuration Release
+
+      - name: Publish and smoke native ARM64 executables
+        shell: pwsh
+        run: .\scripts\publish-windows.ps1 -RuntimeIdentifier win-arm64 -SkipChecks
+
+  gate:
+    name: CI gate
+    if: always()
+    needs: [validate, validate-arm64]
+    runs-on: windows-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Require every architecture check
+        shell: pwsh
+        env:
+          X64_RESULT: ${{ needs.validate.result }}
+          ARM64_RESULT: ${{ needs.validate-arm64.result }}
+        run: |
+          if ($env:X64_RESULT -ne 'success' -or $env:ARM64_RESULT -ne 'success') {
+            throw "CI gate failed: x64=$env:X64_RESULT, arm64=$env:ARM64_RESULT."
+          }
+          Write-Host 'CI gate passed for x64 and native ARM64.'
+
 # Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

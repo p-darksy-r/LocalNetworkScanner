@@ -11,6 +11,8 @@ O erro de instalação **“CreateProcess falhou; código 4551 — Uma política
 
 O Windows conseguiu instalar ou extrair o ficheiro, mas uma política de integridade de código recusou a sua execução. A origem pode ser Smart App Control, App Control for Business/WDAC ou uma política gerida pela organização. Não é seguro concluir que o instalador está corrompido apenas a partir deste código.
 
+`CreateProcess` falha antes de o código do Local Network Scanner começar a executar. Por isso, a aplicação não consegue mostrar uma janela, alterar a decisão ou “corrigir-se” depois do bloqueio. A correção de distribuição tem de existir antecipadamente: assinatura Authenticode confiável, timestamp válido e, quando aplicável, autorização do publisher pela política da organização.
+
 ## Comportamento do instalador
 
 O instalador já não tenta iniciar automaticamente a aplicação na página final. Assim, o bloqueio do primeiro arranque deixa de transformar uma cópia de ficheiros concluída num aparente “erro de instalação”. Depois de o instalador terminar, abra **Local Network Scanner** pelo menu Iniciar.
@@ -37,7 +39,7 @@ $tool = "$env:LOCALAPPDATA\Programs\LocalNetworkScanner\tools\diagnose-app-contr
 & $tool -FilePath $exe -Minutes 60 -OutputPath "$env:USERPROFILE\Desktop\LNS-AppControl.json"
 ```
 
-Ao trabalhar a partir do repositório, use `.\scripts\diagnose-app-control.ps1`. Reveja o JSON antes de o partilhar: eventos de Code Integrity podem conter caminhos locais e identificadores da política da organização.
+Ao trabalhar a partir do repositório, use `.\scripts\diagnose-app-control.ps1`. O schema v2 classifica separadamente ficheiro ausente, alvo sem assinatura, assinatura inválida/não confiável, publisher válido mas bloqueado e ausência de evento correlacionado. Reveja o JSON antes de o partilhar: eventos de Code Integrity podem conter caminhos locais e identificadores da política da organização.
 
 4. Em Windows 11 22H2 ou mais recente, liste as políticas ativas sem as alterar:
 
@@ -69,31 +71,42 @@ Se o PC for gerido, o administrador deve decidir se autoriza o publisher, o hash
 
 Os artefactos oficiais históricos já publicados sem certificado, incluindo a release `v1.2.0`, são explicitamente **`NotSigned`**. As novas GitHub Releases são bloqueadas se os binários não estiverem `Signed`; artefactos privados de QA podem continuar `NotSigned`. Confirme sempre `SIGNING-STATE.txt` e valide localmente com `Get-AuthenticodeSignature`. Um checksum confirma que o ficheiro é igual ao publicado, mas não substitui Authenticode nem prova a identidade do publisher.
 
-O pipeline suporta assinatura opcional com um certificado RSA de Code Signing emitido por uma CA confiável:
+A `v1.2.0` não deve ser tratada como uma distribuição de produção compatível com Smart App Control. Criar um certificado autoassinado durante o build também não resolve a distribuição geral: o computador do utilizador não possui uma cadeia pública que confirme a identidade desse publisher.
 
-- assina `LocalNetworkScanner.exe` e `LocalNetworkScanner.Cli.exe` antes de criar os ZIPs;
+O pipeline público usa Microsoft Artifact Signing por OIDC. A chave RSA permanece no serviço/HSM e o runner recebe apenas um token temporário:
+
+- assina `LocalNetworkScanner.exe`, `LocalNetworkScanner.Cli.exe` e `diagnose-app-control.ps1` antes de criar os ZIPs;
 - manda o Inno Setup assinar o instalador e o desinstalador embebido;
 - usa SHA-256 e timestamp RFC 3161;
-- valida cadeia, revogação, EKU, signer e timestamp;
+- valida signer, timestamp, hashes e a mesma identidade em todos os ficheiros;
+- instala, executa e remove os ZIPs/instaladores exatos em Windows x64 e ARM64 nativos;
 - falha explicitamente se a assinatura for pedida mas a configuração estiver ausente ou inválida;
 - mantém o estado `NotSigned` nos artefactos privados de QA quando a assinatura não é pedida, sem os publicar nem simular sucesso.
 
-Configuração no GitHub:
+Configuração principal no GitHub:
 
-- variável de repositório `AUTHENTICODE_ENABLED=true` para assinar releases por tag;
-- secret `AUTHENTICODE_PFX_BASE64` com o PFX codificado em Base64;
-- secret `AUTHENTICODE_PFX_PASSWORD` com a palavra-passe do PFX;
-- input manual `sign_release=true` para uma execução `workflow_dispatch`.
+- Environment protegido `release-signing`, com reviewers e restrições de deployment;
+- credencial federada OIDC limitada a esse environment e função mínima no perfil de assinatura;
+- variáveis `ARTIFACT_SIGNING_ENDPOINT`, `ARTIFACT_SIGNING_ACCOUNT`, `ARTIFACT_SIGNING_PROFILE` e IDs Azure;
+- variável `ARTIFACT_SIGNING_ENABLED=true` apenas depois da identidade estar pronta.
 
-O certificado é importado apenas no store do utilizador do runner efémero e removido num passo `always()`. A palavra-passe não é passada na linha de comandos do SignTool.
+O workflow não lê PFX, palavra-passe ou chave privada. Os antigos secrets `AUTHENTICODE_PFX_*`, caso existam, devem ser removidos depois de confirmar que nenhuma outra automação depende deles.
+
+O preflight usa códigos `LNS-REL-*` e termina antes do build quando a tag não corresponde ao HEAD de `main`, falta Artifact Signing/OIDC ou não existe autorização IEEE. Consulte [Assinatura e prontidão de release](SIGNING.md) para a configuração completa.
+
+Em artefactos públicos, o script de diagnóstico também tem Authenticode. Numa build privada `NotSigned`, o PowerShell pode bloquear o script ou executá-lo em Constrained Language; nesse caso, use o Event Viewer/CiTool com o administrador. Um diagnóstico que não arrancou não prova que a aplicação esteja corrompida.
 
 Uma assinatura válida melhora identidade, integridade e regras por publisher, mas não garante autorização: a política ativa pode exigir um publisher específico, reputação, managed installer, catálogo ou hash aprovado.
 
 ## Referências oficiais
 
 - [Microsoft — eventos 3076 e 3077 de App Control](https://learn.microsoft.com/windows-server/security/osconfig/osconfig-how-to-configure-app-control-for-business#monitor-event-logs)
+- [Microsoft — visão geral do Smart App Control](https://learn.microsoft.com/windows/apps/develop/smart-app-control/overview)
+- [Microsoft — testar assinaturas com Smart App Control](https://learn.microsoft.com/windows/apps/develop/smart-app-control/test-your-app-with-smart-app-control)
 - [Microsoft — referência técnica do CiTool](https://learn.microsoft.com/windows/security/application-security/application-control/app-control-for-business/operations/citool-commands)
 - [Microsoft — assinatura de código com App Control](https://learn.microsoft.com/windows/security/application-security/application-control/app-control-for-business/deployment/use-code-signing-for-better-control-and-protection)
+- [Microsoft — comportamento do PowerShell sob App Control](https://learn.microsoft.com/powershell/scripting/security/app-control/how-app-control-works)
+- [Microsoft — integrações do Artifact Signing](https://learn.microsoft.com/azure/artifact-signing/how-to-signing-integrations)
 - [Microsoft — SignTool](https://learn.microsoft.com/windows/win32/seccrypto/signtool)
 - [Inno Setup — SignTool](https://jrsoftware.org/ishelp/topic_setup_signtool.htm)
 - [Inno Setup — SignedUninstaller](https://jrsoftware.org/ishelp/topic_setup_signeduninstaller.htm)

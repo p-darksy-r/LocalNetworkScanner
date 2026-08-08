@@ -12,6 +12,7 @@ Uma release só deve ser marcada como concluída quando todos os itens obrigató
 - [ ] O nome “Local Network Scanner” e o ícone são consistentes na UI, propriedades do EXE e instalador.
 - [ ] A licença MIT continua a ser a licença pretendida para o código e assets originais; dados IEEE e outros materiais de terceiros permanecem explicitamente fora do âmbito MIT.
 - [ ] `THIRD_PARTY_NOTICES.md` acompanha a release, inclui `IEEE. All rights reserved.`, ausência de endorsement e as fontes MA-L/MA-M/MA-S/IAB.
+- [ ] Nmap/Npcap não estão no instalador/ZIP/repositório; a integração opcional e os termos externos estão descritos em `THIRD_PARTY_NOTICES.md`.
 - [ ] Existe autorização escrita da IEEE para redistribuir publicamente a snapshot incorporada e a release cumpre integralmente o texto e as condições recebidas.
 - [ ] O `CHANGELOG.md` descreve apenas funcionalidades presentes nessa revisão.
 - [ ] Não existem links placeholder, contactos inexistentes ou alegações de capacidades futuras.
@@ -51,6 +52,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1
 - [ ] A lista de dispositivos permanece a vista principal e **Abrir topologia** só fica disponível quando existe mapa.
 - [ ] A janela de topologia abre/fecha sem repetir o scan e mantém zoom, pan, seleção e exportações.
 - [ ] Códigos `LNS-USR-*`, `LNS-NET-*`, `LNS-DEV-*` e `LNS-APP-*` têm categoria, severidade, ação recomendada e contexto sanitizado.
+- [ ] UPnP, TXT DNS-SD, SSDP, WS-Discovery, SNMP ENTITY-MIB e XML Nmap têm fixtures válidas, hostis, limites e rejeição de DTD/entidades externas.
+- [ ] A fusão de identidade preserva fontes, confiança, valores contraditórios e separa titular IEEE de fabricante/modelo.
 
 ## 4. Limites, privacidade e utilização segura
 
@@ -64,13 +67,17 @@ powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1
 - [ ] O sinal Wi-Fi é identificado como sinal da ligação local, não RSSI de equipamentos remotos.
 - [ ] Protocolos são identificados por descoberta/portas/respostas leves; não é alegada captura de pacotes.
 - [ ] Relatórios e histórico são tratados como inventário sensível.
-- [ ] “Fabricante” é explicado como titular registado do prefixo IEEE, sem prometer a marca física em casos `Private`, local/aleatório, virtual ou OEM.
+- [ ] “Titular IEEE” é explicado separadamente de fabricante/modelo, sem prometer a marca física em casos `Private`, local/aleatório, virtual ou OEM.
+- [ ] Número de série, firmware e evidências de identidade são tratados como inventário sensível; não entram no relatório de suporte agregado.
+- [ ] Descrição UPnP só segue URL HTTP(S) no mesmo IP privado remetente, sem redirect, proxy ou credenciais, e com tamanho/timeout/XML limitados.
+- [ ] Nmap permanece opt-in e só usa instalação externa local validada, nunca `PATH`/UNC/device paths, IPv4 RFC1918, TCP Connect/version-light e argumentos sem shell; não executa NSE/raw/UDP/credential guessing nem transforma produtos de serviço em modelos físicos.
 - [ ] A atualização IEEE é iniciada explicitamente, não envia telemetria nem inventário e não é necessária para o primeiro lookup.
 - [ ] O utilizador é lembrado de analisar apenas redes autorizadas.
 - [ ] O fluxo normal foi testado sem privilégios de administrador.
 - [ ] O instalador termina sem iniciar automaticamente a UI; um bloqueio App Control no primeiro arranque não é apresentado como falha na cópia/instalação.
 - [ ] O diagnóstico do código `4551` foi validado sem desativar ou alterar Smart App Control, App Control for Business/WDAC, AppLocker ou Defender.
 - [ ] Os eventos Code Integrity `3077`/`3076` e a saída apenas de leitura de `CiTool.exe -lp -json` identificam a política responsável ou são entregues ao administrador do dispositivo.
+- [ ] O relatório `diagnose-app-control.ps1` schema v2 distingue alvo sem assinatura, assinatura inválida, publisher válido mas bloqueado e ausência de evento correlacionado.
 
 ## 5. Publish portátil
 
@@ -80,17 +87,18 @@ powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeIdentifier win-x64
 ```
 
-- [ ] Publish ARM64 concluído ou a arquitetura foi explicitamente retirada da matriz de suporte:
+- [ ] Build, testes e publish ARM64 de origem concluídos no job `Native Windows ARM64 validation`; um cross-build x64 isolado não satisfaz este item:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeIdentifier win-arm64
 ```
 
 - [ ] Cada pasta de publish contém os executáveis esperados e não contém PDBs, segredos ou ficheiros temporários.
-- [ ] O smoke test `LocalNetworkScanner.Cli.exe --help` termina com exit code `0` numa máquina da arquitetura publicada; cross-publish ARM64 num host x64 não conta como smoke ARM64.
+- [ ] O smoke test `LocalNetworkScanner.Cli.exe --help` termina com exit code `0` numa máquina da arquitetura publicada; o workflow confirma `OSArchitecture=Arm64` antes do smoke ARM64.
+- [ ] Os jobs de release instalaram, executaram e removeram os ZIPs e instaladores exatos em x64 e ARM64; o binário testado é o mesmo cujo hash será publicado.
 - [ ] A UI arranca, inicia e cancela um scan de laboratório e fecha sem processo residual.
 - [ ] O ZIP inclui UI, CLI, README, licença, changelog, limites técnicos, `docs/VENDOR_DATABASE.md` e `THIRD_PARTY_NOTICES.md`.
-- [ ] Exports JSON schema v4 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações, diagnósticos ou estado TLS documentados.
+- [ ] Exports JSON schema v5 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações, identidade, diagnósticos ou estado TLS documentados.
 - [ ] As opções CLI `--html` e `--graphml` foram verificadas com dados sintéticos ou de laboratório.
 - [ ] O SHA-256 publicado corresponde exatamente ao ZIP.
 
@@ -109,18 +117,23 @@ if ($actual -ne $expected) { throw 'SHA-256 invalido.' }
 - [ ] Uma GitHub Release publicada contém apenas artefactos Authenticode `Signed`.
 - [ ] Checksums não são apresentados como substitutos de Authenticode nem como prova da identidade do publisher.
 - [ ] O artefacto foi testado com SmartScreen/Defender numa máquina sem histórico do produto.
+- [ ] O push da tag conclui QA privada; antes de pedir `publish_release=true`, o preflight não apresenta `LNS-REL-001` a `LNS-REL-009`.
+- [ ] A tag corresponde à versão e aponta exatamente para o HEAD atual de `main`.
 
 Para uma release publicada:
 
-- [ ] O certificado está válido, tem chave privada e identidade correta.
-- [ ] A chave é obtida de um secret store ou serviço de assinatura; não é copiada para o repositório.
-- [ ] UI, CLI e instaladores são assinados antes de calcular checksums e criar a release.
+- [ ] A conta/perfil Microsoft Artifact Signing tem identidade válida e função mínima `Artifact Signing Certificate Profile Signer`.
+- [ ] O perfil consultado no Azure é explicitamente `PublicTrust`; perfis `PrivateTrust`/`PublicTrustTest` não satisfazem distribuição pública.
+- [ ] A credencial federada OIDC está limitada ao environment `release-signing`; não existe PFX/chave privada no GitHub.
+- [ ] O environment `release-signing` restringe deployments a tags autorizadas e exige reviewer apenas quando essa proteção está efetivamente disponível no plano/repositório; a ausência dessa capacidade tem um gate externo documentado.
+- [ ] UI, CLI, diagnóstico PowerShell e instaladores são assinados antes de calcular checksums e criar a release.
 - [ ] O Inno Setup usa `SignedUninstaller=yes`; depois de uma instalação de QA, o `unins*.exe` extraído foi verificado com o mesmo signer.
 - [ ] A assinatura usa SHA-256 e timestamp de uma autoridade confiável.
 - [ ] `signtool verify /pa /tw` e `Get-AuthenticodeSignature` devolvem sucesso/`Valid` para todos os executáveis finais.
 - [ ] O certificado é RSA, tem EKU Code Signing, cadeia válida para uma CA confiável e não é self-signed.
-- [ ] O certificado efémero e o PFX são removidos do runner num passo `always()`.
-- [ ] O job de build/package conserva apenas `contents: read`; a permissão `contents: write` existe somente no job de publicação.
+- [ ] A chave permanece num HSM/serviço ou token compatível; nunca é exportada para PFX no runner hospedado.
+- [ ] Jobs privados de QA não recebem token OIDC; `id-token: write` existe apenas no caminho público de assinatura e `contents: write` apenas no job de publicação.
+- [ ] O ruleset de `main` exige o check agregado `CI gate`, que depende de x64 e ARM64.
 
 Uma distribuição que alegue identidade de publisher verificada exige estado `Valid`.
 
@@ -162,6 +175,8 @@ Se for usado outro instalador, documentar a ferramenta e versão, privilégios p
 - [ ] Com duas interfaces/VPN, o ICMP IPv4 usa a origem escolhida e não descobre um alvo através de uma rota diferente.
 - [ ] Portas TLS testadas distinguem handshake confirmado, não verificado e falha indeterminada; o número da porta não cria evidência.
 - [ ] DNS-SD resolve PTR/SRV/TXT/A/AAAA válidos e limita respostas comprimidas, truncadas ou excessivas.
+- [ ] SSDP/UPnP preserva ST/USN e só promove XML do mesmo IP; WS-Discovery prende `XAddr` não autenticado ao IP remetente.
+- [ ] Identidade SNMP indisponível e Nmap ausente/falhado preservam o scan base e apresentam `LNS-NET-008`/`009`/`010`.
 - [ ] Switch SNMP indisponível, credenciais rejeitadas e tabelas FDB incompletas produzem avisos sem interromper o scan base.
 - [ ] Os filtros da topologia conservam o caminho de infraestrutura até às correspondências sem contar os nós de contexto como resultados.
 - [ ] Modo offline/sem interface ativa mostra uma mensagem acionável.
@@ -179,7 +194,7 @@ Se for usado outro instalador, documentar a ferramenta e versão, privilégios p
 - [ ] A release explica arquitetura, versão mínima de Windows suportada e known issues.
 - [ ] Existe um canal privado para vulnerabilidades e um canal normal para suporte.
 - [ ] Foi guardada uma cópia imutável dos artefactos e logs de build.
-- [ ] A tag/release não existia antes da publicação; assets já publicados nunca são substituídos com `--clobber`.
+- [ ] A GitHub Release pública ainda não existia; a tag imutável aponta para o commit validado e assets já publicados nunca são substituídos com `--clobber`.
 - [ ] Foi preparado um plano de rollback ou retirada da release.
 
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

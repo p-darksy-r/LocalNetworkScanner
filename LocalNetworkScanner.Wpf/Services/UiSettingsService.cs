@@ -74,11 +74,16 @@ public sealed class UiSettings
     public bool EnableTcpDiscovery { get; set; } = true;
     public bool EnableArp { get; set; } = true;
     public bool EnableMulticastDiscovery { get; set; } = true;
+    public bool EnableUpnpDescription { get; set; } = true;
     public bool EnableNetBiosDiscovery { get; set; } = true;
     public bool EnableHistory { get; set; } = true;
+    public bool EnableSnmpDeviceDiscovery { get; set; }
     public bool EnableSnmpTopology { get; set; }
     public string SnmpSwitchAddress { get; set; } = string.Empty;
     public int SnmpTimeoutMs { get; set; } = 900;
+    public bool EnableNmapDiscovery { get; set; }
+    public string NmapExecutablePath { get; set; } = string.Empty;
+    public int NmapTimeoutMs { get; set; } = 120_000;
     public bool EnableServiceProbes { get; set; } = true;
 }
 

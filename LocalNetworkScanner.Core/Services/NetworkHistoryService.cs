@@ -66,6 +66,12 @@ public sealed class NetworkHistoryService
                 device.Changes.Add($"IP mudou de {old.IpAddress} para {current.IpAddress}");
             if (!string.Equals(old.Hostname, current.Hostname, StringComparison.OrdinalIgnoreCase))
                 device.Changes.Add($"Hostname mudou de {old.Hostname ?? "—"} para {current.Hostname ?? "—"}");
+            if (!string.Equals(old.Manufacturer, current.Manufacturer, StringComparison.OrdinalIgnoreCase))
+                device.Changes.Add($"Fabricante mudou de {old.Manufacturer ?? "—"} para {current.Manufacturer ?? "—"}");
+            if (!string.Equals(old.Model, current.Model, StringComparison.OrdinalIgnoreCase))
+                device.Changes.Add($"Modelo mudou de {old.Model ?? "—"} para {current.Model ?? "—"}");
+            if (!string.Equals(old.Firmware, current.Firmware, StringComparison.OrdinalIgnoreCase))
+                device.Changes.Add($"Firmware mudou de {old.Firmware ?? "—"} para {current.Firmware ?? "—"}");
 
             int[] opened = current.OpenPorts.Except(old.OpenPorts).ToArray();
             int[] closed = old.OpenPorts.Except(current.OpenPorts).ToArray();
@@ -292,6 +298,8 @@ public sealed class NetworkHistoryService
         Hostname = device.Hostname,
         MacAddress = GetValidMac(device.MacAddress),
         Manufacturer = device.Manufacturer,
+        Model = device.Model,
+        Firmware = device.Firmware,
         OpenPorts = device.Ports.Select(port => port.Port).OrderBy(port => port).ToArray(),
         FirstSeen = device.FirstSeen,
         LastSeen = device.LastSeen
@@ -445,6 +453,8 @@ public sealed class NetworkHistoryService
         public string? Hostname { get; set; }
         public string? MacAddress { get; set; }
         public string? Manufacturer { get; set; }
+        public string? Model { get; set; }
+        public string? Firmware { get; set; }
         public int[] OpenPorts { get; set; } = [];
         public DateTimeOffset FirstSeen { get; set; }
         public DateTimeOffset LastSeen { get; set; }

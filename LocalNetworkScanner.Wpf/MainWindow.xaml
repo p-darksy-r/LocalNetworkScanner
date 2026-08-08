@@ -275,10 +275,10 @@
                                AutomationProperties.LiveSetting="Assertive" />
                 </StackPanel>
             </Expander.Header>
-            <ScrollViewer MaxHeight="210"
-                          HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Auto">
-            <Border MinWidth="980" Margin="0,7,0,0" Style="{StaticResource CardBorderStyle}">
+            <ScrollViewer MaxHeight="390"
+                           HorizontalScrollBarVisibility="Auto"
+                           VerticalScrollBarVisibility="Auto">
+            <Border MinWidth="1040" Margin="0,7,0,0" Style="{StaticResource CardBorderStyle}">
                 <StackPanel>
                     <UniformGrid Columns="7">
                         <StackPanel Margin="0,0,10,0">
@@ -415,6 +415,13 @@
                                   Content="mDNS, SSDP e WSD"
                                   AutomationProperties.Name="Ativar descoberta multicast" />
                         <CheckBox Margin="0,3,20,3"
+                                  IsChecked="{Binding EnableUpnpDescription}"
+                                  IsEnabled="{Binding EnableMulticastDiscovery}"
+                                  Content="Descrições UPnP"
+                                  ToolTip="Obtém fabricante, modelo, nome, série, descrição e tipo anunciados por dispositivos SSDP/UPnP."
+                                  AutomationProperties.Name="Obter descrições de dispositivos UPnP"
+                                  AutomationProperties.HelpText="Requer a descoberta SSDP e está desligado por omissão no perfil Rápido." />
+                        <CheckBox Margin="0,3,20,3"
                                   IsChecked="{Binding EnableNetBiosDiscovery}"
                                   Content="NetBIOS"
                                   AutomationProperties.Name="Ativar descoberta NetBIOS" />
@@ -423,9 +430,22 @@
                                   Content="Banners e TLS"
                                   AutomationProperties.Name="Ativar análise de serviços e TLS" />
                         <CheckBox Margin="0,3,20,3"
+                                  IsChecked="{Binding EnableSnmpDeviceDiscovery}"
+                                  Content="Identidade por SNMP"
+                                  ToolTip="Consulta identidade nos dispositivos que respondem a SNMP v2c; a community segue sem cifragem para cada alvo."
+                                  AutomationProperties.Name="Ativar descoberta de identidade por SNMP"
+                                  AutomationProperties.HelpText="Usa a community apenas nesta sessão, mas o protocolo SNMP v2c transmite-a sem cifragem." />
+                        <CheckBox Margin="0,3,20,3"
                                   IsChecked="{Binding EnableSnmpTopology}"
                                   Content="Topologia por SNMP"
                                   AutomationProperties.Name="Ativar consulta SNMP ao switch" />
+                        <CheckBox Margin="0,3,20,3"
+                                  IsChecked="{Binding EnableNmapDiscovery}"
+                                  IsEnabled="{Binding IsNmapProfileEligible}"
+                                  Content="Enriquecer com Nmap"
+                                  ToolTip="Disponível apenas no perfil Avançado. Requer uma instalação externa do Nmap e gera sondas TCP ativas."
+                                  AutomationProperties.Name="Ativar enriquecimento opcional com Nmap"
+                                  AutomationProperties.HelpText="Disponível apenas no perfil Avançado; o Nmap é externo e não é incluído pela aplicação." />
                         <CheckBox Margin="0,3,20,3"
                                   IsChecked="{Binding EnableHistory}"
                                   Content="Guardar e comparar histórico local"
@@ -434,7 +454,7 @@
                                   AutomationProperties.HelpText="O histórico fica apenas neste computador e pode ser apagado a qualquer momento." />
                     </WrapPanel>
                     <Grid Margin="0,10,0,0"
-                          Visibility="{Binding EnableSnmpTopology, Converter={StaticResource BooleanToVisibilityConverter}}">
+                          Visibility="{Binding IsSnmpEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="1.2*" />
                             <ColumnDefinition Width="1.2*" />
@@ -444,6 +464,8 @@
                         <StackPanel Margin="0,0,10,0">
                             <Label Content="IP do switch SNMP" />
                             <TextBox Text="{Binding SnmpSwitchAddress, UpdateSourceTrigger=PropertyChanged}"
+                                     IsEnabled="{Binding EnableSnmpTopology}"
+                                     ToolTip="Só é necessário para a topologia. A descoberta de identidade SNMP consulta diretamente cada dispositivo."
                                      AutomationProperties.Name="Endereço IP do switch SNMP" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Margin="0,0,10,0">
@@ -451,7 +473,7 @@
                             <PasswordBox x:Name="SnmpCommunityPasswordBox"
                                          PasswordChanged="OnSnmpCommunityPasswordChanged"
                                          AutomationProperties.Name="Comunidade SNMP"
-                                         AutomationProperties.HelpText="A comunidade é usada apenas durante esta sessão e não é guardada." />
+                                    AutomationProperties.HelpText="A community não é guardada, mas é transmitida sem cifragem pelo SNMP v2c." />
                         </StackPanel>
                         <StackPanel Grid.Column="2" Margin="0,0,10,0">
                             <Label Content="Timeout (ms)" />
@@ -477,7 +499,58 @@
                                    FontSize="11"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextWrapping="Wrap"
-                                   Text="SNMP v2c consulta a FDB, a porta aprendida e o mapeamento de VLAN quando disponível. Uma entrada FDB pode ser um uplink/trunk e não confirma, por si só, a ligação física. A comunidade não é persistida." />
+                                   Text="A identidade SNMP consulta fabricante, modelo, série, firmware e hardware em cada dispositivo online. A topologia consulta FDB, porta e VLAN no switch indicado. SNMP v2c envia a community sem cifragem: use uma credencial dedicada, apenas de leitura e numa rede de gestão confiável; nunca é persistida pela app." />
+                    </Grid>
+                    <Grid Margin="0,10,0,0"
+                          Visibility="{Binding EnableNmapDiscovery, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2.2*" />
+                            <ColumnDefinition Width="0.8*" />
+                            <ColumnDefinition Width="3*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,10,0">
+                            <Label Content="Caminho do nmap.exe (opcional)" />
+                            <TextBox Text="{Binding NmapExecutablePath, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Deixa vazio para procurar apenas nas instalações locais comuns em Program Files. Caminhos UNC, de dispositivo e PATH não são executados automaticamente."
+                                     AutomationProperties.Name="Caminho opcional do executável Nmap"
+                                     AutomationProperties.HelpText="Vazio procura em Program Files; um caminho explícito tem de ser local e apontar para nmap.exe." />
+                            <TextBlock Margin="0,4,0,0"
+                                       FontSize="10"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       Text="O caminho tem de ser absoluto, local, existir e terminar em nmap.exe; UNC e device paths são recusados."
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding HasNmapPathValidationError, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                       AutomationProperties.LiveSetting="Assertive" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                            <Label Content="Timeout (ms)" />
+                            <TextBox Style="{StaticResource ValidatedNumericTextBoxStyle}"
+                                     AutomationProperties.Name="Timeout global do Nmap em milissegundos">
+                                <TextBox.Text>
+                                    <Binding Path="NmapTimeoutMs"
+                                             UpdateSourceTrigger="PropertyChanged"
+                                             NotifyOnValidationError="True">
+                                        <Binding.ValidationRules>
+                                            <infra:IntegerRangeValidationRule FieldName="Timeout Nmap"
+                                                                              Minimum="5000"
+                                                                              Maximum="600000"
+                                                                              ValidationStep="RawProposedValue" />
+                                        </Binding.ValidationRules>
+                                    </Binding>
+                                </TextBox.Text>
+                            </TextBox>
+                        </StackPanel>
+                        <Border Grid.Column="2"
+                                Margin="0,2,0,0"
+                                Padding="10"
+                                VerticalAlignment="Bottom"
+                                Background="{DynamicResource SurfaceMutedBrush}"
+                                CornerRadius="6">
+                            <TextBlock FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap"
+                                       Text="O Nmap é instalado e licenciado separadamente; não é descarregado nem redistribuído pela app. A app recusa caminhos de rede/dispositivo, não pesquisa no PATH e mostra o executável local antes do scan TCP ativo." />
+                        </Border>
                     </Grid>
                     <DockPanel Margin="0,8,0,0" LastChildFill="True">
                         <Button DockPanel.Dock="Right"
@@ -759,12 +832,12 @@
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
                                 <DataGridTextColumn Header="IP" Width="122" Binding="{Binding IpAddress, Mode=OneWay}" SortMemberPath="IpSortKey" />
-                                <DataGridTemplateColumn Header="MAC / entidade IEEE" Width="190" SortMemberPath="MacAddress">
+                                <DataGridTemplateColumn Header="MAC / titular IEEE" Width="190" SortMemberPath="MacAddress">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <StackPanel>
                                                 <TextBlock Text="{Binding MacAddress}" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Margin="0,2,0,0" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding Manufacturer}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Margin="0,2,0,0" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding MacAssignee}" TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -1052,8 +1125,8 @@
                                             <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.IpAddress}" />
                                             <TextBlock Grid.Row="2" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="MAC" />
                                             <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.MacAddress}" />
-                                            <TextBlock Grid.Row="3" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Entidade do prefixo IEEE" />
-                                            <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.Manufacturer}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="3" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Titular do prefixo IEEE" />
+                                            <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.MacAssignee}" TextWrapping="Wrap" />
                                             <TextBlock Grid.Row="4" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SO provável" />
                                             <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.OsGuess}" TextWrapping="Wrap" />
                                             <TextBlock Grid.Row="5" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Ping / TTL" />
@@ -1100,6 +1173,124 @@
                                                 Command="{Binding SaveDeviceMetadataCommand}"
                                                 Content="Guardar preferências"
                                                 AutomationProperties.Name="Guardar preferências do dispositivo" />
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </TabItem>
+
+                            <TabItem Header="Identidade">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel Margin="12">
+                                        <TextBlock FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="IDENTIDADE CONSOLIDADA" />
+                                        <TextBlock Margin="0,4,0,0"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="Os dados são conciliados a partir de IEEE/OUI, DNS-SD, SSDP/UPnP, SNMP, Nmap e outras respostas observadas."
+                                                   TextWrapping="Wrap" />
+                                        <Grid Margin="0,9,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Fabricante / candidato" />
+                                            <TextBlock Grid.Column="1" Margin="0,4" FontWeight="SemiBold" Text="{Binding SelectedDevice.Manufacturer}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="1" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Titular IEEE" />
+                                            <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.MacAssignee}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="2" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Atribuição IEEE" />
+                                            <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.MacAssignment}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="3" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Modelo" />
+                                            <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.Model}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="4" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Nome anunciado" />
+                                            <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.FriendlyName}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="5" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Número de série" />
+                                            <TextBlock Grid.Row="5" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.SerialNumber}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="6" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Firmware" />
+                                            <TextBlock Grid.Row="6" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.Firmware}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="7" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Revisão de hardware" />
+                                            <TextBlock Grid.Row="7" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.HardwareRevision}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="8" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Confiança" />
+                                            <TextBlock Grid.Row="8" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.IdentityConfidence}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="9" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Descrição" />
+                                            <TextBlock Grid.Row="9" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.IdentityDescription}" TextWrapping="Wrap" />
+                                        </Grid>
+
+                                        <Separator Margin="0,14" />
+                                        <TextBlock FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="IDENTIFICADORES E FONTES TÉCNICAS" />
+                                        <Grid Margin="0,8,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SSDP ST" />
+                                            <TextBlock Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.SsdpServiceType}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="1" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SSDP USN" />
+                                            <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.SsdpUniqueServiceName}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="2" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SSDP / UPnP" />
+                                            <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.SsdpEndpoint}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="3" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SNMP" />
+                                            <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.SnmpIdentity}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="4" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Nmap" />
+                                            <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.NmapIdentity}" TextWrapping="Wrap" />
+                                        </Grid>
+
+                                        <Separator Margin="0,14" />
+                                        <TextBlock FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="ORIGEM E EVIDÊNCIAS" />
+                                        <ItemsControl Margin="0,8,0,0"
+                                                      ItemsSource="{Binding SelectedDevice.IdentityEvidenceLines}"
+                                                      AutomationProperties.Name="Evidências de identidade do dispositivo">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="0,0,0,7"
+                                                            Padding="9"
+                                                            Background="{DynamicResource SurfaceMutedBrush}"
+                                                            CornerRadius="6">
+                                                        <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock Margin="0,8,0,0"
+                                                   HorizontalAlignment="Center"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="Ainda não existem evidências de identidade para este dispositivo.">
+                                            <TextBlock.Style>
+                                                <Style TargetType="{x:Type TextBlock}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding SelectedDevice.HasIdentityEvidence}" Value="False">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                     </StackPanel>
                                 </ScrollViewer>
                             </TabItem>

@@ -4,12 +4,20 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Xml.Linq;
+using System.Xml;
 using LocalNetworkScanner.Core.Models;
 
 namespace LocalNetworkScanner.Core.Services;
 
 public sealed class WsDiscoveryService
 {
+    private const int MaximumResponseBytes = 65_507;
+    private const int MaximumProbeMatches = 64;
+    private const int MaximumMetadataLength = 2_048;
+    private const int MaximumReceivedDatagrams = 256;
+    private const int MaximumReceivedBytes = 1024 * 1024;
+    private const int MaximumAccumulatedMatches = 1_024;
+    private const int MaximumObservedAddresses = 256;
     private static readonly IPEndPoint MulticastEndpoint =
         new(IPAddress.Parse("239.255.255.250"), 3702);
 
@@ -19,6 +27,10 @@ public sealed class WsDiscoveryService
         CancellationToken cancellationToken)
     {
         Dictionary<IPAddress, DiscoveryObservation> observations = [];
+        MulticastReceiveBudget receiveBudget = new(
+            MaximumReceivedDatagrams,
+            MaximumReceivedBytes,
+            MaximumAccumulatedMatches);
 
         try
         {
@@ -45,19 +57,35 @@ public sealed class WsDiscoveryService
                 try
                 {
                     UdpReceiveResult response = await client.ReceiveAsync(timeout.Token);
+                    if (!receiveBudget.TryConsumeDatagram(response.Buffer.Length))
+                        break;
                     IReadOnlyList<WsDiscoveryMatch> matches = ParseResponse(
                         response.Buffer,
                         messageId,
                         response.RemoteEndPoint.Address);
+                    if (!receiveBudget.TryConsumeItems(matches.Count))
+                        break;
                     foreach (WsDiscoveryMatch match in matches)
                     {
-                        observations[match.Address] = new DiscoveryObservation
+                        if (!observations.ContainsKey(match.Address) &&
+                            observations.Count >= MaximumObservedAddresses)
+                        {
+                            continue;
+                        }
+
+                        DiscoveryObservation candidate = new()
                         {
                             IpAddress = match.Address,
                             Method = DiscoveryMethod.WsDiscovery,
                             Server = match.Types,
-                            Location = match.XAddresses
+                            Location = match.XAddresses,
+                            HasDirectAddressEvidence = true,
+                            EvidenceSource = "Resposta WS-Discovery",
+                            Confidence = ConfidenceLevel.Low
                         };
+                        observations[match.Address] = Merge(
+                            observations.GetValueOrDefault(match.Address),
+                            candidate);
                     }
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -104,7 +132,21 @@ public sealed class WsDiscoveryService
     {
         try
         {
-            XDocument document = XDocument.Parse(Encoding.UTF8.GetString(response));
+            if (response.Length == 0 || response.Length > MaximumResponseBytes)
+                return [];
+
+            XmlReaderSettings settings = new()
+            {
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null,
+                MaxCharactersInDocument = MaximumResponseBytes,
+                MaxCharactersFromEntities = 0,
+                IgnoreComments = true,
+                IgnoreProcessingInstructions = true
+            };
+            using MemoryStream stream = new(response, writable: false);
+            using XmlReader reader = XmlReader.Create(stream, settings);
+            XDocument document = XDocument.Load(reader, LoadOptions.None);
             string? action = FindValue(document, "Action");
             string? relatesTo = FindValue(document, "RelatesTo");
             if (action is null ||
@@ -116,23 +158,20 @@ public sealed class WsDiscoveryService
 
             List<WsDiscoveryMatch> results = [];
             foreach (XElement probeMatch in document.Descendants()
-                         .Where(element => element.Name.LocalName == "ProbeMatch"))
+                         .Where(element => element.Name.LocalName == "ProbeMatch")
+                         .Take(MaximumProbeMatches))
             {
-                string? types = probeMatch.Descendants()
-                    .FirstOrDefault(element => element.Name.LocalName == "Types")?.Value.Trim();
-                string? xAddresses = probeMatch.Descendants()
-                    .FirstOrDefault(element => element.Name.LocalName == "XAddrs")?.Value.Trim();
-                IReadOnlyList<IPAddress> addresses = ExtractAddresses(xAddresses);
-                if (addresses.Count == 0)
-                    addresses = [remoteAddress];
+                string? types = Limit(probeMatch.Descendants()
+                    .FirstOrDefault(element => element.Name.LocalName == "Types")?.Value);
+                string? xAddresses = Limit(probeMatch.Descendants()
+                    .FirstOrDefault(element => element.Name.LocalName == "XAddrs")?.Value);
 
-                foreach (IPAddress address in addresses.Distinct())
-                {
-                    results.Add(new WsDiscoveryMatch(
-                        address,
-                        EmptyToNull(types),
-                        EmptyToNull(xAddresses)));
-                }
+                // XAddr é metadado não autenticado. Associar o resultado ao remetente
+                // impede que um anúncio faça outro IP do CIDR parecer online.
+                results.Add(new WsDiscoveryMatch(
+                    remoteAddress,
+                    EmptyToNull(types),
+                    EmptyToNull(xAddresses)));
             }
 
             return results;
@@ -147,28 +186,60 @@ public sealed class WsDiscoveryService
         EmptyToNull(document.Descendants()
             .FirstOrDefault(element => element.Name.LocalName == localName)?.Value.Trim());
 
-    private static IReadOnlyList<IPAddress> ExtractAddresses(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return [];
-
-        List<IPAddress> addresses = [];
-        foreach (string token in value.Split(
-                     [' ', '\r', '\n', '\t'],
-                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (Uri.TryCreate(token, UriKind.Absolute, out Uri? uri) &&
-                IPAddress.TryParse(uri.Host, out IPAddress? address) &&
-                address.AddressFamily == AddressFamily.InterNetwork)
-            {
-                addresses.Add(address);
-            }
-        }
-        return addresses;
-    }
-
     private static string? EmptyToNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private static string? Limit(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        char[] sanitized = value
+            .Select(character => char.IsControl(character) ? ' ' : character)
+            .ToArray();
+        string compact = string.Join(
+            ' ',
+            new string(sanitized).Split(
+                ' ',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        return compact.Length <= MaximumMetadataLength
+            ? compact
+            : compact[..MaximumMetadataLength];
+    }
+
+    private static DiscoveryObservation Merge(
+        DiscoveryObservation? existing,
+        DiscoveryObservation candidate)
+    {
+        if (existing is null)
+            return candidate;
+
+        return new DiscoveryObservation
+        {
+            IpAddress = candidate.IpAddress,
+            Method = DiscoveryMethod.WsDiscovery,
+            Server = JoinDistinct(existing.Server, candidate.Server),
+            Location = JoinDistinct(existing.Location, candidate.Location),
+            HasDirectAddressEvidence = true,
+            EvidenceSource = "Respostas WS-Discovery",
+            Confidence = ConfidenceLevel.Low
+        };
+    }
+
+    private static string? JoinDistinct(string? first, string? second)
+    {
+        if (string.IsNullOrWhiteSpace(first))
+            return second;
+        if (string.IsNullOrWhiteSpace(second) ||
+            first.Split(';', StringSplitOptions.TrimEntries).Contains(
+                second,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            return first;
+        }
+
+        return Limit($"{first}; {second}");
+    }
 }
 
 internal sealed record WsDiscoveryMatch(IPAddress Address, string? Types, string? XAddresses);

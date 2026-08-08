@@ -67,6 +67,30 @@ try {
     Write-Host "> copyright header/footer validation" -ForegroundColor DarkGray
     & $copyrightCheckScript
 
+    Write-Host "> PowerShell syntax validation" -ForegroundColor DarkGray
+    $scriptFiles = @(
+        Get-ChildItem -LiteralPath (Join-Path $repoRoot "scripts") -File -Filter "*.ps1" |
+            Sort-Object FullName
+    )
+    if ($scriptFiles.Count -eq 0) {
+        throw "No PowerShell scripts were found for syntax validation."
+    }
+    foreach ($scriptFile in $scriptFiles) {
+        $tokens = $null
+        $parseErrors = $null
+        [void][System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptFile.FullName,
+            [ref]$tokens,
+            [ref]$parseErrors)
+        if ($parseErrors.Count -gt 0) {
+            $details = ($parseErrors | ForEach-Object {
+                "$($_.Extent.StartLineNumber):$($_.Extent.StartColumnNumber) $($_.Message)"
+            }) -join "; "
+            throw "PowerShell syntax validation failed for '$($scriptFile.FullName)': $details"
+        }
+    }
+    Write-Host "PowerShell syntax validation passed for $($scriptFiles.Count) script(s)."
+
     foreach ($project in $projects) {
         Invoke-DotNet @("restore", $project)
     }

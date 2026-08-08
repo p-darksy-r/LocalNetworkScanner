@@ -86,10 +86,14 @@ public sealed class ExportService
                     MacAddressService.TryNormalizeDeviceAddress(device.MacAddress, out _)),
                 withResolvedManufacturer = result.Devices.Count(device =>
                     !string.IsNullOrWhiteSpace(device.Manufacturer)),
+                withResolvedModel = result.Devices.Count(device =>
+                    !string.IsNullOrWhiteSpace(device.Model)),
+                withHighConfidenceIdentity = result.Devices.Count(device =>
+                    device.IdentityConfidence == ConfidenceLevel.High),
                 withResponseTime = result.Devices.Count(device => device.ResponseTimeMs.HasValue),
                 withOpenPorts = result.Devices.Count(device => device.Ports.Count > 0),
                 openPortObservations = result.Devices.Sum(device => device.Ports.Count),
-                randomizedMac = result.Devices.Count(device => device.IsRandomizedMac),
+                locallyAdministeredMac = result.Devices.Count(device => device.IsLocallyAdministeredMac),
                 newSincePreviousScan = result.Devices.Count(device => device.HistoryCompared && device.IsNew),
                 changedSincePreviousScan = result.Devices.Count(device =>
                     device.HistoryCompared && device.Changes.Count > 0),
@@ -153,7 +157,7 @@ public sealed class ExportService
         NetworkMap topologyMap = new NetworkTopologyMapService().Build(result);
         object payload = new
         {
-            schemaVersion = 4,
+            schemaVersion = 5,
             generatedAt = DateTimeOffset.UtcNow,
             network = new
             {
@@ -229,7 +233,33 @@ public sealed class ExportService
                 device.Hostname,
                 device.MacAddress,
                 device.Manufacturer,
-                device.IsRandomizedMac,
+                device.MacAssignee,
+                device.MacRegistry,
+                device.MacAssignmentPrefix,
+                device.Model,
+                device.FriendlyName,
+                device.SerialNumber,
+                device.Firmware,
+                device.HardwareRevision,
+                device.IdentityDescription,
+                identityConfidence = device.IdentityConfidence.ToString(),
+                identityEvidence = device.IdentityEvidence.Select(evidence => new
+                {
+                    method = evidence.Method.ToString(),
+                    evidence.Source,
+                    confidence = evidence.Confidence.ToString(),
+                    evidence.Manufacturer,
+                    evidence.Model,
+                    evidence.FriendlyName,
+                    evidence.SerialNumber,
+                    evidence.Firmware,
+                    evidence.HardwareRevision,
+                    evidence.Description,
+                    evidence.DeviceType,
+                    evidence.OperatingSystem,
+                    evidence.Endpoint
+                }),
+                device.IsLocallyAdministeredMac,
                 responseTimeMs = device.ResponseTimeMs,
                 replyTtl = device.ReplyTtl,
                 discovery = device.DiscoveryText,
@@ -242,7 +272,15 @@ public sealed class ExportService
                 ports = device.Ports,
                 topology = device.Topology,
                 mdnsNames = device.MdnsNames,
-                ssdp = new { device.SsdpServer, device.SsdpLocation },
+                ssdp = new
+                {
+                    device.SsdpServer,
+                    device.SsdpLocation,
+                    device.SsdpServiceType,
+                    device.SsdpUniqueServiceName
+                },
+                snmp = new { device.SnmpDescription, device.SnmpObjectIdentifier },
+                nmap = device.NmapSummary,
                 netbios = new { device.NetBiosName, device.Workgroup },
                 wsDiscovery = new { device.WsDiscoveryTypes, device.WsDiscoveryAddresses },
                 device.FirstSeen,
@@ -387,7 +425,7 @@ public sealed class ExportService
     {
         EnsureDirectory(path);
         StringBuilder csv = new();
-        csv.AppendLine("Resultado parcial;Favorito;Alias;Notas;IP;Hostname;NetBIOS;Grupo de trabalho;MAC;Fabricante;PingMs;Descoberta;Portas;Tipo;SO provável;Protocolos;Risco;Pontuação;Topologia;Histórico");
+        csv.AppendLine("Resultado parcial;Favorito;Alias;Notas;IP;Hostname;NetBIOS;Grupo de trabalho;MAC;Titular IEEE;Fabricante;Modelo;Nome anunciado;Firmware;Confiança identidade;Fontes identidade;PingMs;Descoberta;Portas;Tipo;SO provável;Protocolos;Risco;Pontuação;Topologia;Histórico");
 
         foreach (NetworkDevice device in result.Devices)
         {
@@ -402,7 +440,13 @@ public sealed class ExportService
                 device.NetBiosName ?? string.Empty,
                 device.Workgroup ?? string.Empty,
                 device.MacAddress ?? string.Empty,
+                device.MacAssignee ?? string.Empty,
                 device.Manufacturer ?? string.Empty,
+                device.Model ?? string.Empty,
+                device.FriendlyName ?? string.Empty,
+                device.Firmware ?? string.Empty,
+                device.IdentityConfidenceDisplay,
+                string.Join(", ", device.IdentityEvidence.Select(evidence => evidence.Source).Distinct()),
                 device.ResponseTimeMs?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
                 device.DiscoveryText,
                 device.OpenPortsText,
@@ -455,7 +499,7 @@ public sealed class ExportService
         AddCard("Risco alto", result.Devices.Count(device => device.RiskLevel == "Alto").ToString());
         AddCard("Duração", $"{result.Duration.TotalSeconds:F1} s");
         html.Append("</section><div class=\"scroll\"><table><thead><tr>" +
-            "<th>Dispositivo</th><th>IP</th><th>MAC / fabricante</th><th>Ping</th><th>Portas e protocolos</th><th>Risco</th><th>Topologia</th><th>Histórico</th>" +
+            "<th>Dispositivo</th><th>IP</th><th>Identidade</th><th>MAC / IEEE</th><th>Ping</th><th>Portas e protocolos</th><th>Risco</th><th>Topologia</th><th>Histórico</th>" +
             "</tr></thead><tbody>");
 
         foreach (NetworkDevice device in result.Devices)
@@ -469,7 +513,8 @@ public sealed class ExportService
             html.Append("<tr>");
             html.Append($"<td><strong>{H(device.IdentityDisplay)}</strong><br>{H(device.DeviceType)}</td>");
             html.Append($"<td>{H(device.IpAddressText)}</td>");
-            html.Append($"<td>{H(device.MacDisplay)}<br>{H(device.ManufacturerDisplay)}</td>");
+            html.Append($"<td>{H(device.ManufacturerDisplay)}<br>{H(device.ModelDisplay)} · {H(device.IdentityConfidenceDisplay)}</td>");
+            html.Append($"<td>{H(device.MacDisplay)}<br>{H(device.MacAssigneeDisplay)}</td>");
             html.Append($"<td>{H(device.ResponseTimeDisplay)}</td>");
             html.Append($"<td>{H(device.OpenPortsText)}<br>{H(device.ProtocolsText)}</td>");
             html.Append($"<td class=\"{riskClass}\">{H(device.RiskLevel)} · {device.RiskScore}/100</td>");

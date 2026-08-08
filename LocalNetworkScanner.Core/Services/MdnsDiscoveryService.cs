@@ -30,7 +30,13 @@ public sealed class MdnsDiscoveryService
     private const int MaximumEvidenceHosts = 256;
     private const int MaximumAddressesPerHost = 8;
     private const int MaximumInstancesPerHost = 8;
+    private const int MaximumServiceTypesPerInstance = 8;
+    private const int MaximumTxtFieldsPerInstance = 16;
+    private const int MaximumIdentityValueLength = 160;
     private const int MaximumObservations = 512;
+    private const int MaximumReceivedDatagrams = 512;
+    private const int MaximumReceivedBytes = 2 * 1024 * 1024;
+    private const int MaximumAccumulatedRecords = 4_096;
 
     private static readonly IPEndPoint MulticastEndpoint = new(IPAddress.Parse("224.0.0.251"), 5353);
 
@@ -56,18 +62,14 @@ public sealed class MdnsDiscoveryService
         HashSet<string> serviceTypes = new(StringComparer.OrdinalIgnoreCase);
         HashSet<string> instances = new(StringComparer.OrdinalIgnoreCase);
         HashSet<string> hosts = new(StringComparer.OrdinalIgnoreCase);
+        MulticastReceiveBudget receiveBudget = new(
+            MaximumReceivedDatagrams,
+            MaximumReceivedBytes,
+            MaximumAccumulatedRecords);
 
         try
         {
-            using UdpClient client = new(AddressFamily.InterNetwork);
-            if (localAddress is not null)
-            {
-                client.Client.Bind(new IPEndPoint(localAddress, 0));
-                client.Client.SetSocketOption(
-                    SocketOptionLevel.IP,
-                    SocketOptionName.MulticastInterface,
-                    localAddress.GetAddressBytes());
-            }
+            using UdpClient client = CreateDiscoveryClient(localAddress);
 
             using CancellationTokenSource timeout =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -95,14 +97,19 @@ public sealed class MdnsDiscoveryService
                     break;
                 }
 
+                if (!receiveBudget.TryConsumeDatagram(response.Buffer.Length))
+                    break;
+
                 if (!IsValidResponse(response))
                     continue;
 
                 MdnsMessage message = ParseMessage(response.Buffer);
                 if (message.Records.Count == 0)
                     continue;
+                if (!receiveBudget.TryConsumeItems(message.Records.Count))
+                    break;
 
-                evidence.Add(message.Records);
+                evidence.Add(message.Records, response.RemoteEndPoint.Address);
                 IReadOnlyList<MdnsQuestion> followUpQuestions = FindFollowUpQuestions(
                     message.Records,
                     serviceTypes,
@@ -247,11 +254,16 @@ public sealed class MdnsDiscoveryService
 
     internal static IReadOnlyList<DiscoveryObservation> CorrelateRecords(
         IReadOnlyList<MdnsResourceRecord> records)
+        => CorrelateRecords(records, null);
+
+    internal static IReadOnlyList<DiscoveryObservation> CorrelateRecords(
+        IReadOnlyList<MdnsResourceRecord> records,
+        IPAddress? responderAddress)
     {
         ArgumentNullException.ThrowIfNull(records);
 
         MdnsEvidenceAccumulator evidence = new();
-        evidence.Add(records);
+        evidence.Add(records, responderAddress);
         return evidence.BuildObservations();
     }
 
@@ -519,6 +531,62 @@ public sealed class MdnsDiscoveryService
         _ = await client.SendAsync(query, MulticastEndpoint, cancellationToken);
     }
 
+    private static UdpClient CreateDiscoveryClient(IPAddress? localAddress)
+    {
+        UdpClient client = new(AddressFamily.InterNetwork);
+        try
+        {
+            // A porta 5353 e a adesão ao grupo permitem receber respostas multicast de
+            // implementações que ignoram o bit QU. SO_REUSEADDR evita excluir o serviço
+            // mDNS do Windows ou outro observador que já esteja ativo.
+            client.Client.ExclusiveAddressUse = false;
+            client.Client.SetSocketOption(
+                SocketOptionLevel.Socket,
+                SocketOptionName.ReuseAddress,
+                true);
+            client.Client.Bind(new IPEndPoint(IPAddress.Any, MulticastEndpoint.Port));
+
+            ConfigureMulticastInterface(client, localAddress);
+            if (localAddress is null)
+                client.JoinMulticastGroup(MulticastEndpoint.Address);
+            else
+                client.JoinMulticastGroup(MulticastEndpoint.Address, localAddress);
+
+            return client;
+        }
+        catch (Exception exception) when (
+            exception is SocketException or InvalidOperationException or ArgumentException)
+        {
+            client.Dispose();
+
+            // Em pilhas que não permitem partilhar 5353, mantém a descoberta QU
+            // funcional numa porta efémera. A pergunta continua a pedir resposta unicast.
+            UdpClient fallback = new(AddressFamily.InterNetwork);
+            try
+            {
+                fallback.Client.Bind(new IPEndPoint(localAddress ?? IPAddress.Any, 0));
+                ConfigureMulticastInterface(fallback, localAddress);
+                return fallback;
+            }
+            catch
+            {
+                fallback.Dispose();
+                throw;
+            }
+        }
+    }
+
+    private static void ConfigureMulticastInterface(UdpClient client, IPAddress? localAddress)
+    {
+        if (localAddress is null)
+            return;
+
+        client.Client.SetSocketOption(
+            SocketOptionLevel.IP,
+            SocketOptionName.MulticastInterface,
+            localAddress.GetAddressBytes());
+    }
+
     private static string ReadName(byte[] packet, ref int offset)
     {
         if ((uint)offset >= (uint)packet.Length)
@@ -656,10 +724,18 @@ public sealed class MdnsDiscoveryService
     {
         private readonly Dictionary<string, HashSet<IPAddress>> _addressesByHost =
             new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, HashSet<IPAddress>> _directAddressesByHost =
+            new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, HashSet<string>> _instancesByHost =
             new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, HashSet<string>> _pointerServiceTypesByInstance =
+            new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Dictionary<string, string>> _txtFieldsByInstance =
+            new(StringComparer.OrdinalIgnoreCase);
 
-        public void Add(IReadOnlyList<MdnsResourceRecord> records)
+        public void Add(
+            IReadOnlyList<MdnsResourceRecord> records,
+            IPAddress? responderAddress)
         {
             foreach (MdnsResourceRecord record in records)
             {
@@ -671,6 +747,13 @@ public sealed class MdnsDiscoveryService
                     if (record.TimeToLive == 0)
                     {
                         RemoveValue(_addressesByHost, record.Owner, record.Address);
+                        if (record.Address.Equals(responderAddress))
+                        {
+                            RemoveValue(
+                                _directAddressesByHost,
+                                record.Owner,
+                                record.Address);
+                        }
                         continue;
                     }
 
@@ -678,6 +761,16 @@ public sealed class MdnsDiscoveryService
                         addresses.Count < MaximumAddressesPerHost)
                     {
                         addresses.Add(record.Address);
+                    }
+
+                    if (record.Address.Equals(responderAddress) &&
+                        TryGetOrCreate(
+                            _directAddressesByHost,
+                            record.Owner,
+                            out HashSet<IPAddress> directAddresses) &&
+                        directAddresses.Count < MaximumAddressesPerHost)
+                    {
+                        directAddresses.Add(record.Address);
                     }
                 }
                 else if (record.Type == ServiceType &&
@@ -696,6 +789,55 @@ public sealed class MdnsDiscoveryService
                         instances.Add(record.Owner);
                     }
                 }
+                else if (record.Type == PointerType &&
+                         IsServiceTypeName(record.Owner) &&
+                         IsInstanceOf(record.DomainName, record.Owner))
+                {
+                    if (record.TimeToLive == 0)
+                    {
+                        RemoveValue(
+                            _pointerServiceTypesByInstance,
+                            record.DomainName!,
+                            record.Owner);
+                        continue;
+                    }
+
+                    if (TryGetOrCreate(
+                            _pointerServiceTypesByInstance,
+                            record.DomainName!,
+                            out HashSet<string> serviceTypes) &&
+                        serviceTypes.Count < MaximumServiceTypesPerInstance)
+                    {
+                        serviceTypes.Add(record.Owner);
+                    }
+                }
+                else if (record.Type == TextType &&
+                         TryGetServiceTypeFromInstance(record.Owner, out _))
+                {
+                    if (record.TimeToLive == 0)
+                    {
+                        _txtFieldsByInstance.Remove(record.Owner);
+                        continue;
+                    }
+
+                    IReadOnlyDictionary<string, string> fields = ParseIdentityTxtFields(record.Text);
+                    if (fields.Count == 0)
+                        continue;
+
+                    if (TryGetOrCreateTxtFields(record.Owner, out Dictionary<string, string> stored))
+                    {
+                        foreach ((string key, string value) in fields)
+                        {
+                            if (stored.Count >= MaximumTxtFieldsPerInstance &&
+                                !stored.ContainsKey(key))
+                            {
+                                break;
+                            }
+
+                            stored[key] = value;
+                        }
+                    }
+                }
             }
         }
 
@@ -706,33 +848,260 @@ public sealed class MdnsDiscoveryService
             foreach ((string host, HashSet<IPAddress> addresses) in
                      _addressesByHost.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
             {
-                IEnumerable<string> names = new[] { host };
-                if (_instancesByHost.TryGetValue(host, out HashSet<string>? instances))
-                {
-                    names = names.Concat(
-                        instances
-                            .OrderBy(instance => instance, StringComparer.OrdinalIgnoreCase)
-                            .Take(MaximumInstancesPerHost));
-                }
-
                 foreach (IPAddress address in addresses.OrderBy(address => address.ToString(), StringComparer.Ordinal))
                 {
-                    foreach (string name in names)
+                    if (observations.Count >= MaximumObservations)
+                        return observations;
+
+                    bool hasDirectAddressEvidence =
+                        _directAddressesByHost.TryGetValue(
+                            host,
+                            out HashSet<IPAddress>? directAddresses) &&
+                        directAddresses.Contains(address);
+                    observations.Add(new DiscoveryObservation
+                    {
+                        IpAddress = address,
+                        Method = DiscoveryMethod.Mdns,
+                        Hostname = NullIfEmpty(host),
+                        HasDirectAddressEvidence = hasDirectAddressEvidence,
+                        EvidenceSource = hasDirectAddressEvidence
+                            ? "mDNS (A/AAAA; remetente direto)"
+                            : "mDNS (A/AAAA; endereço anunciado)",
+                        Confidence = ConfidenceLevel.Low
+                    });
+
+                    if (!_instancesByHost.TryGetValue(host, out HashSet<string>? instances))
+                        continue;
+
+                    foreach (string instance in instances
+                                 .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                                 .Take(MaximumInstancesPerHost))
                     {
                         if (observations.Count >= MaximumObservations)
                             return observations;
 
-                        observations.Add(new DiscoveryObservation
-                        {
-                            IpAddress = address,
-                            Method = DiscoveryMethod.Mdns,
-                            Hostname = NullIfEmpty(name)
-                        });
+                        observations.Add(BuildInstanceObservation(
+                            address,
+                            instance,
+                            hasDirectAddressEvidence));
                     }
                 }
             }
 
             return observations;
+        }
+
+        private DiscoveryObservation BuildInstanceObservation(
+            IPAddress address,
+            string instance,
+            bool hasDirectAddressEvidence)
+        {
+            string? serviceType = SelectServiceType(instance);
+            _txtFieldsByInstance.TryGetValue(
+                instance,
+                out Dictionary<string, string>? textFields);
+
+            string? manufacturer = SelectTxtValue(
+                textFields,
+                "manufacturer",
+                "usb_mfg",
+                "mfg");
+            string? model = SelectTxtValue(
+                textFields,
+                "model",
+                "md",
+                "usb_mdl",
+                "ty",
+                "product");
+            string? friendlyName = ExtractInstanceName(instance, serviceType);
+            bool hasPointer = _pointerServiceTypesByInstance.ContainsKey(instance);
+            bool hasTxt = textFields is { Count: > 0 };
+
+            string evidenceSource = hasTxt
+                ? hasPointer
+                    ? "mDNS/DNS-SD (PTR/SRV/TXT/A/AAAA)"
+                    : "mDNS/DNS-SD (SRV/TXT/A/AAAA)"
+                : hasPointer
+                    ? "mDNS/DNS-SD (PTR/SRV/A/AAAA)"
+                    : "mDNS/DNS-SD (SRV/A/AAAA)";
+
+            return new DiscoveryObservation
+            {
+                IpAddress = address,
+                Method = DiscoveryMethod.Mdns,
+                // Mantém a USN DNS-SD em Hostname por compatibilidade com consumidores
+                // existentes e disponibiliza em paralelo os campos tipados de identidade.
+                Hostname = NullIfEmpty(instance),
+                Manufacturer = manufacturer,
+                Model = model,
+                FriendlyName = friendlyName,
+                DeviceType = MapServiceDeviceType(serviceType),
+                ServiceType = serviceType,
+                UniqueServiceName = NullIfEmpty(instance),
+                HasDirectAddressEvidence = hasDirectAddressEvidence,
+                EvidenceSource = evidenceSource,
+                Confidence = ConfidenceLevel.Medium
+            };
+        }
+
+        private string? SelectServiceType(string instance)
+        {
+            if (_pointerServiceTypesByInstance.TryGetValue(
+                    instance,
+                    out HashSet<string>? serviceTypes))
+            {
+                string? selected = serviceTypes
+                    .Where(IsServiceTypeName)
+                    .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                    .FirstOrDefault();
+                if (selected is not null)
+                    return LimitIdentityValue(selected);
+            }
+
+            return TryGetServiceTypeFromInstance(instance, out string parsed)
+                ? LimitIdentityValue(parsed)
+                : null;
+        }
+
+        private bool TryGetOrCreateTxtFields(
+            string instance,
+            out Dictionary<string, string> fields)
+        {
+            if (_txtFieldsByInstance.TryGetValue(instance, out Dictionary<string, string>? existing))
+            {
+                fields = existing;
+                return true;
+            }
+
+            if (_txtFieldsByInstance.Count >= MaximumEvidenceHosts)
+            {
+                fields = null!;
+                return false;
+            }
+
+            fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            _txtFieldsByInstance[instance] = fields;
+            return true;
+        }
+
+        private static IReadOnlyDictionary<string, string> ParseIdentityTxtFields(
+            IReadOnlyList<string>? text)
+        {
+            Dictionary<string, string> fields = new(StringComparer.OrdinalIgnoreCase);
+            if (text is null)
+                return fields;
+
+            foreach (string item in text)
+            {
+                int separator = item.IndexOf('=');
+                if (separator <= 0)
+                    continue;
+
+                string key = item[..separator].Trim();
+                if (!IsAllowedIdentityTxtKey(key))
+                    continue;
+
+                string? value = LimitIdentityValue(item[(separator + 1)..]);
+                if (value is null)
+                    continue;
+
+                string canonicalKey = key.ToLowerInvariant();
+                if (canonicalKey.Equals("product", StringComparison.Ordinal) &&
+                    value.Length > 2 &&
+                    value[0] == '(' &&
+                    value[^1] == ')')
+                {
+                    value = LimitIdentityValue(value[1..^1]);
+                    if (value is null)
+                        continue;
+                }
+
+                if (fields.Count >= MaximumTxtFieldsPerInstance &&
+                    !fields.ContainsKey(canonicalKey))
+                {
+                    break;
+                }
+
+                fields[canonicalKey] = value;
+            }
+
+            return fields;
+        }
+
+        private static bool IsAllowedIdentityTxtKey(string key)
+            => key.Equals("model", StringComparison.OrdinalIgnoreCase) ||
+               key.Equals("md", StringComparison.OrdinalIgnoreCase) ||
+               key.Equals("ty", StringComparison.OrdinalIgnoreCase) ||
+               key.Equals("product", StringComparison.OrdinalIgnoreCase) ||
+               key.Equals("usb_MFG", StringComparison.OrdinalIgnoreCase) ||
+               key.Equals("usb_MDL", StringComparison.OrdinalIgnoreCase) ||
+               key.Equals("manufacturer", StringComparison.OrdinalIgnoreCase) ||
+               key.Equals("mfg", StringComparison.OrdinalIgnoreCase);
+
+        private static string? SelectTxtValue(
+            IReadOnlyDictionary<string, string>? fields,
+            params string[] preferredKeys)
+        {
+            if (fields is null)
+                return null;
+
+            foreach (string key in preferredKeys)
+            {
+                if (fields.TryGetValue(key, out string? value))
+                    return LimitIdentityValue(value);
+            }
+
+            return null;
+        }
+
+        private static string? ExtractInstanceName(string instance, string? serviceType)
+        {
+            if (string.IsNullOrWhiteSpace(serviceType) || !IsInstanceOf(instance, serviceType))
+                return null;
+
+            int suffixLength = serviceType.Length + 1;
+            return LimitIdentityValue(instance[..^suffixLength]);
+        }
+
+        private static string? LimitIdentityValue(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return null;
+
+            string trimmed = value.Trim();
+            if (trimmed.Any(char.IsControl))
+                return null;
+
+            string normalized = string.Join(
+                ' ',
+                trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+            if (normalized.Length == 0)
+                return null;
+
+            return normalized.Length <= MaximumIdentityValueLength
+                ? normalized
+                : normalized[..MaximumIdentityValueLength];
+        }
+
+        private static string? MapServiceDeviceType(string? serviceType)
+        {
+            if (string.IsNullOrWhiteSpace(serviceType))
+                return null;
+
+            string protocol = serviceType.Split('.')[0].ToLowerInvariant();
+            return protocol switch
+            {
+                "_ipp" or "_ipps" or "_printer" or "_pdl-datastream" => "Impressora",
+                "_scanner" or "_uscan" => "Scanner",
+                "_rtsp" or "_axis-video" => "Câmara / vídeo IP",
+                "_airplay" or "_raop" or "_googlecast" or "_spotify-connect" =>
+                    "Reprodutor multimédia",
+                "_smb" or "_afpovertcp" or "_nfs" or "_webdav" => "NAS / armazenamento",
+                "_ssh" or "_sftp-ssh" or "_rdp" => "Computador / servidor",
+                "_hap" or "_homekit" or "_matter" or "_mqtt" => "IoT / automação",
+                "_workstation" => "Computador",
+                _ => null
+            };
         }
 
         private static void RemoveValue<TValue>(

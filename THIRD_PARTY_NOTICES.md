@@ -21,4 +21,12 @@ The data is included solely to perform offline prefix-to-registered-organization
 
 Before publicly redistributing a binary or package that contains this snapshot or a derived copy, obtain written authorization and any required wording directly from the [IEEE Registration Authority](https://standards.ieee.org/products-programs/regauth/contact/) or through the [IEEE SA permission request](https://standards.ieee.org/ipr/copyright-permissions-form/). Preserve the authorization and its conditions with the release evidence. Consult the [IEEE Registration Authority public listings](https://standards.ieee.org/products-programs/regauth/) for the authoritative and current data.
 
+## Optional interoperability with Nmap
+
+Local Network Scanner can invoke an Nmap executable that the user has installed separately. Nmap and Npcap are **not** copied into this repository, installer, portable archive or release assets, and their code is not linked into this application.
+
+Nmap is copyright the Nmap Project / Nmap Software LLC and is distributed under the Nmap Public Source License. Windows packages may also contain Npcap under separate terms. Free end-user use does not automatically grant a product the right to redistribute or embed those packages; such distribution requires compliance with the applicable terms or an Nmap OEM licence. See the [Nmap legal notices](https://nmap.org/book/man-legal.html), [Nmap Public Source License](https://nmap.org/npsl/) and [Nmap OEM programme](https://nmap.org/oem/).
+
+Nmap and Npcap are names and marks of their respective owners. Optional command-line interoperability does not imply sponsorship, certification or endorsement.
+
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

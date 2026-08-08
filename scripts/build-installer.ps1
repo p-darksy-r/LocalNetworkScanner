@@ -16,6 +16,8 @@ param(
 
     [string]$SignToolPath,
 
+    [string]$ExternalSignerScript,
+
     [ValidateSet("CurrentUser", "LocalMachine")]
     [string]$SigningCertificateStore = "CurrentUser",
 
@@ -87,7 +89,7 @@ function Resolve-SignTool {
         Select-Object -First 1
 
     if ([string]::IsNullOrWhiteSpace($resolved)) {
-        throw "Authenticode signing was requested, but signtool.exe was not found. Install the Windows SDK or pass -SignToolPath."
+        throw "LNS-REL-003: Authenticode signing was requested, but signtool.exe was not found. Install the Windows SDK or pass -SignToolPath."
     }
 
     return [IO.Path]::GetFullPath($resolved)
@@ -100,7 +102,7 @@ function Assert-TimestampServer {
     if (-not [Uri]::TryCreate($Uri, [UriKind]::Absolute, [ref]$parsed) -or
         $parsed.Scheme -notin @("http", "https") -or
         -not [string]::IsNullOrWhiteSpace($parsed.UserInfo)) {
-        throw "TimestampServer must be an absolute HTTP or HTTPS URL without embedded credentials."
+        throw "LNS-REL-003: TimestampServer must be an absolute HTTP or HTTPS URL without embedded credentials."
     }
 }
 
@@ -115,23 +117,23 @@ function Resolve-SigningCertificate {
 
     $normalized = [Regex]::Replace($Thumbprint, "\s", "").ToUpperInvariant()
     if ($normalized -notmatch "^[0-9A-F]{40}$") {
-        throw "SigningCertificateThumbprint must be a 40-character SHA-1 certificate thumbprint. SHA-1 is used only to select the certificate; file signatures use SHA-256."
+        throw "LNS-REL-003: SigningCertificateThumbprint must be a 40-character SHA-1 certificate thumbprint. SHA-1 is used only to select the certificate; file signatures use SHA-256."
     }
 
     $certificate = Get-Item -LiteralPath "Cert:\$Store\My\$normalized" -ErrorAction SilentlyContinue
     if ($null -eq $certificate -or -not $certificate.HasPrivateKey) {
-        throw "Authenticode signing was requested, but a certificate with a private key was not found at $Store\My\$normalized."
+        throw "LNS-REL-003: Authenticode signing was requested, but a certificate with a private key was not found at $Store\My\$normalized."
     }
     if ([DateTime]::Now -lt $certificate.NotBefore -or [DateTime]::Now -gt $certificate.NotAfter) {
-        throw "The signing certificate '$normalized' is not currently valid ($($certificate.NotBefore.ToString('u')) to $($certificate.NotAfter.ToString('u')))."
+        throw "LNS-REL-004: the signing certificate '$normalized' is not currently valid ($($certificate.NotBefore.ToString('u')) to $($certificate.NotAfter.ToString('u')))."
     }
     if ($certificate.Subject -eq $certificate.Issuer) {
-        throw "The signing certificate '$normalized' is self-signed. A certificate chained to a trusted public CA is required for release signing."
+        throw "LNS-REL-004: the signing certificate '$normalized' is self-signed. A certificate chained to a trusted public CA is required for release signing."
     }
 
     $rsa = [Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($certificate)
     if ($null -eq $rsa) {
-        throw "The signing certificate '$normalized' is not an RSA certificate."
+        throw "LNS-REL-004: the signing certificate '$normalized' is not an RSA certificate."
     }
     $rsa.Dispose()
 
@@ -143,7 +145,7 @@ function Resolve-SigningCertificate {
         $null -ne $ekuExtension -and
         @($ekuExtension.EnhancedKeyUsages | Where-Object { $_.Value -eq $codeSigningOid }).Count -gt 0
     if (-not $hasCodeSigningEku) {
-        throw "The certificate '$normalized' is not authorized for Code Signing (EKU $codeSigningOid)."
+        throw "LNS-REL-004: the certificate '$normalized' is not authorized for Code Signing (EKU $codeSigningOid)."
     }
 
     $chain = [Security.Cryptography.X509Certificates.X509Chain]::new()
@@ -155,7 +157,7 @@ function Resolve-SigningCertificate {
         if (-not $chain.Build($certificate)) {
             $chainErrors = ($chain.ChainStatus |
                 ForEach-Object { "$($_.Status): $($_.StatusInformation.Trim())" }) -join "; "
-            throw "The signing certificate '$normalized' does not build to a trusted CA or failed revocation checking: $chainErrors"
+            throw "LNS-REL-004: the signing certificate '$normalized' does not build to a trusted CA or failed revocation checking: $chainErrors"
         }
     }
     finally {
@@ -179,7 +181,7 @@ function Assert-ExpectedSignature {
 
     & $ToolPath verify /pa /tw /v $FilePath
     if ($LASTEXITCODE -ne 0) {
-        throw "signtool verify failed for '$FilePath' with code $LASTEXITCODE."
+        throw "LNS-REL-005: signtool verify failed for '$FilePath' with code $LASTEXITCODE."
     }
 
     $signature = Get-AuthenticodeSignature -LiteralPath $FilePath
@@ -189,8 +191,10 @@ function Assert-ExpectedSignature {
     else {
         "<none>"
     }
-    if ($signature.Status -ne "Valid" -or $actualThumbprint -ne $ExpectedThumbprint) {
-        throw "Authenticode verification failed for '$FilePath': status=$($signature.Status), signer=$actualThumbprint."
+    if ($signature.Status -ne "Valid" -or
+        $actualThumbprint -ne $ExpectedThumbprint -or
+        $null -eq $signature.TimeStamperCertificate) {
+        throw "LNS-REL-005: Authenticode verification failed for '$FilePath': status=$($signature.Status), signer=$actualThumbprint, timestamp=$($null -ne $signature.TimeStamperCertificate)."
     }
 }
 
@@ -210,18 +214,37 @@ if ($version -notmatch "^\d+\.\d+\.\d+$") {
     throw "The installer requires a stable three-part Version; found '$version'."
 }
 
-$signingEnabled = -not [string]::IsNullOrWhiteSpace($SigningCertificateThumbprint)
+$certificateSigningEnabled = -not [string]::IsNullOrWhiteSpace($SigningCertificateThumbprint)
+$externalSigningEnabled = -not [string]::IsNullOrWhiteSpace($ExternalSignerScript)
+if ($certificateSigningEnabled -and $externalSigningEnabled) {
+    throw "LNS-REL-003: choose either a certificate-store signer or -ExternalSignerScript, not both."
+}
+$signingEnabled = $certificateSigningEnabled -or $externalSigningEnabled
 if (-not $signingEnabled -and -not [string]::IsNullOrWhiteSpace($SignToolPath)) {
-    throw "-SignToolPath was provided without -SigningCertificateThumbprint. Signing configuration is incomplete."
+    throw "LNS-REL-003: -SignToolPath was provided without -SigningCertificateThumbprint. Signing configuration is incomplete."
 }
 
 $normalizedSigningThumbprint = $null
 $resolvedSignTool = $null
-if ($signingEnabled) {
+$resolvedExternalSigner = $null
+$signingHost = $null
+if ($certificateSigningEnabled) {
     Assert-TimestampServer $TimestampServer
     $certificate = Resolve-SigningCertificate $SigningCertificateThumbprint $SigningCertificateStore
     $normalizedSigningThumbprint = $certificate.Thumbprint.ToUpperInvariant()
     $resolvedSignTool = Resolve-SignTool $SignToolPath
+}
+elseif ($externalSigningEnabled) {
+    $resolvedExternalSigner = [IO.Path]::GetFullPath($ExternalSignerScript)
+    if (-not (Test-Path -LiteralPath $resolvedExternalSigner -PathType Leaf)) {
+        throw "LNS-REL-003: external signer script was not found: $resolvedExternalSigner"
+    }
+    $resolvedSignTool = Resolve-SignTool $SignToolPath
+    $signingHost = (Get-Process -Id $PID).Path
+    if ([string]::IsNullOrWhiteSpace($signingHost) -or
+        -not (Test-Path -LiteralPath $signingHost -PathType Leaf)) {
+        throw "LNS-REL-003: unable to resolve the current PowerShell host for the external signer."
+    }
 }
 
 Push-Location $repoRoot
@@ -234,11 +257,14 @@ try {
         if ($SkipChecks) {
             $publishParameters.SkipChecks = $true
         }
-        if ($signingEnabled) {
+        if ($certificateSigningEnabled) {
             $publishParameters.SigningCertificateThumbprint = $normalizedSigningThumbprint
             $publishParameters.SignToolPath = $resolvedSignTool
             $publishParameters.SigningCertificateStore = $SigningCertificateStore
             $publishParameters.TimestampServer = $TimestampServer
+        }
+        elseif ($externalSigningEnabled) {
+            $publishParameters.ExternalSignerScript = $resolvedExternalSigner
         }
         & $publishScript @publishParameters
         if ($LASTEXITCODE -ne 0) {
@@ -270,8 +296,20 @@ try {
     }
 
     if ($signingEnabled) {
-        foreach ($executableName in @("LocalNetworkScanner.exe", "LocalNetworkScanner.Cli.exe")) {
-            Assert-ExpectedSignature (Join-Path $stagingRoot $executableName) $normalizedSigningThumbprint $resolvedSignTool
+        $signedPayload = @(
+            (Join-Path $stagingRoot "LocalNetworkScanner.exe"),
+            (Join-Path $stagingRoot "LocalNetworkScanner.Cli.exe"),
+            (Join-Path $stagingRoot "tools\diagnose-app-control.ps1")
+        )
+        if ($externalSigningEnabled) {
+            $firstSignature = Get-AuthenticodeSignature -LiteralPath $signedPayload[0]
+            if ($null -eq $firstSignature.SignerCertificate) {
+                throw "LNS-REL-005: externally signed payload has no signer certificate: $($signedPayload[0])"
+            }
+            $normalizedSigningThumbprint = $firstSignature.SignerCertificate.Thumbprint
+        }
+        foreach ($signedFile in $signedPayload) {
+            Assert-ExpectedSignature $signedFile $normalizedSigningThumbprint $resolvedSignTool
         }
     }
 
@@ -291,7 +329,7 @@ try {
         "/DOutputBaseFilename=$outputBaseName",
         "/DSetupIconFile=$setupIcon"
     )
-    if ($signingEnabled) {
+    if ($certificateSigningEnabled) {
         $signToolName = "LocalNetworkScannerAuthenticode"
         $escapedSignTool = $resolvedSignTool.Replace('$', '$$')
         $escapedTimestampServer = $TimestampServer.Replace('$', '$$')
@@ -304,6 +342,17 @@ try {
         $signCommand = '$q' + $escapedSignTool + '$q sign' + $storeArguments + ' /sha1 ' +
             $normalizedSigningThumbprint + ' /fd SHA256 /tr $q' +
             $escapedTimestampServer + '$q /td SHA256 /v $f'
+        $compilerArguments += @(
+            "/DSignToolName=$signToolName",
+            "/S$signToolName=$signCommand"
+        )
+    }
+    elseif ($externalSigningEnabled) {
+        $signToolName = "LocalNetworkScannerArtifactSigning"
+        $escapedHost = $signingHost.Replace('$', '$$')
+        $escapedScript = $resolvedExternalSigner.Replace('$', '$$')
+        $signCommand = '$q' + $escapedHost + '$q -NoLogo -NoProfile -NonInteractive ' +
+            '-ExecutionPolicy Bypass -File $q' + $escapedScript + '$q -FilePath $f'
         $compilerArguments += @(
             "/DSignToolName=$signToolName",
             "/S$signToolName=$signCommand"

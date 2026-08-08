@@ -19,6 +19,8 @@ param(
 
     [string]$SignToolPath,
 
+    [string]$ExternalSignerScript,
+
     [ValidateSet("CurrentUser", "LocalMachine")]
     [string]$SigningCertificateStore = "CurrentUser",
 
@@ -149,7 +151,7 @@ function Resolve-SignTool {
         Select-Object -First 1
 
     if ([string]::IsNullOrWhiteSpace($resolved)) {
-        throw "Authenticode signing was requested, but signtool.exe was not found. Install the Windows SDK or pass -SignToolPath."
+        throw "LNS-REL-003: Authenticode signing was requested, but signtool.exe was not found. Install the Windows SDK or pass -SignToolPath."
     }
 
     return [IO.Path]::GetFullPath($resolved)
@@ -166,27 +168,27 @@ function Resolve-SigningCertificate {
 
     $normalized = [Regex]::Replace($Thumbprint, "\s", "").ToUpperInvariant()
     if ($normalized -notmatch "^[0-9A-F]{40}$") {
-        throw "SigningCertificateThumbprint must be a 40-character SHA-1 certificate thumbprint. SHA-1 is used only to select the certificate; file signatures use SHA-256."
+        throw "LNS-REL-003: SigningCertificateThumbprint must be a 40-character SHA-1 certificate thumbprint. SHA-1 is used only to select the certificate; file signatures use SHA-256."
     }
 
     $certificatePath = "Cert:\$Store\My\$normalized"
     $certificate = Get-Item -LiteralPath $certificatePath -ErrorAction SilentlyContinue
     if ($null -eq $certificate) {
-        throw "Authenticode signing was requested, but certificate '$normalized' was not found in $Store\My."
+        throw "LNS-REL-003: Authenticode signing was requested, but certificate '$normalized' was not found in $Store\My."
     }
     if (-not $certificate.HasPrivateKey) {
-        throw "The signing certificate '$normalized' does not expose a private key."
+        throw "LNS-REL-003: the signing certificate '$normalized' does not expose a private key."
     }
     if ([DateTime]::Now -lt $certificate.NotBefore -or [DateTime]::Now -gt $certificate.NotAfter) {
-        throw "The signing certificate '$normalized' is not currently valid ($($certificate.NotBefore.ToString('u')) to $($certificate.NotAfter.ToString('u')))."
+        throw "LNS-REL-004: the signing certificate '$normalized' is not currently valid ($($certificate.NotBefore.ToString('u')) to $($certificate.NotAfter.ToString('u')))."
     }
     if ($certificate.Subject -eq $certificate.Issuer) {
-        throw "The signing certificate '$normalized' is self-signed. A certificate chained to a trusted public CA is required for release signing."
+        throw "LNS-REL-004: the signing certificate '$normalized' is self-signed. A certificate chained to a trusted public CA is required for release signing."
     }
 
     $rsa = [Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($certificate)
     if ($null -eq $rsa) {
-        throw "The signing certificate '$normalized' is not an RSA certificate."
+        throw "LNS-REL-004: the signing certificate '$normalized' is not an RSA certificate."
     }
     $rsa.Dispose()
 
@@ -198,7 +200,7 @@ function Resolve-SigningCertificate {
         $null -ne $ekuExtension -and
         @($ekuExtension.EnhancedKeyUsages | Where-Object { $_.Value -eq $codeSigningOid }).Count -gt 0
     if (-not $hasCodeSigningEku) {
-        throw "The certificate '$normalized' is not authorized for Code Signing (EKU $codeSigningOid)."
+        throw "LNS-REL-004: the certificate '$normalized' is not authorized for Code Signing (EKU $codeSigningOid)."
     }
 
     $chain = [Security.Cryptography.X509Certificates.X509Chain]::new()
@@ -209,7 +211,7 @@ function Resolve-SigningCertificate {
         $chain.ChainPolicy.UrlRetrievalTimeout = [TimeSpan]::FromSeconds(30)
         if (-not $chain.Build($certificate)) {
             $chainErrors = ($chain.ChainStatus | ForEach-Object { "$($_.Status): $($_.StatusInformation.Trim())" }) -join "; "
-            throw "The signing certificate '$normalized' does not build to a trusted CA or failed revocation checking: $chainErrors"
+            throw "LNS-REL-004: the signing certificate '$normalized' does not build to a trusted CA or failed revocation checking: $chainErrors"
         }
     }
     finally {
@@ -226,7 +228,7 @@ function Assert-TimestampServer {
     if (-not [Uri]::TryCreate($Uri, [UriKind]::Absolute, [ref]$parsed) -or
         $parsed.Scheme -notin @("http", "https") -or
         -not [string]::IsNullOrWhiteSpace($parsed.UserInfo)) {
-        throw "TimestampServer must be an absolute HTTP or HTTPS URL without embedded credentials."
+        throw "LNS-REL-003: TimestampServer must be an absolute HTTP or HTTPS URL without embedded credentials."
     }
 }
 
@@ -263,12 +265,12 @@ function Invoke-AuthenticodeSign {
     )
     & $ToolPath @signArguments
     if ($LASTEXITCODE -ne 0) {
-        throw "signtool sign failed for '$FilePath' with code $LASTEXITCODE."
+        throw "LNS-REL-005: signtool sign failed for '$FilePath' with code $LASTEXITCODE."
     }
 
     & $ToolPath verify /pa /tw /v $FilePath
     if ($LASTEXITCODE -ne 0) {
-        throw "signtool verify failed for '$FilePath' with code $LASTEXITCODE."
+        throw "LNS-REL-005: signtool verify failed for '$FilePath' with code $LASTEXITCODE."
     }
 
     $signature = Get-AuthenticodeSignature -LiteralPath $FilePath
@@ -279,8 +281,51 @@ function Invoke-AuthenticodeSign {
         "<none>"
     }
     if ($signature.Status -ne "Valid" -or $actualThumbprint -ne $Thumbprint) {
-        throw "Authenticode verification failed for '$FilePath': status=$($signature.Status), signer=$actualThumbprint."
+        throw "LNS-REL-005: Authenticode verification failed for '$FilePath': status=$($signature.Status), signer=$actualThumbprint."
     }
+}
+
+function Assert-ValidSignature {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+
+        [string]$ExpectedThumbprint
+    )
+
+    $signature = Get-AuthenticodeSignature -LiteralPath $FilePath
+    $actualThumbprint = if ($null -ne $signature.SignerCertificate) {
+        $signature.SignerCertificate.Thumbprint
+    }
+    else {
+        $null
+    }
+    if ($signature.Status -ne "Valid" -or
+        [string]::IsNullOrWhiteSpace($actualThumbprint) -or
+        $null -eq $signature.TimeStamperCertificate -or
+        (-not [string]::IsNullOrWhiteSpace($ExpectedThumbprint) -and
+         $actualThumbprint -ne $ExpectedThumbprint)) {
+        throw "LNS-REL-005: Authenticode verification failed for '$FilePath': status=$($signature.Status), signer=$actualThumbprint, timestamp=$($null -ne $signature.TimeStamperCertificate)."
+    }
+    return $actualThumbprint
+}
+
+function Invoke-ExternalAuthenticodeSign {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ScriptPath,
+
+        [string]$ExpectedThumbprint
+    )
+
+    & $ScriptPath -FilePath $FilePath
+    if (-not $?) {
+        throw "LNS-REL-005: external signing command failed for '$FilePath'."
+    }
+    return Assert-ValidSignature $FilePath $ExpectedThumbprint
 }
 
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
@@ -299,19 +344,33 @@ if (-not (Test-Path -LiteralPath $appControlDiagnosticScript -PathType Leaf)) {
     throw "The App Control diagnostic tool is required for a release package: $appControlDiagnosticScript"
 }
 
-$signingEnabled = -not [string]::IsNullOrWhiteSpace($SigningCertificateThumbprint)
-if (-not $signingEnabled -and -not [string]::IsNullOrWhiteSpace($SignToolPath)) {
-    throw "-SignToolPath was provided without -SigningCertificateThumbprint. Signing configuration is incomplete."
+$certificateSigningEnabled = -not [string]::IsNullOrWhiteSpace($SigningCertificateThumbprint)
+$externalSigningEnabled = -not [string]::IsNullOrWhiteSpace($ExternalSignerScript)
+if ($certificateSigningEnabled -and $externalSigningEnabled) {
+    throw "LNS-REL-003: choose either a certificate-store signer or -ExternalSignerScript, not both."
+}
+$signingEnabled = $certificateSigningEnabled -or $externalSigningEnabled
+if (-not $certificateSigningEnabled -and -not [string]::IsNullOrWhiteSpace($SignToolPath)) {
+    throw "LNS-REL-003: -SignToolPath was provided without -SigningCertificateThumbprint. Signing configuration is incomplete."
 }
 
 $normalizedSigningThumbprint = $null
 $resolvedSignTool = $null
-if ($signingEnabled) {
+$resolvedExternalSigner = $null
+$signingCertificate = $null
+if ($certificateSigningEnabled) {
     Assert-TimestampServer $TimestampServer
     $signingCertificate = Resolve-SigningCertificate $SigningCertificateThumbprint $SigningCertificateStore
     $normalizedSigningThumbprint = $signingCertificate.Thumbprint.ToUpperInvariant()
     $resolvedSignTool = Resolve-SignTool $SignToolPath
     Write-Host "Authenticode signing enabled: $($signingCertificate.Subject)" -ForegroundColor Cyan
+}
+elseif ($externalSigningEnabled) {
+    $resolvedExternalSigner = [IO.Path]::GetFullPath($ExternalSignerScript)
+    if (-not (Test-Path -LiteralPath $resolvedExternalSigner -PathType Leaf)) {
+        throw "LNS-REL-003: external signer script was not found: $resolvedExternalSigner"
+    }
+    Write-Host "External Authenticode signing enabled: $resolvedExternalSigner" -ForegroundColor Cyan
 }
 else {
     Write-Host "Authenticode signing state: NotSigned (no certificate thumbprint supplied)." -ForegroundColor Yellow
@@ -379,14 +438,24 @@ try {
         }
     }
 
+    $expectedSignerThumbprint = $normalizedSigningThumbprint
     if ($signingEnabled) {
         foreach ($executable in @($wpfExe, $cliExe)) {
-            Invoke-AuthenticodeSign `
-                $executable `
-                $resolvedSignTool `
-                $normalizedSigningThumbprint `
-                $SigningCertificateStore `
-                $TimestampServer
+            if ($externalSigningEnabled) {
+                $expectedSignerThumbprint = Invoke-ExternalAuthenticodeSign `
+                    $executable `
+                    $resolvedExternalSigner `
+                    $expectedSignerThumbprint
+            }
+            else {
+                Invoke-AuthenticodeSign `
+                    $executable `
+                    $resolvedSignTool `
+                    $normalizedSigningThumbprint `
+                    $SigningCertificateStore `
+                    $TimestampServer
+                [void](Assert-ValidSignature $executable $expectedSignerThumbprint)
+            }
         }
     }
 
@@ -433,7 +502,25 @@ try {
 
     $stagingTools = Join-Path $stagingRoot "tools"
     New-Item -ItemType Directory -Path $stagingTools -Force | Out-Null
-    Copy-Item -LiteralPath $appControlDiagnosticScript -Destination $stagingTools
+    $stagedDiagnosticScript = Join-Path $stagingTools "diagnose-app-control.ps1"
+    Copy-Item -LiteralPath $appControlDiagnosticScript -Destination $stagedDiagnosticScript
+    if ($externalSigningEnabled) {
+        $expectedSignerThumbprint = Invoke-ExternalAuthenticodeSign `
+            $stagedDiagnosticScript `
+            $resolvedExternalSigner `
+            $expectedSignerThumbprint
+    }
+    elseif ($certificateSigningEnabled) {
+        $scriptSignature = Set-AuthenticodeSignature `
+            -LiteralPath $stagedDiagnosticScript `
+            -Certificate $signingCertificate `
+            -HashAlgorithm SHA256 `
+            -TimestampServer $TimestampServer
+        if ($scriptSignature.Status -ne "Valid") {
+            throw "LNS-REL-005: Authenticode signing failed for '$stagedDiagnosticScript': status=$($scriptSignature.Status)."
+        }
+        [void](Assert-ValidSignature $stagedDiagnosticScript $expectedSignerThumbprint)
+    }
 
     $archivePath = Join-Path $releaseRoot ($packageName + ".zip")
     $checksumPath = $archivePath + ".sha256"
@@ -452,10 +539,10 @@ try {
     Set-Content -LiteralPath $checksumPath -Value $checksumLine -Encoding ascii
 
     if (-not $signingEnabled) {
-        foreach ($executable in @($wpfExe, $cliExe)) {
-            $signature = Get-AuthenticodeSignature -LiteralPath $executable
+        foreach ($file in @($wpfExe, $cliExe, $stagedDiagnosticScript)) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $file
             if ($signature.Status -ne "Valid") {
-                Write-Warning "Executable is NotSigned: $executable ($($signature.Status))"
+                Write-Warning "Release file is NotSigned: $file ($($signature.Status))"
             }
         }
     }

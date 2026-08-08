@@ -9,6 +9,10 @@ namespace LocalNetworkScanner.Core.Services;
 
 public sealed class NetworkScannerService
 {
+    internal const int MaximumUpnpEnrichmentAttempts = 32;
+    private const int MaximumUpnpEnrichmentConcurrency = 4;
+    private const int MaximumUpnpEnrichmentTimeMs = 8_000;
+
     private readonly PingScannerService _pingScanner;
     private readonly HostnameResolverService _hostnameResolver;
     private readonly PortScannerService _portScanner;
@@ -20,6 +24,10 @@ public sealed class NetworkScannerService
     private readonly SecurityAssessmentService _securityAssessmentService;
     private readonly NetBiosDiscoveryService _netBiosDiscoveryService;
     private readonly SnmpTopologyService _snmpTopologyService;
+    private readonly SnmpDeviceDiscoveryService _snmpDeviceDiscoveryService;
+    private readonly UpnpDescriptionService _upnpDescriptionService;
+    private readonly DeviceIdentityService _deviceIdentityService;
+    private readonly NmapDiscoveryService _nmapDiscoveryService;
 
     public NetworkScannerService(
         PingScannerService? pingScanner = null,
@@ -32,7 +40,11 @@ public sealed class NetworkScannerService
         DeviceClassifierService? deviceClassifierService = null,
         SecurityAssessmentService? securityAssessmentService = null,
         NetBiosDiscoveryService? netBiosDiscoveryService = null,
-        SnmpTopologyService? snmpTopologyService = null)
+        SnmpTopologyService? snmpTopologyService = null,
+        SnmpDeviceDiscoveryService? snmpDeviceDiscoveryService = null,
+        UpnpDescriptionService? upnpDescriptionService = null,
+        DeviceIdentityService? deviceIdentityService = null,
+        NmapDiscoveryService? nmapDiscoveryService = null)
     {
         _pingScanner = pingScanner ?? new PingScannerService();
         _hostnameResolver = hostnameResolver ?? new HostnameResolverService();
@@ -45,6 +57,10 @@ public sealed class NetworkScannerService
         _securityAssessmentService = securityAssessmentService ?? new SecurityAssessmentService();
         _netBiosDiscoveryService = netBiosDiscoveryService ?? new NetBiosDiscoveryService();
         _snmpTopologyService = snmpTopologyService ?? new SnmpTopologyService();
+        _snmpDeviceDiscoveryService = snmpDeviceDiscoveryService ?? new SnmpDeviceDiscoveryService();
+        _upnpDescriptionService = upnpDescriptionService ?? new UpnpDescriptionService();
+        _deviceIdentityService = deviceIdentityService ?? new DeviceIdentityService();
+        _nmapDiscoveryService = nmapDiscoveryService ?? new NmapDiscoveryService();
     }
 
     public async Task<NetworkScanResult> ScanAsync(
@@ -157,10 +173,27 @@ public sealed class NetworkScannerService
             }
         });
 
-        foreach (DiscoveryObservation observation in await multicastTask)
+        IReadOnlyList<DiscoveryObservation> multicastObservations = (await multicastTask)
+            .Where(observation => allowedAddresses.Contains(observation.IpAddress))
+            .ToArray();
+        if (options.EnableUpnpDescription)
         {
-            if (!allowedAddresses.Contains(observation.IpAddress))
+            multicastObservations = await EnrichUpnpObservationsAsync(
+                multicastObservations,
+                options.DiscoveryTimeoutMs,
+                cancellationToken);
+        }
+
+        foreach (DiscoveryObservation observation in multicastObservations)
+        {
+            if (!devices.ContainsKey(observation.IpAddress) &&
+                !CanPromoteMulticastObservation(observation))
+            {
+                // Um A/AAAA mDNS é conteúdo autoanunciado. Sem um datagrama cuja
+                // origem seja o próprio endereço, mantém-se apenas como metadata
+                // para dispositivos já confirmados e nunca inicia sondagens.
                 continue;
+            }
 
             NetworkDevice device = devices.GetOrAdd(observation.IpAddress, address =>
             {
@@ -180,6 +213,12 @@ public sealed class NetworkScannerService
             {
                 device.SsdpServer ??= observation.Server;
                 device.SsdpLocation ??= observation.Location;
+                device.SsdpServiceType = JoinDistinctMetadata(
+                    device.SsdpServiceType,
+                    observation.ServiceType);
+                device.SsdpUniqueServiceName = JoinDistinctMetadata(
+                    device.SsdpUniqueServiceName,
+                    observation.UniqueServiceName);
             }
 
             if (observation.Method == DiscoveryMethod.WsDiscovery)
@@ -187,6 +226,8 @@ public sealed class NetworkScannerService
                 device.WsDiscoveryTypes ??= observation.Server;
                 device.WsDiscoveryAddresses ??= observation.Location;
             }
+
+            _deviceIdentityService.AddObservation(device, observation);
         }
 
         List<NetworkDevice> onlineDevices = devices.Values.ToList();
@@ -245,8 +286,10 @@ public sealed class NetworkScannerService
             }
             else if (device.MacAddress is not null)
             {
-                device.IsRandomizedMac = MacVendorService.IsLocallyAdministered(device.MacAddress);
-                device.Manufacturer = _macVendorService.Lookup(device.MacAddress);
+                device.IsLocallyAdministeredMac = MacVendorService.IsLocallyAdministered(device.MacAddress);
+                _deviceIdentityService.AddMacVendor(
+                    device,
+                    _macVendorService.LookupDetailed(device.MacAddress));
             }
             device.Topology = _topologyInferenceService.Assess(device, networkInterface);
             _deviceClassifierService.Classify(device, networkInterface);
@@ -263,6 +306,128 @@ public sealed class NetworkScannerService
                 $"Detalhes concluídos para {device.IpAddress}",
                 device));
         });
+
+        int snmpIdentityAttempts = 0;
+        int snmpIdentityResponders = 0;
+        if (options.EnableSnmpDeviceDiscovery)
+        {
+            snmpIdentityAttempts = onlineDevices.Count;
+            int snmpCompleted = 0;
+            ParallelOptions snmpOptions = new()
+            {
+                MaxDegreeOfParallelism = Math.Min(8, Math.Max(1, options.MaximumHostConcurrency)),
+                CancellationToken = cancellationToken
+            };
+
+            await Parallel.ForEachAsync(onlineDevices, snmpOptions, async (device, token) =>
+            {
+                SnmpDeviceIdentity identity = await _snmpDeviceDiscoveryService.DiscoverAsync(
+                    device.IpAddress,
+                    options.SnmpCommunity!,
+                    options.SnmpTimeoutMs,
+                    retries: 0,
+                    localAddress: networkInterface.IpAddress,
+                    cancellationToken: token);
+                if (identity.Success)
+                {
+                    Interlocked.Increment(ref snmpIdentityResponders);
+                    device.DiscoveryMethods |= DiscoveryMethod.Snmp;
+                    device.SnmpDescription = identity.Description;
+                    device.SnmpObjectIdentifier = identity.SystemObjectIdentifier;
+                    _deviceIdentityService.AddEvidence(device, new DeviceIdentityEvidence
+                    {
+                        Method = DiscoveryMethod.Snmp,
+                        Source = identity.EntityIndex.HasValue
+                            ? $"SNMP v2c ENTITY-MIB (índice {identity.EntityIndex.Value})"
+                            : "SNMP v2c MIB-II",
+                        Confidence = identity.EntityIndex.HasValue
+                            ? ConfidenceLevel.High
+                            : ConfidenceLevel.Medium,
+                        Manufacturer = identity.Manufacturer,
+                        Model = identity.Model,
+                        FriendlyName = identity.Name,
+                        SerialNumber = identity.SerialNumber,
+                        Firmware = JoinNonEmpty(identity.FirmwareRevision, identity.SoftwareRevision),
+                        HardwareRevision = identity.HardwareRevision,
+                        Description = identity.Description,
+                        OperatingSystem = identity.OperatingSystemHint,
+                        Endpoint = device.IpAddressText
+                    });
+                }
+
+                int current = Interlocked.Increment(ref snmpCompleted);
+                progress?.Report(new ScanProgress(
+                    "Identidade SNMP",
+                    current,
+                    onlineDevices.Count,
+                    onlineDevices.Count,
+                    identity.Success
+                        ? $"Identidade SNMP recebida de {device.IpAddress}"
+                        : $"Sem identidade SNMP em {device.IpAddress}",
+                    identity.Success ? device : null));
+            });
+        }
+
+        NmapDiscoveryStatus? nmapStatus = null;
+        string? nmapStatusMessage = null;
+        if (options.EnableNmapDiscovery && onlineDevices.Count > 0)
+        {
+            IReadOnlyList<IPAddress> nmapTargets = onlineDevices
+                .Select(device => device.IpAddress)
+                .Where(IsConventionalPrivateAddress)
+                .Distinct()
+                .ToArray();
+            IReadOnlyList<int> nmapPorts = onlineDevices
+                .SelectMany(device => device.Ports)
+                .Where(port => port.State.Equals("Aberta", StringComparison.OrdinalIgnoreCase))
+                .Select(port => port.Port)
+                .Distinct()
+                .OrderBy(port => port)
+                .Take(128)
+                .ToArray();
+            if (nmapPorts.Count == 0)
+                nmapPorts = options.DiscoveryPorts.Take(128).ToArray();
+
+            if (nmapTargets.Count > 0)
+            {
+                DateTimeOffset nmapDeadline = DateTimeOffset.UtcNow.AddMilliseconds(options.NmapTimeoutMs);
+                foreach (IPAddress[] targetBatch in nmapTargets.Chunk(256))
+                {
+                    TimeSpan remaining = nmapDeadline - DateTimeOffset.UtcNow;
+                    if (remaining < TimeSpan.FromSeconds(5))
+                    {
+                        nmapStatus = NmapDiscoveryStatus.Failed;
+                        nmapStatusMessage = "O orçamento global do Nmap terminou antes de todos os lotes.";
+                        break;
+                    }
+
+                    progress?.Report(new ScanProgress(
+                        "Nmap opcional",
+                        0,
+                        targetBatch.Length,
+                        onlineDevices.Count,
+                        $"A enriquecer {targetBatch.Length} dispositivo(s) com o Nmap instalado localmente..."));
+                    NmapDiscoveryResult nmapResult = await _nmapDiscoveryService.DiscoverAsync(
+                        targetBatch,
+                        nmapPorts,
+                        options.NmapExecutablePath,
+                        remaining,
+                        cancellationToken);
+                    nmapStatus = nmapResult.Status;
+                    nmapStatusMessage = nmapResult.Message;
+                    if (!nmapResult.IsSuccess)
+                        break;
+
+                    ApplyNmapObservations(nmapResult.Hosts, devices);
+                    progress?.Report(new ScanProgress(
+                        "Nmap opcional",
+                        targetBatch.Length,
+                        targetBatch.Length,
+                        onlineDevices.Count,
+                        nmapResult.Message));
+                }
+            }
+        }
 
         bool snmpUnavailable = false;
         SnmpTopologySnapshot? snmpTopology = null;
@@ -302,6 +467,13 @@ public sealed class NetworkScannerService
             }
         }
 
+        foreach (NetworkDevice device in onlineDevices)
+        {
+            _deviceClassifierService.Classify(device, networkInterface);
+            _securityAssessmentService.Assess(device);
+            device.ObservedProtocols = GetObservedProtocols(device);
+        }
+
         List<NetworkDevice> ordered = onlineDevices
             .OrderBy(device => IpAddressHelper.ToUInt32(device.IpAddress))
             .ToList();
@@ -319,6 +491,10 @@ public sealed class NetworkScannerService
             ordered,
             options.SnmpSwitchAddress,
             snmpUnavailable,
+            snmpIdentityAttempts,
+            snmpIdentityResponders,
+            nmapStatus,
+            nmapStatusMessage,
             invalidMacAddresses);
 
         return new NetworkScanResult
@@ -341,6 +517,185 @@ public sealed class NetworkScannerService
         DiscoveryMethods = method
     };
 
+    internal static bool CanPromoteMulticastObservation(DiscoveryObservation observation)
+    {
+        ArgumentNullException.ThrowIfNull(observation);
+        return observation.Method != DiscoveryMethod.Mdns ||
+               observation.HasDirectAddressEvidence;
+    }
+
+    private async Task<IReadOnlyList<DiscoveryObservation>> EnrichUpnpObservationsAsync(
+        IReadOnlyList<DiscoveryObservation> observations,
+        int timeoutMs,
+        CancellationToken cancellationToken)
+    {
+        DiscoveryObservation[] enriched = observations.ToArray();
+        IReadOnlyList<int> candidateIndexes = SelectUpnpEnrichmentCandidates(enriched);
+        if (candidateIndexes.Count == 0)
+            return enriched;
+
+        using CancellationTokenSource budget =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(Math.Clamp(timeoutMs, 500, MaximumUpnpEnrichmentTimeMs));
+        ParallelOptions options = new()
+        {
+            MaxDegreeOfParallelism = MaximumUpnpEnrichmentConcurrency,
+            CancellationToken = budget.Token
+        };
+        try
+        {
+            await Parallel.ForEachAsync(
+                candidateIndexes,
+                options,
+                async (index, token) =>
+                {
+                    enriched[index] = await _upnpDescriptionService.EnrichAsync(
+                        enriched[index],
+                        timeoutMs,
+                        token);
+                });
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // O orçamento global terminou; preserva os enriquecimentos já concluídos.
+        }
+
+        return enriched;
+    }
+
+    internal static IReadOnlyList<int> SelectUpnpEnrichmentCandidates(
+        IReadOnlyList<DiscoveryObservation> observations)
+    {
+        ArgumentNullException.ThrowIfNull(observations);
+
+        return Enumerable.Range(0, observations.Count)
+            .Where(index =>
+                observations[index].Method == DiscoveryMethod.Ssdp &&
+                UpnpDescriptionService.TryCreateSafeDescriptionUri(
+                    observations[index].Location,
+                    observations[index].IpAddress,
+                    out _))
+            .Take(MaximumUpnpEnrichmentAttempts)
+            .ToArray();
+    }
+
+    internal void ApplyNmapObservations(
+        IReadOnlyList<NmapHostObservation> observations,
+        IReadOnlyDictionary<IPAddress, NetworkDevice> devices)
+    {
+        foreach (NmapHostObservation observation in observations)
+        {
+            if (!devices.TryGetValue(observation.IpAddress, out NetworkDevice? device))
+                continue;
+
+            device.DiscoveryMethods |= DiscoveryMethod.Nmap;
+            device.Hostname ??= observation.Hostname;
+            if (string.IsNullOrWhiteSpace(device.MacAddress) &&
+                MacAddressService.TryNormalizeDeviceAddress(observation.MacAddress, out string normalizedMac))
+            {
+                device.MacAddress = normalizedMac;
+                device.IsLocallyAdministeredMac = MacVendorService.IsLocallyAdministered(normalizedMac);
+                _deviceIdentityService.AddMacVendor(device, _macVendorService.LookupDetailed(normalizedMac));
+            }
+
+            foreach (NmapPortObservation nmapPort in observation.Ports.Where(port =>
+                         port.State.Equals("open", StringComparison.OrdinalIgnoreCase)))
+            {
+                PortScanResult? existing = device.Ports.FirstOrDefault(port => port.Port == nmapPort.Port);
+                if (existing is null)
+                {
+                    existing = new PortScanResult
+                    {
+                        Port = nmapPort.Port,
+                        Protocol = "TCP",
+                        State = "Aberta",
+                        ServiceName = nmapPort.ServiceName ?? ServiceCatalog.GetServiceName(nmapPort.Port)
+                    };
+                    device.Ports.Add(existing);
+                }
+                else if (!string.IsNullOrWhiteSpace(nmapPort.ServiceName))
+                {
+                    existing.ServiceName = nmapPort.ServiceName;
+                }
+
+                string? versionEvidence = JoinNonEmpty(
+                    nmapPort.Product,
+                    nmapPort.Version,
+                    nmapPort.ExtraInfo);
+                if (!string.IsNullOrWhiteSpace(versionEvidence))
+                    existing.Banner = $"Nmap: {versionEvidence}";
+            }
+
+            string[] products = observation.Ports
+                .Select(port => JoinNonEmpty(port.Product, port.Version))
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(5)
+                .ToArray()!;
+            string? serviceSummary = products.Length == 0 ? null : string.Join("; ", products);
+            string? macVendorSummary = string.IsNullOrWhiteSpace(observation.MacVendor)
+                ? null
+                : $"vendor MAC anunciado pelo Nmap: {observation.MacVendor}";
+            device.NmapSummary = JoinNonEmpty(serviceSummary, macVendorSummary);
+            string? deviceType = observation.Ports
+                .Select(port => port.DeviceType)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+            string? operatingSystem = observation.OperatingSystem ?? observation.Ports
+                .Select(port => port.OperatingSystem)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+            _deviceIdentityService.AddEvidence(device, new DeviceIdentityEvidence
+            {
+                Method = DiscoveryMethod.Nmap,
+                Source = "Nmap local (TCP connect/version-light)",
+                Confidence = ConfidenceLevel.Medium,
+                Manufacturer = null,
+                // A service product is software/banner evidence, not a physical device model.
+                Model = null,
+                FriendlyName = observation.Hostname,
+                DeviceType = deviceType,
+                OperatingSystem = operatingSystem,
+                Description = device.NmapSummary,
+                Endpoint = observation.IpAddress.ToString()
+            });
+        }
+    }
+
+    private static bool IsConventionalPrivateAddress(IPAddress address)
+    {
+        byte[] bytes = address.GetAddressBytes();
+        return bytes.Length == 4 &&
+            (bytes[0] == 10 ||
+             bytes[0] == 172 && bytes[1] is >= 16 and <= 31 ||
+             bytes[0] == 192 && bytes[1] == 168);
+    }
+
+    private static string? JoinNonEmpty(params string?[] values)
+    {
+        string[] selected = values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .ToArray();
+        return selected.Length == 0 ? null : string.Join(' ', selected);
+    }
+
+    private static string? JoinDistinctMetadata(string? current, string? candidate)
+    {
+        string[] values = new[] { current, candidate }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .SelectMany(value => value!.Split(
+                ';',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(16)
+            .ToArray();
+        if (values.Length == 0)
+            return null;
+
+        string combined = string.Join("; ", values);
+        return combined.Length <= 2_048 ? combined : combined[..2_048];
+    }
+
     internal static string? NormalizeDeviceMacIdentity(NetworkDevice device)
     {
         ArgumentNullException.ThrowIfNull(device);
@@ -356,8 +711,19 @@ public sealed class NetworkScannerService
         }
 
         device.MacAddress = null;
-        device.Manufacturer = null;
-        device.IsRandomizedMac = false;
+        device.MacAssignee = null;
+        device.MacRegistry = null;
+        device.MacAssignmentPrefix = null;
+        device.IsLocallyAdministeredMac = false;
+        device.IdentityEvidence.RemoveAll(evidence => evidence.Method == DiscoveryMethod.Arp);
+        device.Manufacturer = device.IdentityEvidence
+            .Where(evidence => !string.IsNullOrWhiteSpace(evidence.Manufacturer))
+            .OrderByDescending(evidence => evidence.Confidence)
+            .Select(evidence => evidence.Manufacturer)
+            .FirstOrDefault();
+        device.IdentityConfidence = device.IdentityEvidence.Count == 0
+            ? ConfidenceLevel.Unknown
+            : device.IdentityEvidence.Max(evidence => evidence.Confidence);
         device.DiscoveryMethods &= ~DiscoveryMethod.Arp;
         return observedMac;
     }
@@ -379,6 +745,10 @@ public sealed class NetworkScannerService
             protocols.Add("NBNS/NetBIOS");
         if (device.DiscoveryMethods.HasFlag(DiscoveryMethod.WsDiscovery))
             protocols.Add("WS-Discovery");
+        if (device.DiscoveryMethods.HasFlag(DiscoveryMethod.Snmp))
+            protocols.Add("SNMP");
+        if (device.DiscoveryMethods.HasFlag(DiscoveryMethod.Nmap))
+            protocols.Add("Nmap");
 
         foreach (string service in device.Ports
                      .Select(port => port.ServiceName)
@@ -395,6 +765,10 @@ public sealed class NetworkScannerService
         IReadOnlyList<NetworkDevice> devices,
         IPAddress? snmpSwitchAddress,
         bool snmpUnavailable,
+        int snmpIdentityAttempts,
+        int snmpIdentityResponders,
+        NmapDiscoveryStatus? nmapStatus,
+        string? nmapStatusMessage,
         IReadOnlyDictionary<IPAddress, string> invalidMacAddresses)
     {
         List<ScanDiagnostic> diagnostics =
@@ -411,6 +785,12 @@ public sealed class NetworkScannerService
             diagnostics.Add(DiagnosticCatalog.WifiTelemetryUnavailable(networkInterface.Name));
         if (snmpUnavailable)
             diagnostics.Add(DiagnosticCatalog.SnmpUnavailable(snmpSwitchAddress?.ToString()));
+        if (snmpIdentityAttempts > 0 && snmpIdentityResponders == 0)
+            diagnostics.Add(DiagnosticCatalog.SnmpDeviceIdentityUnavailable(snmpIdentityAttempts));
+        if (nmapStatus == NmapDiscoveryStatus.Unavailable)
+            diagnostics.Add(DiagnosticCatalog.NmapUnavailable(nmapStatusMessage));
+        else if (nmapStatus == NmapDiscoveryStatus.Failed)
+            diagnostics.Add(DiagnosticCatalog.NmapScanFailed(nmapStatusMessage));
 
         foreach (NetworkDevice device in devices)
         {
@@ -424,7 +804,7 @@ public sealed class NetworkScannerService
                 {
                     diagnostics.Add(DiagnosticCatalog.RandomizedMacAddress(target, device.MacAddress));
                 }
-                else if (string.IsNullOrWhiteSpace(device.Manufacturer))
+                else if (string.IsNullOrWhiteSpace(device.MacAssignee))
                 {
                     diagnostics.Add(DiagnosticCatalog.UnknownManufacturer(target, device.MacAddress));
                 }
@@ -432,6 +812,23 @@ public sealed class NetworkScannerService
 
             if (device.DeviceType.Equals("Dispositivo de rede", StringComparison.Ordinal))
                 diagnostics.Add(DiagnosticCatalog.UnrecognizedDevice(target));
+
+            int manufacturerValues = device.IdentityEvidence
+                .Select(evidence => evidence.Manufacturer)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+            int modelValues = device.IdentityEvidence
+                .Select(evidence => evidence.Model)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+            if (manufacturerValues > 1 || modelValues > 1)
+            {
+                diagnostics.Add(DiagnosticCatalog.IdentityConflict(
+                    target,
+                    manufacturerValues + modelValues));
+            }
         }
 
         return diagnostics;

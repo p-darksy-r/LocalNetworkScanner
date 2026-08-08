@@ -9,12 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: Publish a GitHub Release (requires running from a matching vX.Y.Z tag)
-        required: true
-        type: boolean
-        default: false
-      sign_release:
-        description: Sign with the configured trusted RSA Authenticode certificate
+        description: Publish a signed GitHub Release (requires a matching vX.Y.Z tag at the current main commit)
         required: true
         type: boolean
         default: false
@@ -27,209 +22,295 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  package:
-    name: Build Windows packages
+  preflight:
+    name: Validate release request and trust gates
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 5
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      is_tag: ${{ steps.version.outputs.is_tag }}
-      signing_state: ${{ steps.signing.outputs.state }}
+      version: ${{ steps.preflight.outputs.version }}
+      is_tag: ${{ steps.preflight.outputs.is_tag }}
+      public_release: ${{ steps.preflight.outputs.public_release }}
 
     steps:
-      - name: Checkout
+      - name: Checkout complete history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - name: Verify copyright markers
+      - name: Validate version, main provenance and external gates
+        id: preflight
         shell: pwsh
-        run: .\scripts\check-copyright.ps1
+        env:
+          RELEASE_REF_NAME: ${{ github.ref_name }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+          PUBLIC_RELEASE_REQUESTED: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release }}
+          ARTIFACT_SIGNING_ENABLED: ${{ vars.ARTIFACT_SIGNING_ENABLED }}
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_RESOURCE_GROUP: ${{ vars.ARTIFACT_SIGNING_RESOURCE_GROUP }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          IEEE_REDISTRIBUTION_APPROVED: ${{ vars.IEEE_REDISTRIBUTION_APPROVED }}
+        run: |
+          [xml]$props = Get-Content -LiteralPath .\Directory.Build.props -Raw
+          $version = [string]$props.Project.PropertyGroup.Version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "LNS-REL-009: invalid Version in Directory.Build.props: '$version'."
+          }
+
+          $isTag = $env:RELEASE_REF_TYPE -eq 'tag'
+          $publicRelease = $env:PUBLIC_RELEASE_REQUESTED -eq 'true'
+          $blockers = [Collections.Generic.List[object]]::new()
+          if ($isTag -and $env:RELEASE_REF_NAME -ne "v$version") {
+            $blockers.Add([pscustomobject]@{
+              Code = 'LNS-REL-009'
+              Message = "Tag '$env:RELEASE_REF_NAME' does not match project version 'v$version'."
+            })
+          }
+          if ($publicRelease -and -not $isTag) {
+            $blockers.Add([pscustomobject]@{
+              Code = 'LNS-REL-009'
+              Message = 'A public release can only be requested from its matching vX.Y.Z tag.'
+            })
+          }
+
+          $currentShaOutput = @(git rev-parse HEAD 2>&1)
+          $currentShaExitCode = $LASTEXITCODE
+          $currentSha = if ($currentShaExitCode -eq 0) {
+            ([string]($currentShaOutput -join '')).Trim()
+          }
+          else {
+            ''
+          }
+          $mainShaOutput = @(git rev-parse refs/remotes/origin/main 2>&1)
+          $mainShaExitCode = $LASTEXITCODE
+          $mainSha = if ($mainShaExitCode -eq 0) {
+            ([string]($mainShaOutput -join '')).Trim()
+          }
+          else {
+            ''
+          }
+          if ($currentShaExitCode -ne 0 -or
+              $mainShaExitCode -ne 0 -or
+              [string]::IsNullOrWhiteSpace($currentSha) -or
+              [string]::IsNullOrWhiteSpace($mainSha) -or
+              $currentSha -ne $mainSha) {
+            $blockers.Add([pscustomobject]@{
+              Code = 'LNS-REL-009'
+              Message = "Release workflows must use the current main commit. ref=$currentSha main=$mainSha"
+            })
+          }
+
+          if ($publicRelease -and $env:ARTIFACT_SIGNING_ENABLED -ne 'true') {
+            $blockers.Add([pscustomobject]@{
+              Code = 'LNS-REL-001'
+              Message = 'Public release requested without Microsoft Artifact Signing enabled.'
+            })
+          }
+          $requiredSigningSettings = @(
+            'ARTIFACT_SIGNING_ENDPOINT',
+            'ARTIFACT_SIGNING_RESOURCE_GROUP',
+            'ARTIFACT_SIGNING_ACCOUNT',
+            'ARTIFACT_SIGNING_PROFILE',
+            'AZURE_CLIENT_ID',
+            'AZURE_TENANT_ID',
+            'AZURE_SUBSCRIPTION_ID'
+          )
+          $missingSigningSettings = @($requiredSigningSettings | Where-Object {
+            [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_))
+          })
+          if ($publicRelease -and $missingSigningSettings.Count -gt 0) {
+            $blockers.Add([pscustomobject]@{
+              Code = 'LNS-REL-002'
+              Message = "Artifact Signing/OIDC configuration is incomplete: $($missingSigningSettings -join ', ')."
+            })
+          }
+          if ($publicRelease -and $env:IEEE_REDISTRIBUTION_APPROVED -ne 'true') {
+            $blockers.Add([pscustomobject]@{
+              Code = 'LNS-REL-006'
+              Message = 'Bundled IEEE data cannot be redistributed publicly until written authorization is archived and IEEE_REDISTRIBUTION_APPROVED=true.'
+            })
+          }
+
+          @(
+            '## Windows release trust preflight',
+            '',
+            "- Version: ``$version``",
+            "- Current commit equals ``origin/main``: ``$($currentSha -eq $mainSha)``",
+            "- Matching tag: ``$isTag``",
+            "- Public release requested: ``$publicRelease``",
+            "- Artifact Signing enabled: ``$($env:ARTIFACT_SIGNING_ENABLED -eq 'true')``",
+            "- Artifact Signing/OIDC configuration complete: ``$($missingSigningSettings.Count -eq 0)``",
+            "- IEEE redistribution approved: ``$($env:IEEE_REDISTRIBUTION_APPROVED -eq 'true')``"
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+
+          foreach ($blocker in $blockers) {
+            Write-Host "::error title=$($blocker.Code)::$($blocker.Message)"
+          }
+          if ($blockers.Count -gt 0) {
+            throw "Release preflight failed with $($blockers.Count) blocking condition(s). See docs/SIGNING.md."
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "is_tag=$($isTag.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "public_release=$($publicRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          Write-Host "Release preflight passed for trusted main commit $currentSha."
+
+  package-private-qa:
+    name: Build unsigned private QA packages
+    if: needs.preflight.outputs.public_release != 'true'
+    needs: preflight
+    runs-on: windows-latest
+    timeout-minutes: 50
+    environment:
+      name: private-qa
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ needs.preflight.outputs.version }}
+      is_tag: ${{ needs.preflight.outputs.is_tag }}
+      signing_state: ${{ steps.manifest.outputs.signing_state }}
+
+    steps: &package-steps
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install .NET SDK from global.json
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
-      - name: Validate tag and project version
-        id: version
-        shell: pwsh
-        env:
-          RELEASE_REF_NAME: ${{ github.ref_name }}
-          RELEASE_REF_TYPE: ${{ github.ref_type }}
-        run: |
-          [xml]$props = Get-Content -LiteralPath .\Directory.Build.props -Raw
-          $version = [string]$props.Project.PropertyGroup.Version
-          if ($version -notmatch '^\d+\.\d+\.\d+$') {
-            throw "Invalid Version in Directory.Build.props: '$version'"
-          }
-
-          $tag = $env:RELEASE_REF_NAME
-          $isTag = $env:RELEASE_REF_TYPE -eq 'tag'
-          if ($isTag -and $tag -ne "v$version") {
-            throw "Tag '$tag' does not match project version 'v$version'."
-          }
-
-          "version=$version" >> $env:GITHUB_OUTPUT
-          "is_tag=$($isTag.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-
       - name: Validate source
         shell: pwsh
         run: .\scripts\check.ps1 -Configuration Release -VerifyFormat
 
-      - name: Prepare optional Authenticode signing
-        id: signing
+      - name: Validate immutable GitHub OIDC claims
+        if: needs.preflight.outputs.public_release == 'true'
         shell: pwsh
         env:
-          AUTHENTICODE_ENABLED: ${{ vars.AUTHENTICODE_ENABLED }}
-          DISPATCH_SIGN_RELEASE: ${{ inputs.sign_release }}
-          AUTHENTICODE_PFX_BASE64: ${{ secrets.AUTHENTICODE_PFX_BASE64 }}
-          AUTHENTICODE_PFX_PASSWORD: ${{ secrets.AUTHENTICODE_PFX_PASSWORD }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          REPOSITORY_OWNER_ID: ${{ github.repository_owner_id }}
+          REPOSITORY_ID: ${{ github.repository_id }}
         run: |
-          $requested =
-            $env:AUTHENTICODE_ENABLED -eq 'true' -or
-            $env:DISPATCH_SIGN_RELEASE -eq 'true'
-          if (-not $requested) {
-            'enabled=false' >> $env:GITHUB_OUTPUT
-            'state=NotSigned' >> $env:GITHUB_OUTPUT
-            Write-Host 'Authenticode signing was not requested. Release state: NotSigned.'
-            exit 0
+          $repositoryName = ($env:GITHUB_REPOSITORY -split '/', 2)[1]
+          if ([string]::IsNullOrWhiteSpace($repositoryName) -or
+              [string]::IsNullOrWhiteSpace($env:REPOSITORY_OWNER_ID) -or
+              [string]::IsNullOrWhiteSpace($env:REPOSITORY_ID)) {
+            throw 'LNS-REL-002: GitHub did not expose immutable repository owner/repository IDs.'
           }
-
-          if ([string]::IsNullOrWhiteSpace($env:AUTHENTICODE_PFX_BASE64) -or
-              [string]::IsNullOrWhiteSpace($env:AUTHENTICODE_PFX_PASSWORD)) {
-            throw 'Authenticode signing was requested, but AUTHENTICODE_PFX_BASE64 or AUTHENTICODE_PFX_PASSWORD is missing.'
+          $expectedSubject = "repo:$env:REPOSITORY_OWNER@$env:REPOSITORY_OWNER_ID/$repositoryName@$env:REPOSITORY_ID:environment:release-signing"
+          $audience = 'api://AzureADTokenExchange'
+          $tokenResponse = Invoke-RestMethod `
+            -Uri "$env:ACTIONS_ID_TOKEN_REQUEST_URL&audience=$([Uri]::EscapeDataString($audience))" `
+            -Headers @{ Authorization = "Bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN" }
+          $tokenParts = ([string]$tokenResponse.value).Split('.')
+          if ($tokenParts.Count -ne 3) {
+            throw 'LNS-REL-002: GitHub returned a malformed OIDC token.'
           }
+          $payload = $tokenParts[1].Replace('-', '+').Replace('_', '/')
+          switch ($payload.Length % 4) {
+            2 { $payload += '==' }
+            3 { $payload += '=' }
+            1 { throw 'LNS-REL-002: GitHub returned an invalid OIDC token payload.' }
+          }
+          $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) |
+            ConvertFrom-Json
+          if ([string]$claims.sub -cne $expectedSubject -or
+              @($claims.aud) -cnotcontains $audience) {
+            throw "LNS-REL-002: immutable OIDC claims do not match the release trust. subject='$($claims.sub)', audience='$($claims.aud -join ',')'."
+          }
+          Write-Host "Immutable OIDC subject validated: $expectedSubject"
 
-          $pfxPath = Join-Path $env:RUNNER_TEMP 'LocalNetworkScanner-Authenticode.pfx'
-          $thumbprintsPath = Join-Path $env:RUNNER_TEMP 'LocalNetworkScanner-Authenticode-thumbprints.txt'
+      - name: Azure login with short-lived OIDC token
+        if: needs.preflight.outputs.public_release == 'true'
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        env:
+          AZURE_LOGIN_PRE_CLEANUP: true
+          AZURE_LOGIN_POST_CLEANUP: true
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Require an Artifact Signing Public Trust profile
+        if: needs.preflight.outputs.public_release == 'true'
+        shell: pwsh
+        env:
+          ARTIFACT_SIGNING_RESOURCE_GROUP: ${{ vars.ARTIFACT_SIGNING_RESOURCE_GROUP }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          $escapedSubscription = [Uri]::EscapeDataString($env:AZURE_SUBSCRIPTION_ID)
+          $escapedResourceGroup = [Uri]::EscapeDataString($env:ARTIFACT_SIGNING_RESOURCE_GROUP)
+          $escapedAccount = [Uri]::EscapeDataString($env:ARTIFACT_SIGNING_ACCOUNT)
+          $escapedProfile = [Uri]::EscapeDataString($env:ARTIFACT_SIGNING_PROFILE)
+          $profileUri = "https://management.azure.com/subscriptions/$escapedSubscription/resourceGroups/$escapedResourceGroup/providers/Microsoft.CodeSigning/codeSigningAccounts/$escapedAccount/certificateProfiles/$escapedProfile`?api-version=2025-10-13"
+          $profileOutput = @(az rest --method get --uri $profileUri --only-show-errors --output json 2>&1)
+          $profileExitCode = $LASTEXITCODE
+          if ($profileExitCode -ne 0) {
+            throw "LNS-REL-002: unable to query the configured Artifact Signing profile through the Azure Resource Manager API: $($profileOutput -join [Environment]::NewLine)"
+          }
           try {
-            [IO.File]::WriteAllBytes(
-              $pfxPath,
-              [Convert]::FromBase64String($env:AUTHENTICODE_PFX_BASE64))
+            $profile = ($profileOutput -join [Environment]::NewLine) | ConvertFrom-Json
           }
           catch {
-            throw "AUTHENTICODE_PFX_BASE64 is not valid Base64: $($_.Exception.Message)"
+            throw "LNS-REL-002: Azure returned an invalid Artifact Signing profile response: $($_.Exception.Message)"
           }
+          if ([string]$profile.properties.profileType -cne 'PublicTrust') {
+            throw "LNS-REL-002: public releases require an Artifact Signing PublicTrust profile; configured type='$($profile.properties.profileType)'."
+          }
+          Write-Host "Artifact Signing profile '$env:ARTIFACT_SIGNING_PROFILE' is PublicTrust."
 
-          $password = ConvertTo-SecureString $env:AUTHENTICODE_PFX_PASSWORD -AsPlainText -Force
-          $imported = @(Import-PfxCertificate `
-            -FilePath $pfxPath `
-            -CertStoreLocation 'Cert:\CurrentUser\My' `
-            -Password $password)
-          if ($imported.Count -eq 0) {
-            throw 'The PFX did not import any certificates.'
-          }
-          $imported.Thumbprint | Set-Content -LiteralPath $thumbprintsPath -Encoding ascii
-
-          $codeSigningOid = '1.3.6.1.5.5.7.3.3'
-          $candidates = @($imported | Where-Object {
-            $_.HasPrivateKey -and
-            $null -ne ($_.Extensions |
-              Where-Object { $_.Oid.Value -eq '2.5.29.37' -and
-                @($_.EnhancedKeyUsages | Where-Object { $_.Value -eq $codeSigningOid }).Count -gt 0
-              } |
-              Select-Object -First 1)
-          })
-          if ($candidates.Count -ne 1) {
-            throw "Expected exactly one private-key Code Signing certificate in the PFX; found $($candidates.Count)."
-          }
-          $certificate = $candidates[0]
-          if ($certificate.Subject -eq $certificate.Issuer) {
-            throw 'A self-signed certificate is not accepted for public release signing.'
-          }
-          $rsa = [Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($certificate)
-          if ($null -eq $rsa) {
-            throw 'The Code Signing certificate is not RSA.'
-          }
-          $rsa.Dispose()
-
-          $chain = [Security.Cryptography.X509Certificates.X509Chain]::new()
-          try {
-            $chain.ChainPolicy.RevocationMode =
-              [Security.Cryptography.X509Certificates.X509RevocationMode]::Online
-            $chain.ChainPolicy.RevocationFlag =
-              [Security.Cryptography.X509Certificates.X509RevocationFlag]::ExcludeRoot
-            $chain.ChainPolicy.VerificationFlags =
-              [Security.Cryptography.X509Certificates.X509VerificationFlags]::NoFlag
-            $chain.ChainPolicy.UrlRetrievalTimeout = [TimeSpan]::FromSeconds(30)
-            if (-not $chain.Build($certificate)) {
-              $errors = ($chain.ChainStatus |
-                ForEach-Object { "$($_.Status): $($_.StatusInformation.Trim())" }) -join '; '
-              throw "The signing certificate did not build to a trusted CA: $errors"
-            }
-          }
-          finally {
-            $chain.Dispose()
-          }
-
-          $signTool = Get-ChildItem `
-            -LiteralPath "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
-            -Recurse `
-            -File `
-            -Filter 'signtool.exe' |
-            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
-            Sort-Object FullName -Descending |
-            Select-Object -First 1
-          if ($null -eq $signTool) {
-            throw 'Authenticode signing was requested, but x64 signtool.exe was not found in the Windows SDK.'
-          }
-
-          "thumbprint=$($certificate.Thumbprint.ToUpperInvariant())" >> $env:GITHUB_OUTPUT
-          "signtool=$($signTool.FullName)" >> $env:GITHUB_OUTPUT
-          'enabled=true' >> $env:GITHUB_OUTPUT
-          'state=Signed' >> $env:GITHUB_OUTPUT
-          Write-Host "Authenticode signing enabled for subject: $($certificate.Subject)"
-
-      - name: Validate public release policy
-        if: steps.version.outputs.is_tag == 'true' && (github.event_name == 'push' || inputs.publish_release)
+      - name: Install pinned Artifact Signing client
+        if: needs.preflight.outputs.public_release == 'true'
         shell: pwsh
-        env:
-          SIGNING_STATE: ${{ steps.signing.outputs.state }}
-          IEEE_REDISTRIBUTION_APPROVED: ${{ vars.IEEE_REDISTRIBUTION_APPROVED }}
         run: |
-          if ($env:SIGNING_STATE -ne 'Signed') {
-            throw 'Public releases require a valid trusted Authenticode signature. Generate private workflow artifacts instead.'
+          Install-Module -Name ArtifactSigning -RequiredVersion 0.1.8 -Force -Repository PSGallery
+          $module = Get-Module -ListAvailable -Name ArtifactSigning |
+            Where-Object { $_.Version -eq [Version]'0.1.8' } |
+            Select-Object -First 1
+          if ($null -eq $module) {
+            throw 'LNS-REL-003: ArtifactSigning PowerShell module 0.1.8 was not installed.'
           }
-          if ($env:IEEE_REDISTRIBUTION_APPROVED -ne 'true') {
-            throw 'Public releases containing the bundled IEEE snapshot require repository variable IEEE_REDISTRIBUTION_APPROVED=true after written authorization has been archived.'
-          }
-          Write-Host 'Public release gates passed: Authenticode Signed and IEEE redistribution approved.'
+          Write-Host "Artifact Signing client: $($module.Path)"
 
       - name: Publish win-x64 portable package
         shell: pwsh
         env:
-          SIGNING_ENABLED: ${{ steps.signing.outputs.enabled }}
-          SIGNING_THUMBPRINT: ${{ steps.signing.outputs.thumbprint }}
-          SIGNTOOL_PATH: ${{ steps.signing.outputs.signtool }}
+          PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
         run: |
-          $publishParameters = @{
+          $parameters = @{
             RuntimeIdentifier = 'win-x64'
             SkipChecks = $true
           }
-          if ($env:SIGNING_ENABLED -eq 'true') {
-            $publishParameters.SigningCertificateThumbprint = $env:SIGNING_THUMBPRINT
-            $publishParameters.SignToolPath = $env:SIGNTOOL_PATH
+          if ($env:PUBLIC_RELEASE -eq 'true') {
+            $parameters.ExternalSignerScript = '.\scripts\invoke-artifact-signing.ps1'
           }
-          .\scripts\publish-windows.ps1 @publishParameters
+          .\scripts\publish-windows.ps1 @parameters
 
       - name: Publish win-arm64 portable package
         shell: pwsh
         env:
-          SIGNING_ENABLED: ${{ steps.signing.outputs.enabled }}
-          SIGNING_THUMBPRINT: ${{ steps.signing.outputs.thumbprint }}
-          SIGNTOOL_PATH: ${{ steps.signing.outputs.signtool }}
+          PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
         run: |
-          $publishParameters = @{
+          $parameters = @{
             RuntimeIdentifier = 'win-arm64'
             SkipChecks = $true
             SkipWpfSmoke = $true
           }
-          if ($env:SIGNING_ENABLED -eq 'true') {
-            $publishParameters.SigningCertificateThumbprint = $env:SIGNING_THUMBPRINT
-            $publishParameters.SignToolPath = $env:SIGNTOOL_PATH
+          if ($env:PUBLIC_RELEASE -eq 'true') {
+            $parameters.ExternalSignerScript = '.\scripts\invoke-artifact-signing.ps1'
           }
-          .\scripts\publish-windows.ps1 @publishParameters
+          .\scripts\publish-windows.ps1 @parameters
 
       - name: Install and verify Inno Setup 6.7.3
         id: inno
@@ -242,13 +323,13 @@ jobs:
 
           $signature = Get-AuthenticodeSignature -LiteralPath $download
           if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate) {
-            throw "Inno Setup signature validation failed: status=$($signature.Status)."
+            throw "LNS-REL-003: Inno Setup signature validation failed: status=$($signature.Status)."
           }
           $publisher = $signature.SignerCertificate.GetNameInfo(
             [Security.Cryptography.X509Certificates.X509NameType]::SimpleName,
             $false)
           if ($publisher -ne 'Pyrsys B.V.') {
-            throw "Unexpected Inno Setup publisher: '$publisher'."
+            throw "LNS-REL-003: unexpected Inno Setup publisher: '$publisher'."
           }
 
           $process = Start-Process -FilePath $download -ArgumentList @(
@@ -260,12 +341,13 @@ jobs:
             "/DIR=$installDir"
           ) -Wait -PassThru
           if ($process.ExitCode -ne 0) {
-            throw "Inno Setup installation failed with code $($process.ExitCode)."
+            throw "LNS-REL-003: Inno Setup installation failed with code $($process.ExitCode)."
           }
+          $process.Dispose()
 
           $iscc = Join-Path $installDir 'ISCC.exe'
           if (-not (Test-Path -LiteralPath $iscc -PathType Leaf)) {
-            throw "ISCC.exe was not installed at the expected path: $iscc"
+            throw "LNS-REL-003: ISCC.exe was not installed at the expected path: $iscc"
           }
           "path=$iscc" >> $env:GITHUB_OUTPUT
 
@@ -273,67 +355,317 @@ jobs:
         shell: pwsh
         env:
           ISCC_PATH: ${{ steps.inno.outputs.path }}
-          SIGNING_ENABLED: ${{ steps.signing.outputs.enabled }}
-          SIGNING_THUMBPRINT: ${{ steps.signing.outputs.thumbprint }}
-          SIGNTOOL_PATH: ${{ steps.signing.outputs.signtool }}
+          PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
         run: |
-          $installerParameters = @{
+          $parameters = @{
             RuntimeIdentifier = 'win-x64'
             SkipPublish = $true
             IsccPath = $env:ISCC_PATH
           }
-          if ($env:SIGNING_ENABLED -eq 'true') {
-            $installerParameters.SigningCertificateThumbprint = $env:SIGNING_THUMBPRINT
-            $installerParameters.SignToolPath = $env:SIGNTOOL_PATH
+          if ($env:PUBLIC_RELEASE -eq 'true') {
+            $parameters.ExternalSignerScript = '.\scripts\invoke-artifact-signing.ps1'
           }
-          .\scripts\build-installer.ps1 @installerParameters
+          .\scripts\build-installer.ps1 @parameters
 
       - name: Build win-arm64 installer
         shell: pwsh
         env:
           ISCC_PATH: ${{ steps.inno.outputs.path }}
-          SIGNING_ENABLED: ${{ steps.signing.outputs.enabled }}
-          SIGNING_THUMBPRINT: ${{ steps.signing.outputs.thumbprint }}
-          SIGNTOOL_PATH: ${{ steps.signing.outputs.signtool }}
+          PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
         run: |
-          $installerParameters = @{
+          $parameters = @{
             RuntimeIdentifier = 'win-arm64'
             SkipPublish = $true
             IsccPath = $env:ISCC_PATH
           }
-          if ($env:SIGNING_ENABLED -eq 'true') {
-            $installerParameters.SigningCertificateThumbprint = $env:SIGNING_THUMBPRINT
-            $installerParameters.SignToolPath = $env:SIGNTOOL_PATH
+          if ($env:PUBLIC_RELEASE -eq 'true') {
+            $parameters.ExternalSignerScript = '.\scripts\invoke-artifact-signing.ps1'
           }
-          .\scripts\build-installer.ps1 @installerParameters
+          .\scripts\build-installer.ps1 @parameters
 
-      - name: Create combined checksum manifest
+      - name: Create candidate manifest and revalidate signatures
+        id: manifest
         shell: pwsh
         env:
-          SIGNING_STATE: ${{ steps.signing.outputs.state }}
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+          PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
         run: |
-          $files = Get-ChildItem .\artifacts\release -File |
-            Where-Object { $_.Extension -in '.zip', '.exe' } |
-            Sort-Object Name
+          $releaseRoot = (Resolve-Path .\artifacts\release).Path
+          $binaryNames = @(
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-x64.zip",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-arm64.zip",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-x64-setup.exe",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-arm64-setup.exe"
+          )
+          $files = @(Get-ChildItem -LiteralPath $releaseRoot -File |
+            Where-Object { $_.Name -in $binaryNames } |
+            Sort-Object Name)
           if ($files.Count -ne 4) {
-            throw "Expected 4 release binaries (2 ZIPs and 2 installers), found $($files.Count)."
+            throw "LNS-REL-008: expected 4 release binaries, found $($files.Count)."
           }
-          $lines = foreach ($file in $files) {
+
+          $manifestLines = foreach ($file in $files) {
             $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            "$hash *$($file.Name)"
+            $line = "$hash *$($file.Name)"
+            if ((Get-Content -LiteralPath "$($file.FullName).sha256" -Raw).Trim() -cne $line) {
+              throw "LNS-REL-008: individual checksum mismatch for $($file.Name)."
+            }
+            $line
           }
-          Set-Content -LiteralPath .\artifacts\release\SHA256SUMS.txt -Value $lines -Encoding ascii
+          Set-Content -LiteralPath (Join-Path $releaseRoot 'SHA256SUMS.txt') -Value $manifestLines -Encoding ascii
+
+          $signingState = 'NotSigned'
+          if ($env:PUBLIC_RELEASE -eq 'true') {
+            $signerThumbprints = @()
+            function Assert-ValidSignature {
+              param([Parameter(Mandatory = $true)][string]$Path)
+              $signature = Get-AuthenticodeSignature -LiteralPath $Path
+              if ($signature.Status -ne 'Valid' -or
+                  $null -eq $signature.SignerCertificate -or
+                  $null -eq $signature.TimeStamperCertificate) {
+                throw "LNS-REL-005: signature validation failed for '$Path': status=$($signature.Status)."
+              }
+              return $signature.SignerCertificate.Thumbprint
+            }
+
+            foreach ($installer in $files | Where-Object { $_.Name.EndsWith('-setup.exe') }) {
+              $signerThumbprints += Assert-ValidSignature $installer.FullName
+            }
+            $verifyRoot = Join-Path $env:RUNNER_TEMP 'LocalNetworkScanner-signature-revalidation'
+            try {
+              foreach ($archive in $files | Where-Object { $_.Extension -eq '.zip' }) {
+                $destination = Join-Path $verifyRoot $archive.BaseName
+                Expand-Archive -LiteralPath $archive.FullName -DestinationPath $destination
+                $packageRoot = Join-Path $destination $archive.BaseName
+                $expectedSignablePaths = @(
+                  'LocalNetworkScanner.Cli.exe',
+                  'LocalNetworkScanner.exe',
+                  'tools/diagnose-app-control.ps1'
+                ) | Sort-Object
+                $signableExtensions = @(
+                  '.appx', '.cat', '.dll', '.exe', '.msi', '.msix', '.ocx',
+                  '.ps1', '.psd1', '.psm1', '.sys'
+                )
+                if (-not (Test-Path -LiteralPath $packageRoot -PathType Container)) {
+                  throw "LNS-REL-008: archive $($archive.Name) is missing its exact package root."
+                }
+                $actualSignablePaths = @(
+                  Get-ChildItem -LiteralPath $packageRoot -Recurse -File |
+                    Where-Object { $_.Extension.ToLowerInvariant() -in $signableExtensions } |
+                    ForEach-Object {
+                      [IO.Path]::GetRelativePath($packageRoot, $_.FullName).Replace('\', '/')
+                    } |
+                    Sort-Object
+                )
+                $contractDifference = @(
+                  Compare-Object -ReferenceObject $expectedSignablePaths -DifferenceObject $actualSignablePaths
+                )
+                if ($contractDifference.Count -ne 0) {
+                  throw "LNS-REL-008: archive $($archive.Name) differs from the exact signable-path contract: $($contractDifference | Out-String)"
+                }
+                foreach ($relativePath in $expectedSignablePaths) {
+                  $signerThumbprints += Assert-ValidSignature (Join-Path $packageRoot $relativePath)
+                }
+              }
+            }
+            finally {
+              Remove-Item -LiteralPath $verifyRoot -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            if (@($signerThumbprints | Sort-Object -Unique).Count -ne 1) {
+              throw 'LNS-REL-005: release files do not share one Artifact Signing identity.'
+            }
+            $signingState = 'Signed'
+          }
+
           @(
             "Version: $env:RELEASE_VERSION",
-            "Authenticode: $env:SIGNING_STATE",
+            "Authenticode: $signingState",
+            'Native x64: Pending',
+            'Native ARM64: Pending',
+            "Release mode: $(if ($env:PUBLIC_RELEASE -eq 'true') { 'PublicRelease' } else { 'PrivateQa' })",
+            "Signing backend: $(if ($env:PUBLIC_RELEASE -eq 'true') { 'Microsoft Artifact Signing OIDC' } else { 'None' })",
             'Verification: Get-AuthenticodeSignature and signtool verify /pa /tw'
-          ) | Set-Content -LiteralPath .\artifacts\release\SIGNING-STATE.txt -Encoding ascii
+          ) | Set-Content -LiteralPath (Join-Path $releaseRoot 'SIGNING-STATE.txt') -Encoding ascii
+          "signing_state=$signingState" >> $env:GITHUB_OUTPUT
 
-      - name: Upload workflow artifact
+      - name: Upload unvalidated candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: LocalNetworkScanner-${{ steps.version.outputs.version }}-windows
+          name: LocalNetworkScanner-${{ needs.preflight.outputs.version }}-windows-candidate
+          path: |
+            artifacts/release/*.zip
+            artifacts/release/*.exe
+            artifacts/release/*.sha256
+            artifacts/release/SHA256SUMS.txt
+            artifacts/release/SIGNING-STATE.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  package-public:
+    name: Build and sign public Windows packages
+    if: needs.preflight.outputs.public_release == 'true'
+    needs: preflight
+    runs-on: windows-latest
+    timeout-minutes: 50
+    environment:
+      name: release-signing
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      version: ${{ needs.preflight.outputs.version }}
+      is_tag: ${{ needs.preflight.outputs.is_tag }}
+      signing_state: ${{ steps.manifest.outputs.signing_state }}
+    steps: *package-steps
+
+  package:
+    name: Select isolated release package path
+    if: always() && needs.preflight.result == 'success'
+    needs: [preflight, package-private-qa, package-public]
+    runs-on: windows-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      signing_state: ${{ steps.select.outputs.signing_state }}
+    steps:
+      - name: Require exactly the intended package job
+        id: select
+        shell: pwsh
+        env:
+          PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
+          PRIVATE_RESULT: ${{ needs.package-private-qa.result }}
+          PRIVATE_SIGNING_STATE: ${{ needs.package-private-qa.outputs.signing_state }}
+          PUBLIC_RESULT: ${{ needs.package-public.result }}
+          PUBLIC_SIGNING_STATE: ${{ needs.package-public.outputs.signing_state }}
+        run: |
+          if ($env:PUBLIC_RELEASE -eq 'true') {
+            if ($env:PUBLIC_RESULT -ne 'success' -or $env:PRIVATE_RESULT -ne 'skipped') {
+              throw "LNS-REL-008: expected only the public signing path; public=$env:PUBLIC_RESULT private=$env:PRIVATE_RESULT."
+            }
+            $signingState = $env:PUBLIC_SIGNING_STATE
+          }
+          else {
+            if ($env:PRIVATE_RESULT -ne 'success' -or $env:PUBLIC_RESULT -ne 'skipped') {
+              throw "LNS-REL-008: expected only the private QA path; private=$env:PRIVATE_RESULT public=$env:PUBLIC_RESULT."
+            }
+            $signingState = $env:PRIVATE_SIGNING_STATE
+          }
+          if ([string]::IsNullOrWhiteSpace($signingState)) {
+            throw 'LNS-REL-008: selected package path did not expose a signing state.'
+          }
+          "signing_state=$signingState" >> $env:GITHUB_OUTPUT
+
+  validate-x64:
+    name: Validate exact x64 package and installer
+    needs: [preflight, package]
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout validation scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download exact candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          gh run download $env:GITHUB_RUN_ID `
+            --repo $env:GITHUB_REPOSITORY `
+            --name "LocalNetworkScanner-$env:RELEASE_VERSION-windows-candidate" `
+            --dir .\artifacts\release
+          if ($LASTEXITCODE -ne 0) {
+            throw 'LNS-REL-008: unable to download the exact candidate artifact.'
+          }
+
+      - name: Install, smoke and uninstall exact x64 assets
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+          PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
+        run: |
+          $parameters = @{
+            Version = $env:RELEASE_VERSION
+            RuntimeIdentifier = 'win-x64'
+          }
+          if ($env:PUBLIC_RELEASE -eq 'true') {
+            $parameters.RequireSigned = $true
+          }
+          .\scripts\validate-release-package.ps1 @parameters
+
+  validate-arm64:
+    name: Validate exact package on native Windows ARM64
+    needs: [preflight, package, validate-x64]
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout validation scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download exact candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          gh run download $env:GITHUB_RUN_ID `
+            --repo $env:GITHUB_REPOSITORY `
+            --name "LocalNetworkScanner-$env:RELEASE_VERSION-windows-candidate" `
+            --dir .\artifacts\release
+          if ($LASTEXITCODE -ne 0) {
+            throw 'LNS-REL-008: unable to download the exact candidate artifact.'
+          }
+
+      - name: Install, smoke and uninstall exact ARM64 assets
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+          PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
+        run: |
+          $parameters = @{
+            Version = $env:RELEASE_VERSION
+            RuntimeIdentifier = 'win-arm64'
+          }
+          if ($env:PUBLIC_RELEASE -eq 'true') {
+            $parameters.RequireSigned = $true
+          }
+          .\scripts\validate-release-package.ps1 @parameters
+
+      - name: Promote natively validated payload state
+        shell: pwsh
+        run: |
+          $statePath = '.\artifacts\release\SIGNING-STATE.txt'
+          $state = @(Get-Content -LiteralPath $statePath)
+          $state = @($state | ForEach-Object {
+            if ($_ -eq 'Native x64: Pending') { 'Native x64: Validated' }
+            elseif ($_ -eq 'Native ARM64: Pending') { 'Native ARM64: Validated' }
+            else { $_ }
+          })
+          if ($state -cnotcontains 'Native x64: Validated' -or
+              $state -cnotcontains 'Native ARM64: Validated') {
+            throw 'LNS-REL-007: unable to record both native package validations.'
+          }
+          Set-Content -LiteralPath $statePath -Value $state -Encoding ascii
+
+      - name: Upload validated release payload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: LocalNetworkScanner-${{ needs.preflight.outputs.version }}-windows-validated
           path: |
             artifacts/release/*.zip
             artifacts/release/*.exe
@@ -343,25 +675,10 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Remove ephemeral signing material
-        if: always()
-        shell: pwsh
-        run: |
-          $pfxPath = Join-Path $env:RUNNER_TEMP 'LocalNetworkScanner-Authenticode.pfx'
-          $thumbprintsPath = Join-Path $env:RUNNER_TEMP 'LocalNetworkScanner-Authenticode-thumbprints.txt'
-          if (Test-Path -LiteralPath $thumbprintsPath -PathType Leaf) {
-            foreach ($thumbprint in Get-Content -LiteralPath $thumbprintsPath) {
-              if ($thumbprint -match '^[0-9A-Fa-f]{40}$') {
-                Remove-Item -LiteralPath "Cert:\CurrentUser\My\$thumbprint" -Force -ErrorAction SilentlyContinue
-              }
-            }
-          }
-          Remove-Item -LiteralPath $pfxPath, $thumbprintsPath -Force -ErrorAction SilentlyContinue
-
   publish:
     name: Publish immutable GitHub Release
-    if: needs.package.outputs.is_tag == 'true' && (github.event_name == 'push' || inputs.publish_release)
-    needs: package
+    if: needs.preflight.outputs.public_release == 'true'
+    needs: [preflight, package, validate-x64, validate-arm64]
     runs-on: windows-latest
     timeout-minutes: 10
     permissions:
@@ -369,24 +686,24 @@ jobs:
       contents: write
 
     steps:
-      - name: Download validated release artifact
+      - name: Download validated release payload
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ needs.package.outputs.version }}
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           gh run download $env:GITHUB_RUN_ID `
             --repo $env:GITHUB_REPOSITORY `
-            --name "LocalNetworkScanner-$env:RELEASE_VERSION-windows" `
+            --name "LocalNetworkScanner-$env:RELEASE_VERSION-windows-validated" `
             --dir .\artifacts\release
           if ($LASTEXITCODE -ne 0) {
-            throw 'Unable to download the validated release artifact from this workflow run.'
+            throw 'LNS-REL-008: unable to download the validated release payload.'
           }
 
-      - name: Revalidate release payload
+      - name: Revalidate immutable release contract
         shell: pwsh
         env:
-          RELEASE_VERSION: ${{ needs.package.outputs.version }}
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           $releaseRoot = (Resolve-Path .\artifacts\release).Path
           $binaryNames = @(
@@ -401,41 +718,41 @@ jobs:
             'SHA256SUMS.txt'
             'SIGNING-STATE.txt'
           ) | Sort-Object
-          $actualNames = @(
-            Get-ChildItem -LiteralPath $releaseRoot -File |
-              Select-Object -ExpandProperty Name |
-              Sort-Object)
-          $payloadDifference = @(
-            Compare-Object -ReferenceObject $expectedNames -DifferenceObject $actualNames)
-          if ($payloadDifference.Count -ne 0) {
-            throw "Release payload does not match the exact 10-file contract: $($payloadDifference | Out-String)"
+          $actualNames = @(Get-ChildItem -LiteralPath $releaseRoot -File |
+            Select-Object -ExpandProperty Name |
+            Sort-Object)
+          $difference = @(Compare-Object -ReferenceObject $expectedNames -DifferenceObject $actualNames)
+          if ($difference.Count -ne 0) {
+            throw "LNS-REL-008: release payload does not match the exact 10-file contract: $($difference | Out-String)"
           }
 
           $manifestLines = @(Get-Content -LiteralPath (Join-Path $releaseRoot 'SHA256SUMS.txt'))
           if ($manifestLines.Count -ne $binaryNames.Count) {
-            throw "SHA256SUMS.txt must contain exactly $($binaryNames.Count) entries."
+            throw "LNS-REL-008: SHA256SUMS.txt must contain exactly $($binaryNames.Count) entries."
           }
           foreach ($binaryName in $binaryNames) {
             $binaryPath = Join-Path $releaseRoot $binaryName
             $expectedLine = '{0} *{1}' -f (
               Get-FileHash -LiteralPath $binaryPath -Algorithm SHA256
             ).Hash.ToLowerInvariant(), $binaryName
-            $individualLine = (
-              Get-Content -LiteralPath "$binaryPath.sha256" -Raw
-            ).Trim()
-            if ($individualLine -cne $expectedLine) {
-              throw "Individual checksum mismatch for $binaryName."
-            }
-            if ($manifestLines -cnotcontains $expectedLine) {
-              throw "Combined checksum manifest mismatch for $binaryName."
+            if ((Get-Content -LiteralPath "$binaryPath.sha256" -Raw).Trim() -cne $expectedLine -or
+                $manifestLines -cnotcontains $expectedLine) {
+              throw "LNS-REL-008: checksum mismatch for $binaryName."
             }
           }
 
-          $signingState = @(
-            Get-Content -LiteralPath (Join-Path $releaseRoot 'SIGNING-STATE.txt'))
-          if ($signingState -cnotcontains "Version: $env:RELEASE_VERSION" -or
-              $signingState -cnotcontains 'Authenticode: Signed') {
-            throw 'SIGNING-STATE.txt does not identify this version as Authenticode Signed.'
+          $state = @(Get-Content -LiteralPath (Join-Path $releaseRoot 'SIGNING-STATE.txt'))
+          foreach ($requiredState in @(
+              "Version: $env:RELEASE_VERSION",
+              'Authenticode: Signed',
+              'Native x64: Validated',
+              'Native ARM64: Validated',
+              'Release mode: PublicRelease',
+              'Signing backend: Microsoft Artifact Signing OIDC'
+            )) {
+            if ($state -cnotcontains $requiredState) {
+              throw "LNS-REL-005: SIGNING-STATE.txt is missing '$requiredState'."
+            }
           }
 
           function Assert-ValidSignature {
@@ -444,7 +761,7 @@ jobs:
             if ($signature.Status -ne 'Valid' -or
                 $null -eq $signature.SignerCertificate -or
                 $null -eq $signature.TimeStamperCertificate) {
-              throw "Authenticode revalidation failed for '$Path': status=$($signature.Status)."
+              throw "LNS-REL-005: Authenticode revalidation failed for '$Path': status=$($signature.Status)."
             }
             return $signature.SignerCertificate.Thumbprint
           }
@@ -453,57 +770,72 @@ jobs:
           foreach ($installerName in $binaryNames | Where-Object { $_.EndsWith('-setup.exe') }) {
             $signerThumbprints += Assert-ValidSignature (Join-Path $releaseRoot $installerName)
           }
-
-          $extractRoot = Join-Path $env:RUNNER_TEMP 'LocalNetworkScanner-release-revalidation'
+          $extractRoot = Join-Path $env:RUNNER_TEMP 'LocalNetworkScanner-final-revalidation'
           try {
             foreach ($archiveName in $binaryNames | Where-Object { $_.EndsWith('.zip') }) {
               $destination = Join-Path $extractRoot $archiveName
-              Expand-Archive -LiteralPath (Join-Path $releaseRoot $archiveName) `
-                -DestinationPath $destination
-              $executables = @(Get-ChildItem -LiteralPath $destination -Recurse -File -Filter *.exe)
-              if ($executables.Count -ne 2 -or
-                  $executables.Name -notcontains 'LocalNetworkScanner.exe' -or
-                  $executables.Name -notcontains 'LocalNetworkScanner.Cli.exe') {
-                throw "Archive $archiveName does not contain exactly the expected UI and CLI executables."
+              Expand-Archive -LiteralPath (Join-Path $releaseRoot $archiveName) -DestinationPath $destination
+              $archiveBaseName = [IO.Path]::GetFileNameWithoutExtension($archiveName)
+              $packageRoot = Join-Path $destination $archiveBaseName
+              $expectedSignablePaths = @(
+                'LocalNetworkScanner.Cli.exe',
+                'LocalNetworkScanner.exe',
+                'tools/diagnose-app-control.ps1'
+              ) | Sort-Object
+              $signableExtensions = @(
+                '.appx', '.cat', '.dll', '.exe', '.msi', '.msix', '.ocx',
+                '.ps1', '.psd1', '.psm1', '.sys'
+              )
+              if (-not (Test-Path -LiteralPath $packageRoot -PathType Container)) {
+                throw "LNS-REL-008: archive $archiveName is missing its exact package root."
               }
-              foreach ($executable in $executables) {
-                $signerThumbprints += Assert-ValidSignature $executable.FullName
+              $actualSignablePaths = @(
+                Get-ChildItem -LiteralPath $packageRoot -Recurse -File |
+                  Where-Object { $_.Extension.ToLowerInvariant() -in $signableExtensions } |
+                  ForEach-Object {
+                    [IO.Path]::GetRelativePath($packageRoot, $_.FullName).Replace('\', '/')
+                  } |
+                  Sort-Object
+              )
+              $contractDifference = @(
+                Compare-Object -ReferenceObject $expectedSignablePaths -DifferenceObject $actualSignablePaths
+              )
+              if ($contractDifference.Count -ne 0) {
+                throw "LNS-REL-008: archive $archiveName differs from the exact signable-path contract: $($contractDifference | Out-String)"
+              }
+              foreach ($relativePath in $expectedSignablePaths) {
+                $signerThumbprints += Assert-ValidSignature (Join-Path $packageRoot $relativePath)
               }
             }
           }
           finally {
             Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
           }
-
-          $uniqueSigners = @($signerThumbprints | Sort-Object -Unique)
-          if ($uniqueSigners.Count -ne 1) {
-            throw 'Release executables do not share one Authenticode signer.'
+          if (@($signerThumbprints | Sort-Object -Unique).Count -ne 1) {
+            throw 'LNS-REL-005: release executables and diagnostic scripts do not share one signer.'
           }
-          Write-Host "Release payload revalidated with signer $($uniqueSigners[0])."
+          Write-Host "Release payload revalidated with signer $(@($signerThumbprints | Sort-Object -Unique)[0])."
 
       - name: Publish signed immutable release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
-          RELEASE_VERSION: ${{ needs.package.outputs.version }}
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
           SIGNING_STATE: ${{ needs.package.outputs.signing_state }}
         run: |
           if ($env:SIGNING_STATE -ne 'Signed') {
-            throw 'The publish job received an artifact that is not Authenticode Signed.'
+            throw 'LNS-REL-005: publish received a payload that is not Authenticode Signed.'
           }
           $notes = @(
             "Windows desktop release $env:RELEASE_VERSION.",
             '',
-            '- `win-x64`: Windows 11 e edições Windows 10 LTSC/Enterprise atualmente suportadas pelo .NET 10.',
-            '- `win-arm64`: Windows 11 em computadores ARM64 (cross-build; validação em hardware ARM64 nativo ainda pendente).',
-            '- `*-setup.exe`: instalador por utilizador.',
-            '- `*.zip`: versão portátil, sem instalação.',
-            '',
-            'Authenticode: `Signed`. Valide o signer e o timestamp depois do download.',
+            '- `win-x64`: exact ZIP and installer installed, executed and removed on native Windows x64.',
+            '- `win-arm64`: exact ZIP and installer installed, executed and removed on a native Windows ARM64 runner.',
+            '- UI, CLI, App Control diagnostic, installer and embedded uninstaller use timestamped Microsoft Artifact Signing.',
             '',
             'O instalador não inicia automaticamente a aplicação. Se o Windows apresentar o código 4551, consulte `docs/APP_CONTROL.md`; não desative a política de Controlo de Aplicações.',
-            'Consulte também o changelog e as limitações técnicas incluídos no pacote.'
+            'Consulte também `SIGNING-STATE.txt`, o changelog e as limitações técnicas incluídas no pacote.'
           ) -join [Environment]::NewLine
 
           $binaryNames = @(
@@ -524,7 +856,7 @@ jobs:
 
           gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
-            throw "Release $env:RELEASE_TAG already exists. Published release assets are immutable; create a new version instead."
+            throw "LNS-REL-008: release $env:RELEASE_TAG already exists; create a new version instead of replacing assets."
           }
 
           gh release create $env:RELEASE_TAG @assets `
@@ -534,14 +866,12 @@ jobs:
             --draft `
             --verify-tag
           if ($LASTEXITCODE -ne 0) {
-            throw "Unable to create draft release $env:RELEASE_TAG."
+            throw "LNS-REL-008: unable to create draft release $env:RELEASE_TAG."
           }
 
-          gh release edit $env:RELEASE_TAG `
-            --repo $env:GITHUB_REPOSITORY `
-            --draft=false
+          gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --draft=false
           if ($LASTEXITCODE -ne 0) {
-            throw "Release $env:RELEASE_TAG remains a draft because final publication failed."
+            throw "LNS-REL-008: release $env:RELEASE_TAG remains a draft because final publication failed."
           }
 
 # Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

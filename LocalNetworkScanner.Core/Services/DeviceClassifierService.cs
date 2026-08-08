@@ -10,10 +10,13 @@ public sealed class DeviceClassifierService
     {
         HashSet<int> ports = device.Ports.Select(item => item.Port).ToHashSet();
         string searchable = $"{device.Hostname} {device.NetBiosName} {device.Manufacturer} " +
-            $"{device.SsdpServer} {device.WsDiscoveryTypes}";
+            $"{device.Model} {device.FriendlyName} {device.IdentityDescription} " +
+            $"{device.SsdpServer} {device.SsdpServiceType} {device.WsDiscoveryTypes} " +
+            $"{string.Join(' ', device.MdnsNames)} " +
+            $"{string.Join(' ', device.Ports.Select(port => port.Banner))}";
         searchable = searchable.ToLowerInvariant();
 
-        device.DeviceType = device.DiscoveryMethods.HasFlag(DiscoveryMethod.LocalHost)
+        string inferredType = device.DiscoveryMethods.HasFlag(DiscoveryMethod.LocalHost)
             ? "Este computador"
             : device.IpAddress.Equals(networkInterface.GatewayAddress)
                 ? "Gateway / router"
@@ -34,9 +37,18 @@ public sealed class DeviceClassifierService
                                         ? "IoT / automação"
                                         : ports.Any(ServiceCatalog.IsHttpPort)
                                             ? "Dispositivo com interface Web"
-                                            : "Dispositivo de rede";
+                                             : "Dispositivo de rede";
 
-        device.OsGuess = device.DiscoveryMethods.HasFlag(DiscoveryMethod.LocalHost)
+        bool hasExplicitDeviceType = device.IdentityEvidence.Any(evidence =>
+            evidence.Confidence >= ConfidenceLevel.Medium &&
+            !string.IsNullOrWhiteSpace(evidence.DeviceType));
+        if (!hasExplicitDeviceType ||
+            device.DeviceType.Equals("Dispositivo de rede", StringComparison.Ordinal))
+        {
+            device.DeviceType = inferredType;
+        }
+
+        string inferredOperatingSystem = device.DiscoveryMethods.HasFlag(DiscoveryMethod.LocalHost)
             ? OperatingSystem.IsWindows() ? "Windows (host local)" : Environment.OSVersion.Platform.ToString()
             : device.ReplyTtl switch
             {
@@ -45,6 +57,11 @@ public sealed class DeviceClassifierService
                 <= 128 => "Possível Windows (heurística TTL)",
                 _ => "Possível appliance de rede (heurística TTL)"
             };
+        bool hasExplicitOperatingSystem = device.IdentityEvidence.Any(evidence =>
+            evidence.Confidence >= ConfidenceLevel.Medium &&
+            !string.IsNullOrWhiteSpace(evidence.OperatingSystem));
+        if (!hasExplicitOperatingSystem || device.OsGuess.Equals("Indeterminado", StringComparison.Ordinal))
+            device.OsGuess = inferredOperatingSystem;
     }
 }
 

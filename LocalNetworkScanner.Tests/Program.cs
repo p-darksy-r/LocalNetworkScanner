@@ -210,7 +210,7 @@ List<(string Name, Func<Task> Run)> tests =
             .Select(field => (string)field.GetRawConstantValue()!)
             .ToArray();
 
-        Equal(26, codes.Length);
+        Equal(31, codes.Length);
         Equal(codes.Length, codes.Distinct(StringComparer.Ordinal).Count());
         True(codes.All(code => code.Length == 11 && code.StartsWith("LNS-", StringComparison.Ordinal)),
             "Todos os códigos públicos devem seguir o contrato LNS-CAT-NNN.");
@@ -229,6 +229,629 @@ List<(string Name, Func<Task> Run)> tests =
         True(!MacAddressService.TryNormalizeDeviceAddress("00:11-22:33-44:55", out _), "Separadores mistos devem ser rejeitados.");
         True(!MacAddressService.TryNormalizeDeviceAddress("0:01122334455", out _), "Separadores mal posicionados devem ser rejeitados.");
         True(!MacAddressService.TryNormalizeDeviceAddress("not-a-mac", out _), "Texto arbitrário deve ser rejeitado.");
+    })),
+    ("UPnP description URLs remain bound to the discovered device", () => Sync(() =>
+    {
+        IPAddress expectedAddress = IPAddress.Parse("192.168.1.20");
+
+        True(
+            UpnpDescriptionService.TryCreateSafeDescriptionUri(
+                " http://192.168.1.20:8080/device.xml?profile=1 ",
+                expectedAddress,
+                out Uri? safeUri),
+            "Uma descrição HTTP no mesmo IP privado deveria ser aceite.");
+        Equal("http://192.168.1.20:8080/device.xml?profile=1", safeUri!.AbsoluteUri);
+
+        True(!UpnpDescriptionService.TryCreateSafeDescriptionUri(
+                "http://192.168.1.21/device.xml",
+                expectedAddress,
+                out _),
+            "A app não pode seguir a descrição para outro host.");
+        True(!UpnpDescriptionService.TryCreateSafeDescriptionUri(
+                "http://admin:secret@192.168.1.20/device.xml",
+                expectedAddress,
+                out _),
+            "Credenciais incorporadas numa URL UPnP devem ser rejeitadas.");
+        True(!UpnpDescriptionService.TryCreateSafeDescriptionUri(
+                "http://192.168.1.21/device.xml?next=http://192.168.1.20/",
+                expectedAddress,
+                out _),
+            "Uma URL com aspeto de redirecionamento continua presa ao host efetivo.");
+        True(!UpnpDescriptionService.TryCreateSafeDescriptionUri(
+                "http://192.168.1.20/device.xml#other-device",
+                expectedAddress,
+                out _),
+            "Fragmentos não são necessários para obter a descrição e devem falhar fechados.");
+        True(!UpnpDescriptionService.TryCreateSafeDescriptionUri(
+                "file:///C:/device.xml",
+                expectedAddress,
+                out _),
+            "A localização UPnP só pode usar HTTP ou HTTPS.");
+        True(!UpnpDescriptionService.TryCreateSafeDescriptionUri(
+                "http://device.local/device.xml",
+                expectedAddress,
+                out _),
+            "Um hostname não deve permitir nova resolução DNS fora do IP observado.");
+    })),
+    ("UPnP XML identity parsing is bounded and entity-safe", () => Sync(() =>
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <root xmlns="urn:schemas-upnp-org:device-1-0">
+              <device>
+                <deviceType>urn:schemas-upnp-org:device:Printer:1</deviceType>
+                <friendlyName>  Office&#xA; Printer  </friendlyName>
+                <manufacturer>Hewlett-Packard</manufacturer>
+                <modelName>LaserJet Pro</modelName>
+                <modelNumber>M404dn</modelNumber>
+                <serialNumber>SN-123</serialNumber>
+                <UDN>uuid:printer-1</UDN>
+                <presentationURL>/</presentationURL>
+              </device>
+            </root>
+            """;
+
+        UpnpDeviceDescription? description = UpnpDescriptionService.ParseDescription(
+            Encoding.UTF8.GetBytes(xml));
+        NotNull(description);
+        Equal("Office Printer", description!.FriendlyName);
+        Equal("Hewlett-Packard", description.Manufacturer);
+        Equal("LaserJet Pro (M404dn)", description.Model);
+        Equal("SN-123", description.SerialNumber);
+        Equal("urn:schemas-upnp-org:device:Printer:1", description.DeviceType);
+        Equal("uuid:printer-1", description.UniqueDeviceName);
+
+        const string dtd = """
+            <!DOCTYPE root [<!ENTITY external SYSTEM "file:///C:/Windows/win.ini">]>
+            <root><device><friendlyName>&external;</friendlyName></device></root>
+            """;
+        Throws<System.Xml.XmlException>(() =>
+            UpnpDescriptionService.ParseDescription(Encoding.UTF8.GetBytes(dtd)));
+        Equal<UpnpDeviceDescription?>(null, UpnpDescriptionService.ParseDescription([]));
+        Equal<UpnpDeviceDescription?>(
+            null,
+            UpnpDescriptionService.ParseDescription(new byte[(256 * 1024) + 1]));
+        Equal<UpnpDeviceDescription?>(
+            null,
+            UpnpDescriptionService.ParseDescription(
+                Encoding.UTF8.GetBytes("<root><device><UDN>uuid:only</UDN></device></root>")));
+    })),
+    ("Multicast promotion and UPnP enrichment are bounded", () => Sync(() =>
+    {
+        IPAddress address = IPAddress.Parse("192.168.1.20");
+        DiscoveryObservation announcedMdns = new()
+        {
+            IpAddress = address,
+            Method = DiscoveryMethod.Mdns,
+            HasDirectAddressEvidence = false
+        };
+        DiscoveryObservation directMdns = new()
+        {
+            IpAddress = address,
+            Method = DiscoveryMethod.Mdns,
+            HasDirectAddressEvidence = true
+        };
+        DiscoveryObservation ssdp = new()
+        {
+            IpAddress = address,
+            Method = DiscoveryMethod.Ssdp,
+            Location = $"http://{address}/device.xml"
+        };
+
+        True(!NetworkScannerService.CanPromoteMulticastObservation(announcedMdns),
+            "Um endereço apenas anunciado por mDNS não pode criar um dispositivo online.");
+        True(NetworkScannerService.CanPromoteMulticastObservation(directMdns),
+            "Um datagrama mDNS vindo do próprio endereço pode confirmar a observação.");
+        True(NetworkScannerService.CanPromoteMulticastObservation(ssdp),
+            "Uma resposta SSDP é associada ao endereço UDP que respondeu.");
+
+        DiscoveryObservation[] flood = Enumerable.Range(0, 40)
+            .Select(index => new DiscoveryObservation
+            {
+                IpAddress = address,
+                Method = DiscoveryMethod.Ssdp,
+                Location = $"http://{address}/device-{index}.xml"
+            })
+            .ToArray();
+        Equal(
+            NetworkScannerService.MaximumUpnpEnrichmentAttempts,
+            NetworkScannerService.SelectUpnpEnrichmentCandidates(flood).Count);
+
+        DiscoveryObservation enriched = UpnpDescriptionService.CreateEnrichedObservation(
+            ssdp,
+            new UpnpDeviceDescription
+            {
+                Manufacturer = "Contoso",
+                Model = "Self-reported"
+            });
+        Equal(ConfidenceLevel.Medium, enriched.Confidence);
+
+        MulticastReceiveBudget budget = new(2, 10, 3);
+        True(budget.TryConsumeDatagram(6), "O primeiro datagrama cabe no orçamento.");
+        True(!budget.TryConsumeDatagram(5), "O orçamento total de bytes deve ser aplicado.");
+        True(budget.TryConsumeDatagram(4), "O segundo datagrama completa o orçamento.");
+        True(!budget.TryConsumeDatagram(0), "O limite total de datagramas deve ser aplicado.");
+        True(budget.TryConsumeItems(3), "Os itens dentro do limite devem ser aceites.");
+        True(!budget.TryConsumeItems(1), "O limite total de itens deve ser aplicado.");
+    })),
+    ("Device identity evidence merges by confidence without duplicates", () => Sync(() =>
+    {
+        NetworkDevice device = new() { IpAddress = IPAddress.Parse("192.168.1.20") };
+        DeviceIdentityService identity = new();
+
+        identity.AddMacVendor(device, new MacVendorMatch(
+            "Acme Networks",
+            "MA-L",
+            "001122",
+            24,
+            "incorporada",
+            IsPrivate: false));
+        Equal("Acme Networks", device.Manufacturer);
+        Equal("Acme Networks", device.MacAssignee);
+        Equal("MA-L", device.MacRegistry);
+        Equal("001122/24", device.MacAssignmentPrefix);
+        Equal(ConfidenceLevel.Medium, device.IdentityConfidence);
+
+        identity.AddObservation(device, new DiscoveryObservation
+        {
+            IpAddress = device.IpAddress,
+            Method = DiscoveryMethod.Ssdp,
+            Manufacturer = "Untrusted announcement",
+            Model = "Basic model",
+            FriendlyName = "  Office\n Device  ",
+            EvidenceSource = "SSDP",
+            Confidence = ConfidenceLevel.Low
+        });
+        Equal("Acme Networks", device.Manufacturer);
+        Equal("Basic model", device.Model);
+        Equal("Office Device", device.FriendlyName);
+        Equal(ConfidenceLevel.Low, device.IdentityConfidence);
+
+        DiscoveryObservation highConfidence = new()
+        {
+            IpAddress = device.IpAddress,
+            Method = DiscoveryMethod.Snmp,
+            Manufacturer = "  Acme Enterprise  ",
+            Model = "CoreSwitch 48",
+            FriendlyName = "core-switch",
+            SerialNumber = "SN-42",
+            Description = "Managed\r\nnetwork switch",
+            DeviceType = "Switch gerível",
+            OperatingSystem = "AcmeOS",
+            EvidenceSource = "ENTITY-MIB",
+            Confidence = ConfidenceLevel.High
+        };
+        identity.AddObservation(device, highConfidence);
+        identity.AddObservation(device, highConfidence);
+
+        Equal("Acme Enterprise", device.Manufacturer);
+        Equal("CoreSwitch 48", device.Model);
+        Equal("core-switch", device.FriendlyName);
+        Equal("SN-42", device.SerialNumber);
+        Equal("Managed network switch", device.IdentityDescription);
+        Equal("Switch gerível", device.DeviceType);
+        Equal("AcmeOS", device.OsGuess);
+        Equal(ConfidenceLevel.High, device.IdentityConfidence);
+        Equal(3, device.IdentityEvidence.Count);
+
+        identity.AddEvidence(device, new DeviceIdentityEvidence
+        {
+            Method = DiscoveryMethod.Nmap,
+            Source = "Nmap",
+            Confidence = ConfidenceLevel.High,
+            Manufacturer = "Equal confidence cannot replace",
+            Model = "Equal confidence cannot replace"
+        });
+        Equal("Acme Enterprise", device.Manufacturer);
+        Equal("CoreSwitch 48", device.Model);
+
+        int evidenceCount = device.IdentityEvidence.Count;
+        identity.AddEvidence(device, new DeviceIdentityEvidence
+        {
+            Method = DiscoveryMethod.Mdns,
+            Source = "empty",
+            Confidence = ConfidenceLevel.High
+        });
+        Equal(evidenceCount, device.IdentityEvidence.Count);
+    })),
+    ("Device identity resolution is field-specific and order-independent", () => Sync(() =>
+    {
+        DeviceIdentityEvidence[] evidence =
+        [
+            new DeviceIdentityEvidence
+            {
+                Method = DiscoveryMethod.Snmp,
+                Source = "SNMP ENTITY-MIB",
+                Confidence = ConfidenceLevel.High,
+                Manufacturer = "Contoso Networks",
+                OperatingSystem = "ContosoOS"
+            },
+            new DeviceIdentityEvidence
+            {
+                Method = DiscoveryMethod.Mdns,
+                Source = "mDNS TXT",
+                Confidence = ConfidenceLevel.Low,
+                Model = "Outdated model"
+            },
+            new DeviceIdentityEvidence
+            {
+                Method = DiscoveryMethod.Nmap,
+                Source = "Nmap version probe",
+                Confidence = ConfidenceLevel.Medium,
+                Model = "Preferred model"
+            },
+            new DeviceIdentityEvidence
+            {
+                Method = DiscoveryMethod.Ssdp,
+                Source = "UPnP description",
+                Confidence = ConfidenceLevel.Medium,
+                Model = "Other model"
+            },
+            new DeviceIdentityEvidence
+            {
+                Method = DiscoveryMethod.Ssdp,
+                Source = "UPnP description",
+                Confidence = ConfidenceLevel.Medium,
+                FriendlyName = "Zulu endpoint"
+            },
+            new DeviceIdentityEvidence
+            {
+                Method = DiscoveryMethod.Ssdp,
+                Source = "UPnP description",
+                Confidence = ConfidenceLevel.Medium,
+                FriendlyName = "Alpha endpoint"
+            },
+            new DeviceIdentityEvidence
+            {
+                Method = DiscoveryMethod.Mdns,
+                Source = "mDNS service type",
+                Confidence = ConfidenceLevel.Low,
+                Description = "Identidade parcial anunciada"
+            }
+        ];
+
+        DeviceIdentityService service = new();
+        NetworkDevice forward = new() { IpAddress = IPAddress.Parse("192.168.1.30") };
+        NetworkDevice reverse = new() { IpAddress = IPAddress.Parse("192.168.1.30") };
+        foreach (DeviceIdentityEvidence item in evidence)
+            service.AddEvidence(forward, item);
+        foreach (DeviceIdentityEvidence item in evidence.Reverse())
+            service.AddEvidence(reverse, item);
+
+        Equal("Contoso Networks", forward.Manufacturer);
+        Equal("Preferred model", forward.Model);
+        Equal("Alpha endpoint", forward.FriendlyName);
+        Equal("ContosoOS", forward.OsGuess);
+        Equal("Identidade parcial anunciada", forward.IdentityDescription);
+        Equal(ConfidenceLevel.Low, forward.IdentityConfidence);
+        True(
+            forward.IdentityConfidence == ConfidenceLevel.Low,
+            "A confiança consolidada deve ser o mínimo conservador dos campos escolhidos.");
+
+        Equal(forward.Manufacturer, reverse.Manufacturer);
+        Equal(forward.Model, reverse.Model);
+        Equal(forward.FriendlyName, reverse.FriendlyName);
+        Equal(forward.OsGuess, reverse.OsGuess);
+        Equal(forward.IdentityDescription, reverse.IdentityDescription);
+        Equal(forward.IdentityConfidence, reverse.IdentityConfidence);
+        Equal(
+            string.Join('|', forward.IdentityEvidence.Select(item =>
+                $"{item.Method}:{item.Source}:{item.Manufacturer}:{item.Model}:{item.FriendlyName}")),
+            string.Join('|', reverse.IdentityEvidence.Select(item =>
+                $"{item.Method}:{item.Source}:{item.Manufacturer}:{item.Model}:{item.FriendlyName}")));
+    })),
+    ("SSDP headers are case-insensitive and malformed lines are ignored", () => Sync(() =>
+    {
+        Dictionary<string, string> headers = SsdpDiscoveryService.ParseHeaders(
+            "HTTP/1.1 200 OK\r\n" +
+            "SERVER: Windows/10 UPnP/1.0\r\n" +
+            "Location: http://192.168.1.20/device.xml\r\n" +
+            "ST: upnp:rootdevice\r\n" +
+            "st: urn:schemas-upnp-org:device:Printer:1\r\n" +
+            "USN: uuid:printer::upnp:rootdevice\r\n" +
+            "Malformed\r\n\r\n");
+
+        Equal(4, headers.Count);
+        Equal("Windows/10 UPnP/1.0", headers["server"]);
+        Equal("http://192.168.1.20/device.xml", headers["LOCATION"]);
+        Equal("urn:schemas-upnp-org:device:Printer:1", headers["st"]);
+        Equal("uuid:printer::upnp:rootdevice", headers["usn"]);
+        True(!headers.ContainsKey("Malformed"), "Uma linha sem separador não é um cabeçalho SSDP.");
+    })),
+    ("SSDP preserves distinct descriptions with a per-device limit", () => Sync(() =>
+    {
+        IPAddress address = IPAddress.Parse("192.168.1.20");
+        List<DiscoveryObservation> announcements = Enumerable.Range(0, 10)
+            .Select(index => new DiscoveryObservation
+            {
+                IpAddress = address,
+                Method = DiscoveryMethod.Ssdp,
+                Location = $"http://{address}/description-{index}.xml",
+                ServiceType = $"urn:example:service:{index}",
+                UniqueServiceName = $"uuid:device-{index}"
+            })
+            .ToList();
+        announcements.Insert(1, new DiscoveryObservation
+        {
+            IpAddress = address,
+            Method = DiscoveryMethod.Ssdp,
+            Location = $"http://{address}/description-0.xml",
+            ServiceType = "urn:example:service:additional",
+            UniqueServiceName = "uuid:device-0::additional"
+        });
+
+        IReadOnlyList<DiscoveryObservation> consolidated =
+            SsdpDiscoveryService.ConsolidateAnnouncements(announcements);
+        Equal(8, consolidated.Count);
+        DiscoveryObservation merged = consolidated.Single(item =>
+            item.Location?.EndsWith("description-0.xml", StringComparison.Ordinal) == true);
+        True(merged.ServiceType?.Contains("additional", StringComparison.Ordinal) == true,
+            "Serviços do mesmo documento UPnP devem ser preservados.");
+        True(merged.UniqueServiceName?.Contains("::additional", StringComparison.Ordinal) == true,
+            "USNs distintos do mesmo documento UPnP devem ser preservados.");
+    })),
+    ("SNMP ENTITY-MIB parsing selects coherent chassis identity", () => Sync(() =>
+    {
+        string root = SnmpDeviceDiscoveryService.EntityClassRoot;
+        Dictionary<int, SnmpEntityIdentityRow> parsed =
+            SnmpDeviceDiscoveryService.ParseEntityRows(
+            [
+                new SnmpVariable(root + ".7", 3, null),
+                new SnmpVariable(root + ".8", 10, null),
+                new SnmpVariable(root + ".7.1", 3, null),
+                new SnmpVariable(root + "x.9", 3, null),
+                new SnmpVariable(root + ".8", 3, null)
+            ],
+            root);
+        Equal(2, parsed.Count);
+        Equal(3, parsed[7].EntityClass);
+        Equal(10, parsed[8].EntityClass);
+
+        parsed[7].Description = "Core chassis";
+        parsed[8].Manufacturer = "Detailed vendor";
+        parsed[8].Model = "Detailed model";
+        parsed[8].SerialNumber = "SN-8";
+        SnmpEntityIdentityRow? selected = SnmpDeviceDiscoveryService.SelectEntity(parsed.Values);
+        NotNull(selected);
+        Equal(7, selected!.Index);
+
+        Equal(
+            "Cisco IOS XE switch",
+            SnmpDeviceDiscoveryService.SanitizeValue(" \tCisco\r\nIOS XE switch\0 "));
+        Equal("Cisco IOS XE", SnmpDeviceDiscoveryService.InferOperatingSystem("Cisco IOS XE 17.9"));
+        Equal("MikroTik RouterOS", SnmpDeviceDiscoveryService.InferOperatingSystem("RouterOS 7.15"));
+        Equal<string?>(null, SnmpDeviceDiscoveryService.InferOperatingSystem("unknown appliance"));
+    })),
+    ("Nmap input validation and port compression fail closed", () => Sync(() =>
+    {
+        True(
+            NmapDiscoveryService.TryValidateTargets(
+                [
+                    IPAddress.Parse("192.168.1.20"),
+                    IPAddress.Parse("192.168.1.20"),
+                    IPAddress.Parse("10.0.0.5")
+                ],
+                out IReadOnlyList<IPAddress> targets),
+            "Alvos privados explícitos deveriam ser aceites.");
+        Equal("192.168.1.20,10.0.0.5", string.Join(',', targets));
+        True(!NmapDiscoveryService.TryValidateTargets([IPAddress.Parse("8.8.8.8")], out _),
+            "O wrapper Nmap não pode aceitar alvos públicos.");
+        True(!NmapDiscoveryService.TryValidateTargets([IPAddress.IPv6Loopback], out _),
+            "O wrapper Nmap suporta apenas IPv4 privado.");
+        True(!NmapDiscoveryService.TryValidateTargets(
+                Enumerable.Repeat(IPAddress.Parse("192.168.1.20"), 257),
+                out _),
+            "Até duplicados de entrada contam para o limite antiabuso.");
+
+        True(NmapDiscoveryService.TryValidatePorts(
+                [443, 80, 82, 81, 80, 22],
+                out IReadOnlyList<int> ports),
+            "Portas TCP válidas deveriam ser normalizadas.");
+        Equal("22,80,81,82,443", string.Join(',', ports));
+        Equal("22,80-82,443-444", NmapDiscoveryService.BuildPortSpecification(
+            [22, 80, 81, 82, 443, 444]));
+        True(!NmapDiscoveryService.TryValidatePorts([0, 80], out _),
+            "A porta zero deve ser rejeitada.");
+        True(!NmapDiscoveryService.TryValidatePorts(
+                Enumerable.Repeat(80, 65_536),
+                out _),
+            "A entrada Nmap tem um limite mesmo quando repete a mesma porta.");
+        Throws<ArgumentException>(() => NmapDiscoveryService.BuildPortSpecification([]));
+    })),
+    ("Nmap executable resolution rejects remote and ambient PATH binaries", () => Sync(() =>
+    {
+        string temporaryDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"lns-nmap-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(temporaryDirectory);
+        string localExecutable = Path.Combine(temporaryDirectory, "nmap.exe");
+        File.WriteAllBytes(localExecutable, [0x4D, 0x5A]);
+        string? previousPath = Environment.GetEnvironmentVariable("PATH");
+
+        try
+        {
+            Equal(Path.GetFullPath(localExecutable),
+                NmapDiscoveryService.TryNormalizeExecutablePath(localExecutable));
+            Equal<string?>(null,
+                NmapDiscoveryService.TryNormalizeExecutablePath(@"\\server\share\nmap.exe"));
+            Equal<string?>(null,
+                NmapDiscoveryService.TryNormalizeExecutablePath(@"\\?\C:\tools\nmap.exe"));
+            Equal<string?>(null,
+                NmapDiscoveryService.TryNormalizeExecutablePath(@"\\.\C:\tools\nmap.exe"));
+
+            Environment.SetEnvironmentVariable("PATH", temporaryDirectory);
+            True(!NmapDiscoveryService.ResolveCandidatePaths(null).Contains(
+                    Path.GetFullPath(localExecutable),
+                    StringComparer.OrdinalIgnoreCase),
+                "A autodeteção não deve executar um nmap.exe encontrado apenas no PATH.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", previousPath);
+            Directory.Delete(temporaryDirectory, recursive: true);
+        }
+    })),
+    ("Nmap service products are not promoted to physical model or IEEE assignee", () => Sync(() =>
+    {
+        IPAddress address = IPAddress.Parse("192.168.1.20");
+        NetworkDevice device = new()
+        {
+            IpAddress = address,
+            IsOnline = true
+        };
+        Dictionary<IPAddress, NetworkDevice> devices = new()
+        {
+            [address] = device
+        };
+
+        new NetworkScannerService().ApplyNmapObservations(
+        [
+            new NmapHostObservation
+            {
+                IpAddress = address,
+                State = "up",
+                MacVendor = "Unverified banner vendor",
+                Ports =
+                [
+                    new NmapPortObservation
+                    {
+                        Port = 22,
+                        State = "open",
+                        ServiceName = "ssh",
+                        Product = "OpenSSH",
+                        Version = "9.9"
+                    }
+                ]
+            }
+        ], devices);
+
+        Equal<string?>(null, device.Model);
+        Equal<string?>(null, device.MacAssignee);
+        True(device.NmapSummary?.Contains("OpenSSH 9.9", StringComparison.Ordinal) == true,
+            "O produto do serviço deve permanecer no resumo/banner Nmap.");
+    })),
+    ("Nmap XML parser preserves scoped identity evidence", () => Sync(() =>
+    {
+        const string xml = """
+            <?xml version="1.0"?>
+            <nmaprun>
+              <host>
+                <status state="up" />
+                <address addr="192.168.1.20" addrtype="ipv4" />
+                <address addr="00-11-22-33-44-55" addrtype="mac" vendor="Acme Devices" />
+                <hostnames><hostname name="printer.local" /></hostnames>
+                <ports>
+                  <port protocol="tcp" portid="9100">
+                    <state state="open" />
+                    <service name="jetdirect" product="Acme Laser" version="2.0"
+                             extrainfo="embedded server" devicetype="printer" ostype="embedded" />
+                  </port>
+                  <port protocol="udp" portid="161"><state state="open" /></port>
+                </ports>
+                <os>
+                  <osmatch name="Linux 5.x" accuracy="92" />
+                  <osmatch name="Embedded Printer OS" accuracy="98" />
+                </os>
+              </host>
+              <host>
+                <status state="up" />
+                <address addr="192.168.1.21" addrtype="ipv4" />
+              </host>
+            </nmaprun>
+            """;
+
+        HashSet<IPAddress> scope = [IPAddress.Parse("192.168.1.20")];
+        IReadOnlyList<NmapHostObservation> hosts = NmapDiscoveryService.ParseXml(xml, scope);
+        Equal(1, hosts.Count);
+        NmapHostObservation host = hosts[0];
+        Equal(IPAddress.Parse("192.168.1.20"), host.IpAddress);
+        Equal("up", host.State);
+        Equal("printer.local", host.Hostname);
+        Equal("00:11:22:33:44:55", host.MacAddress);
+        Equal("Acme Devices", host.MacVendor);
+        Equal("Embedded Printer OS", host.OperatingSystem);
+        Equal<int?>(98, host.OperatingSystemAccuracy);
+        Equal(1, host.Ports.Count);
+        Equal(9100, host.Ports[0].Port);
+        Equal("Acme Laser", host.Ports[0].Product);
+        Equal("printer", host.Ports[0].DeviceType);
+    })),
+    ("Nmap XML parser rejects DTD depth and host-limit abuse", () => Sync(() =>
+    {
+        const string dtd = """
+            <!DOCTYPE nmaprun [<!ENTITY local SYSTEM "file:///C:/Windows/win.ini">]>
+            <nmaprun><host><address addr="192.168.1.20" addrtype="ipv4" />&local;</host></nmaprun>
+            """;
+        Throws<System.Xml.XmlException>(() => NmapDiscoveryService.ParseXml(dtd));
+
+        string tooDeep = "<nmaprun>" +
+                         string.Concat(Enumerable.Repeat("<node>", 66)) +
+                         string.Concat(Enumerable.Repeat("</node>", 66)) +
+                         "</nmaprun>";
+        Throws<InvalidDataException>(() => NmapDiscoveryService.ParseXml(tooDeep));
+
+        string tooManyHosts = "<nmaprun>" + string.Concat(
+            Enumerable.Range(0, 257).Select(index =>
+                $"<host><address addr=\"10.0.{index / 254}.{(index % 254) + 1}\" addrtype=\"ipv4\" /></host>")) +
+            "</nmaprun>";
+        Throws<InvalidDataException>(() => NmapDiscoveryService.ParseXml(tooManyHosts));
+    })),
+    ("Advanced discovery options require explicit safe configuration", () => Sync(() =>
+    {
+        IPAddress[] addresses = [IPAddress.Parse("192.168.1.20")];
+
+        Throws<ScanInputException>(() => ScanRequestValidator.Validate(
+            addresses,
+            new ScanOptions
+            {
+                Profile = ScanProfile.Standard,
+                EnableNmapDiscovery = true
+            }));
+        ScanRequestValidator.Validate(
+            addresses,
+            new ScanOptions
+            {
+                Profile = ScanProfile.Deep,
+                EnableNmapDiscovery = true,
+                NmapTimeoutMs = 120_000
+            });
+        Throws<ScanInputException>(() => ScanRequestValidator.Validate(
+            addresses,
+            new ScanOptions
+            {
+                Profile = ScanProfile.Deep,
+                EnableNmapDiscovery = true,
+                NmapExecutablePath = @"\\server\share\nmap.exe",
+                NmapTimeoutMs = 120_000
+            }));
+
+        Throws<ScanInputException>(() => ScanRequestValidator.Validate(
+            addresses,
+            new ScanOptions
+            {
+                EnableSnmpDeviceDiscovery = true,
+                SnmpCommunity = "  "
+            }));
+        ScanRequestValidator.Validate(
+            addresses,
+            new ScanOptions
+            {
+                EnableSnmpDeviceDiscovery = true,
+                SnmpCommunity = "private-read-only",
+                SnmpTimeoutMs = 900
+            });
+        Throws<ScanInputException>(() => ScanRequestValidator.Validate(
+            addresses,
+            new ScanOptions
+            {
+                EnableSnmpTopology = true,
+                SnmpCommunity = "private-read-only"
+            }));
+
+        ScanOptions quick = ScanOptions.ForProfile(ScanProfile.Quick);
+        Equal(false, quick.EnableUpnpDescription);
+        Equal(false, quick.EnableNetBiosDiscovery);
+        Equal(false, quick.EnableNmapDiscovery);
     })),
     ("WPF advanced integer validation", () => Sync(() =>
     {
@@ -1090,13 +1713,31 @@ List<(string Name, Func<Task> Run)> tests =
             messageId,
             IPAddress.Parse("192.168.1.200"));
         Equal(1, matches.Count);
-        Equal(IPAddress.Parse("192.168.1.9"), matches[0].Address);
+        Equal(IPAddress.Parse("192.168.1.200"), matches[0].Address);
         Equal("dn:NetworkVideoTransmitter", matches[0].Types);
         Equal("http://192.168.1.9/onvif/device_service", matches[0].XAddresses);
+        True(!matches[0].Address.Equals(IPAddress.Parse("192.168.1.9")),
+            "Um XAddr anunciado não pode fazer outro IP parecer online.");
         Equal(0, WsDiscoveryService.ParseResponse(
             xml,
             "urn:uuid:wrong",
             IPAddress.Parse("192.168.1.200")).Count);
+
+        byte[] spoofedPublicTarget = Encoding.UTF8.GetBytes(
+            $"<e:Envelope xmlns:e='urn:e' xmlns:d='urn:d' xmlns:a='urn:a'>" +
+            $"<e:Header><a:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches</a:Action>" +
+            $"<a:RelatesTo>{messageId}</a:RelatesTo></e:Header>" +
+            "<e:Body><d:ProbeMatches><d:ProbeMatch>" +
+            "<d:Types>dn:NetworkVideoTransmitter</d:Types>" +
+            "<d:XAddrs>http://8.8.8.8/onvif/device_service</d:XAddrs>" +
+            "</d:ProbeMatch></d:ProbeMatches></e:Body></e:Envelope>");
+        IReadOnlyList<WsDiscoveryMatch> spoofedMatches = WsDiscoveryService.ParseResponse(
+            spoofedPublicTarget,
+            messageId,
+            IPAddress.Parse("192.168.1.201"));
+        Equal(1, spoofedMatches.Count);
+        Equal(IPAddress.Parse("192.168.1.201"), spoofedMatches[0].Address);
+        Equal("http://8.8.8.8/onvif/device_service", spoofedMatches[0].XAddresses);
     })),
     ("SNMP request and response", () => Sync(() =>
     {
@@ -1271,10 +1912,72 @@ List<(string Name, Func<Task> Run)> tests =
         Equal(IPAddress.Parse("fd00::50"), observations[0].IpAddress);
         Equal("printer.local", observations[0].Hostname);
         Equal("Office Printer._ipp._tcp.local", observations[1].Hostname);
+        Equal("Laser", observations[1].Model);
+        Equal("Office Printer", observations[1].FriendlyName);
+        Equal("Impressora", observations[1].DeviceType);
+        Equal<string?>(null, observations[1].Manufacturer);
+        string typedValues = string.Join('|',
+            typeof(DiscoveryObservation).GetProperties()
+                .Where(property => property.PropertyType == typeof(string))
+                .Select(property => property.GetValue(observations[1]) as string)
+                .Where(value => value is not null));
+        True(!typedValues.Contains("note=Lab", StringComparison.Ordinal),
+            "Campos TXT fora da allowlist não podem contaminar a identidade tipada.");
         True(
             observations.All(observation =>
                 !observation.IpAddress.Equals(IPAddress.Parse("192.168.1.50"))),
             "Um registo com TTL zero não pode criar uma observação final.");
+
+        const string identityInstance = "Lab Printer._ipp._tcp.local";
+        IReadOnlyList<DiscoveryObservation> typedIdentity =
+            MdnsDiscoveryService.CorrelateRecords(
+            [
+                new MdnsDiscoveryService.MdnsResourceRecord(
+                    "lab-printer.local",
+                    1,
+                    1,
+                    120,
+                    Address: IPAddress.Parse("192.168.1.90")),
+                new MdnsDiscoveryService.MdnsResourceRecord(
+                    "_ipp._tcp.local",
+                    12,
+                    1,
+                    120,
+                    DomainName: identityInstance),
+                new MdnsDiscoveryService.MdnsResourceRecord(
+                    identityInstance,
+                    33,
+                    1,
+                    120,
+                    DomainName: "lab-printer.local",
+                    Port: 631),
+                new MdnsDiscoveryService.MdnsResourceRecord(
+                    identityInstance,
+                    16,
+                    1,
+                    120,
+                    Text:
+                    [
+                        "manufacturer=Acme Printing",
+                        "model=Laser 9000",
+                        "note=private lab",
+                        "password=private-value",
+                        "serial=SN-private"
+                    ])
+            ]);
+        DiscoveryObservation identityObservation = typedIdentity.Single(observation =>
+            observation.UniqueServiceName == identityInstance);
+        Equal("Acme Printing", identityObservation.Manufacturer);
+        Equal("Laser 9000", identityObservation.Model);
+        string identityValues = string.Join('|',
+            typeof(DiscoveryObservation).GetProperties()
+                .Where(property => property.PropertyType == typeof(string))
+                .Select(property => property.GetValue(identityObservation) as string)
+                .Where(value => value is not null));
+        True(!identityValues.Contains("private lab", StringComparison.Ordinal) &&
+             !identityValues.Contains("private-value", StringComparison.Ordinal) &&
+             !identityValues.Contains("SN-private", StringComparison.Ordinal),
+            "TXT não aprovado não deve ser exposto como identidade do dispositivo.");
 
         MdnsDiscoveryService.MdnsResourceRecord addressEvidence = new(
             "camera.local",
@@ -1877,7 +2580,7 @@ List<(string Name, Func<Task> Run)> tests =
             await using FileStream stream = File.OpenRead(path);
             using JsonDocument document = await JsonDocument.ParseAsync(stream);
             JsonElement root = document.RootElement;
-            Equal(4, root.GetProperty("schemaVersion").GetInt32());
+            Equal(5, root.GetProperty("schemaVersion").GetInt32());
             JsonElement diagnostics = root.GetProperty("scan").GetProperty("diagnostics");
             Equal(1, diagnostics.GetArrayLength());
             Equal(DiagnosticCatalog.InvalidMacAddressCode,

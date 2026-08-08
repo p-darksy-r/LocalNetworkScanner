@@ -49,17 +49,21 @@ Uma diferença significa que o ficheiro não deve ser executado.
 
 `CreateProcess falhou; código 4551` corresponde a `ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION` (`0x11C7`). O instalador pode ter copiado os ficheiros corretamente e o Windows ter bloqueado apenas a tentativa de executar a aplicação.
 
+O erro é produzido antes de a aplicação arrancar. Nenhuma alteração à UI consegue autorizar retroativamente um processo que o Windows se recusou a criar; a correção de distribuição é usar binários previamente assinados por uma identidade confiável ou obter uma decisão explícita do administrador da política.
+
 As versões novas do instalador não iniciam a aplicação automaticamente. Isto permite distinguir uma instalação concluída de um primeiro arranque bloqueado, sem desativar nem contornar a política.
 
 Não desligue Smart App Control, App Control for Business/WDAC, AppLocker ou Microsoft Defender. Confirme o checksum e a assinatura, recolha os eventos `3077` (imposição) ou `3076` (auditoria) em **Microsoft-Windows-CodeIntegrity/Operational** e, num PC gerido, peça ao administrador para avaliar a autorização. Consulte [Windows App Control e erro 4551](APP_CONTROL.md) para o diagnóstico completo e para a ferramenta apenas de leitura incluída em `tools\diagnose-app-control.ps1`.
 
 ## Assinatura, App Control e SmartScreen
 
-Os artefactos históricos da release `v1.2.0` estão explicitamente marcados **`NotSigned`**. O Microsoft Defender SmartScreen ou uma política App Control podem recusá-los. As novas GitHub Releases são bloqueadas se não estiverem `Signed`; artefactos privados de QA podem continuar `NotSigned`. Confirme sempre `SIGNING-STATE.txt` e o resultado local de `Get-AuthenticodeSignature`.
+Os artefactos históricos da release `v1.2.0` estão explicitamente marcados **`NotSigned`** e não são recomendados para instalação de produção. O Microsoft Defender SmartScreen ou uma política App Control podem recusá-los. As novas GitHub Releases são bloqueadas se não estiverem `Signed`; artefactos privados de QA podem continuar `NotSigned`. Confirme sempre `SIGNING-STATE.txt` e o resultado local de `Get-AuthenticodeSignature`.
 
 O checksum deteta alterações no ficheiro relativamente à release publicada, mas não substitui uma assinatura de código nem confirma, sozinho, a identidade do publisher.
 
-O pipeline está preparado para assinar UI, CLI, instalador e desinstalador com um certificado RSA de Code Signing emitido por uma CA confiável. Se a assinatura for solicitada e as credenciais estiverem ausentes ou inválidas, o build falha em vez de publicar silenciosamente como assinado. Uma assinatura válida também não substitui uma regra de autorização da organização.
+O pipeline público assina UI, CLI, diagnóstico PowerShell, instalador e desinstalador através de Microsoft Artifact Signing por OIDC. A chave privada permanece no serviço/HSM e não é copiada para o GitHub. Se a identidade, o timestamp ou uma assinatura estiverem ausentes ou inválidos, o build falha em vez de publicar silenciosamente como assinado. Uma assinatura válida também não substitui uma regra de autorização da organização.
+
+A validação de release deixou de depender apenas do build: os ZIPs e instaladores exatos são instalados, executados e removidos em runners Windows x64 e ARM64 nativos antes da publicação. A configuração da identidade cloud/HSM, alternativas legítimas e códigos `LNS-REL-*` estão documentados em [Assinatura e prontidão de release](SIGNING.md).
 
 ## Compilar o instalador localmente
 
@@ -77,7 +81,7 @@ Se o compilador não estiver no caminho normal:
 
 O script publica primeiro o pacote portátil, valida os ficheiros de staging, compila o instalador e cria um checksum SHA-256. Não simula nem ignora a ausência do compilador e não afirma que o resultado está assinado.
 
-Para uma build Authenticode, importe previamente o certificado no store `CurrentUser\My` e indique o thumbprint:
+Para um laboratório/PKI privada ou runner próprio ligado a token/HSM, os scripts continuam a aceitar um certificado instalado em `CurrentUser\My` pelo thumbprint:
 
 ```powershell
 .\scripts\build-installer.ps1 `
@@ -86,6 +90,6 @@ Para uma build Authenticode, importe previamente o certificado no store `Current
   -TimestampServer 'http://timestamp.digicert.com'
 ```
 
-O script exige um certificado RSA com chave privada, EKU de Code Signing e cadeia confiável. Assina com SHA-256, exige timestamp RFC 3161 e verifica todos os executáveis finais. O thumbprint SHA-1 serve apenas para selecionar o certificado; não é o algoritmo usado na assinatura dos ficheiros.
+Este modo local exige RSA, chave privada protegida, EKU de Code Signing, cadeia confiável e timestamp. O thumbprint SHA-1 serve apenas para selecionar o certificado; não é o algoritmo usado na assinatura dos ficheiros. Não exporte uma chave pública de produção para PFX só para usar este exemplo: o workflow oficial usa Artifact Signing/OIDC.
 
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

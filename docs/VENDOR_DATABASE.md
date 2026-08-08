@@ -25,7 +25,7 @@ O lookup normaliza o MAC e procura sempre a atribuição mais específica:
 2. MA-M com 28 bits;
 3. MA-L com 24 bits.
 
-Esta ordem `/36 → /28 → /24` evita que uma atribuição genérica esconda o titular de um bloco mais específico. O registo CID é deliberadamente excluído: segundo a IEEE, um CID não gera endereços MAC EUI universalmente administrados. Um CID não deve ser apresentado como fabricante de um MAC global.
+Esta ordem `/36 → /28 → /24` evita que uma atribuição genérica esconda o titular de um bloco mais específico. O registo CID é deliberadamente excluído: segundo a IEEE, um CID não gera endereços MAC EUI universalmente administrados. Um CID não deve ser apresentado como fabricante de um MAC global. Desde o schema v5, a aplicação apresenta este valor como **titular IEEE** e mantém separado o fabricante/modelo obtido por outras evidências.
 
 ## Limites honestos
 

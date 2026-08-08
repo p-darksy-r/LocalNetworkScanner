@@ -25,17 +25,22 @@ public static class DiagnosticCatalog
     public const string WifiTelemetryUnavailableCode = "LNS-NET-005";
     public const string Layer2InferenceCode = "LNS-NET-006";
     public const string NetworkOperationFailedCode = "LNS-NET-007";
+    public const string SnmpDeviceIdentityUnavailableCode = "LNS-NET-008";
+    public const string NmapUnavailableCode = "LNS-NET-009";
+    public const string NmapScanFailedCode = "LNS-NET-010";
 
     public const string InvalidMacAddressCode = "LNS-DEV-001";
     public const string UnknownManufacturerCode = "LNS-DEV-002";
     public const string UnrecognizedDeviceCode = "LNS-DEV-003";
     public const string RandomizedMacAddressCode = "LNS-DEV-004";
+    public const string IdentityConflictCode = "LNS-DEV-005";
 
     public const string UnexpectedApplicationErrorCode = "LNS-APP-001";
     public const string FileOperationFailedCode = "LNS-APP-002";
     public const string AccessDeniedCode = "LNS-APP-003";
     public const string PacketCaptureUnavailableCode = "LNS-APP-004";
     public const string ApplicationControlBlockedCode = "LNS-APP-005";
+    public const string ApplicationControlInconclusiveCode = "LNS-APP-006";
 
     public static ScanDiagnostic InvalidCommand(string? command = null) => new(
         InvalidCommandCode,
@@ -178,6 +183,31 @@ public static class DiagnosticCatalog
         "Confirma a ligação, a interface, as regras de firewall e volta a tentar.",
         target);
 
+    public static ScanDiagnostic SnmpDeviceIdentityUnavailable(int attemptedDevices) => new(
+        SnmpDeviceIdentityUnavailableCode,
+        DiagnosticCategory.Network,
+        DiagnosticSeverity.Information,
+        "Nenhum dispositivo respondeu à consulta opcional de identidade SNMP v2c.",
+        "Confirma autorização, community e ACL; SNMP v2c envia a community sem cifragem e nunca deve ser ativado numa rede não confiável.",
+        context: Context(("attemptedDevices", attemptedDevices.ToString(
+            System.Globalization.CultureInfo.InvariantCulture))));
+
+    public static ScanDiagnostic NmapUnavailable(string? target = null) => new(
+        NmapUnavailableCode,
+        DiagnosticCategory.Network,
+        DiagnosticSeverity.Information,
+        "A integração opcional Nmap foi pedida, mas não foi encontrado um executável Nmap utilizável.",
+        "Instala o Nmap separadamente a partir da origem oficial ou indica o caminho; a aplicação não o redistribui sem licença OEM.",
+        target);
+
+    public static ScanDiagnostic NmapScanFailed(string? target = null) => new(
+        NmapScanFailedCode,
+        DiagnosticCategory.Network,
+        DiagnosticSeverity.Warning,
+        "O enriquecimento opcional Nmap não terminou com dados válidos.",
+        "Confirma o executável, permissões, firewall e limites; repete apenas numa rede autorizada e num intervalo menor.",
+        target);
+
     public static ScanDiagnostic InvalidMacAddress(string target, string? observedValue = null) => new(
         InvalidMacAddressCode,
         DiagnosticCategory.Device,
@@ -212,6 +242,16 @@ public static class DiagnosticCatalog
         "Correlaciona o dispositivo pelo IP, hostname e histórico; o MAC pode mudar.",
         target,
         Context(("mac", normalizedMac)));
+
+    public static ScanDiagnostic IdentityConflict(string target, int evidenceCount) => new(
+        IdentityConflictCode,
+        DiagnosticCategory.Device,
+        DiagnosticSeverity.Warning,
+        "Foram observados valores contraditórios para o fabricante ou modelo deste dispositivo.",
+        "Compare as fontes e a confiança; o titular IEEE pode identificar apenas a interface ou um OEM. Confirme a etiqueta ou consola de gestão antes de usar a identificação.",
+        target,
+        Context(("evidenceCount", evidenceCount.ToString(
+            System.Globalization.CultureInfo.InvariantCulture))));
 
     public static ScanDiagnostic UnexpectedApplicationError(string? target = null, string? exceptionType = null) => new(
         UnexpectedApplicationErrorCode,
@@ -264,6 +304,14 @@ public static class DiagnosticCatalog
         "Usa uma release com assinatura Authenticode confiável ou pede ao administrador que autorize o publisher, hash ou catálogo; não desatives a proteção para contornar o bloqueio.",
         target,
         Context(("nativeErrorCode", "4551")));
+
+    public static ScanDiagnostic ApplicationControlInconclusive(string? target = null) => new(
+        ApplicationControlInconclusiveCode,
+        DiagnosticCategory.Application,
+        DiagnosticSeverity.Warning,
+        "O diagnóstico de Windows Application Control não encontrou prova suficiente de um bloqueio de enforcement.",
+        "Repete com o caminho completo do ficheiro e confirma um evento 3077 correlacionado antes de atribuir o erro 4551.",
+        target);
 
     private static IReadOnlyDictionary<string, string> Context(
         params (string Key, string? Value)[] values) => values

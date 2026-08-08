@@ -46,6 +46,19 @@ function Convert-EventData {
     return $values
 }
 
+function Test-ContainsOrdinalIgnoreCase {
+    param(
+        [AllowNull()]
+        [string]$Text,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Value
+    )
+
+    return -not [string]::IsNullOrWhiteSpace($Text) -and
+        $Text.IndexOf($Value, [StringComparison]::OrdinalIgnoreCase) -ge 0
+}
+
 $targetPath = [IO.Path]::GetFullPath($FilePath)
 $targetExists = Test-Path -LiteralPath $targetPath -PathType Leaf
 $targetLeaf = Split-Path $targetPath -Leaf
@@ -55,10 +68,13 @@ $fileEvidence = [ordered]@{
     path = $targetPath
     exists = $targetExists
 }
+$signatureStatus = "FileMissing"
 if ($targetExists) {
     $signature = Get-AuthenticodeSignature -LiteralPath $targetPath
+    $signatureStatus = [string]$signature.Status
     $fileEvidence["sha256"] = (Get-FileHash -LiteralPath $targetPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $fileEvidence["authenticodeStatus"] = [string]$signature.Status
+    $fileEvidence["authenticodeStatus"] = $signatureStatus
+    $fileEvidence["authenticodeMessage"] = [string]$signature.StatusMessage
     $fileEvidence["signerSubject"] = if ($null -ne $signature.SignerCertificate) {
         $signature.SignerCertificate.Subject
     }
@@ -67,6 +83,12 @@ if ($targetExists) {
     }
     $fileEvidence["signerThumbprint"] = if ($null -ne $signature.SignerCertificate) {
         $signature.SignerCertificate.Thumbprint
+    }
+    else {
+        $null
+    }
+    $fileEvidence["timestampSubject"] = if ($null -ne $signature.TimeStamperCertificate) {
+        $signature.TimeStamperCertificate.Subject
     }
     else {
         $null
@@ -112,17 +134,23 @@ try {
         try {
             $eventXml = $event.ToXml()
             $message = Get-SafeEventMessage $event
-            $matchesTarget =
-                [string]::IsNullOrWhiteSpace($targetLeaf) -or
-                $eventXml.IndexOf($targetLeaf, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
-                ($null -ne $message -and $message.IndexOf($targetLeaf, [StringComparison]::OrdinalIgnoreCase) -ge 0)
-            if ($matchesTarget) {
+            $eventData = Convert-EventData $event
+            $eventText = @($message, $eventXml) + @($eventData.Values)
+            $matchesFullPath = @($eventText | Where-Object {
+                Test-ContainsOrdinalIgnoreCase -Text ([string]$_) -Value $targetPath
+            }).Count -gt 0
+            $matchesFileName = @($eventText | Where-Object {
+                Test-ContainsOrdinalIgnoreCase -Text ([string]$_) -Value $targetLeaf
+            }).Count -gt 0
+
+            if ($matchesFullPath -or $matchesFileName) {
                 $eventEvidence += [ordered]@{
                     id = $event.Id
                     timeCreated = $event.TimeCreated
                     level = $event.LevelDisplayName
+                    correlation = if ($matchesFullPath) { "FullPath" } else { "FileNameOnly" }
                     message = $message
-                    data = Convert-EventData $event
+                    data = $eventData
                 }
             }
         }
@@ -143,8 +171,116 @@ catch {
     }
 }
 
+$fullPathEnforcementEvents = @($eventEvidence | Where-Object {
+    $_.id -eq 3077 -and $_.correlation -eq "FullPath"
+})
+$fileNameOnlyEnforcementEvents = @($eventEvidence | Where-Object {
+    $_.id -eq 3077 -and $_.correlation -eq "FileNameOnly"
+})
+$fullPathAuditEvents = @($eventEvidence | Where-Object {
+    $_.id -eq 3076 -and $_.correlation -eq "FullPath"
+})
+$fileNameOnlyAuditEvents = @($eventEvidence | Where-Object {
+    $_.id -eq 3076 -and $_.correlation -eq "FileNameOnly"
+})
+$diagnosis = [ordered]@{
+    code = "LNS-APP-006"
+    result = "Inconclusive"
+    confidence = "Low"
+    policyBlockConfirmed = $false
+    canApplicationFixAfterBlock = $false
+    explanation = "No correlated App Control enforcement event was found for the selected file."
+    recommendedActions = @(
+        "Compare the file SHA-256 with the value published by the project.",
+        "Do not disable Smart App Control, App Control for Business, AppLocker or Microsoft Defender.",
+        "Review the CodeIntegrity evidence or send this report to the device administrator."
+    )
+}
+
+if (-not $targetExists) {
+    $diagnosis["code"] = "LNS-APP-002"
+    $diagnosis["result"] = "TargetFileMissing"
+    $diagnosis["confidence"] = "High"
+    $diagnosis["explanation"] = "The selected file does not exist, so its signature and policy decision cannot be evaluated."
+    $diagnosis["recommendedActions"] = @(
+        "Pass -FilePath with the exact installer or application executable that Windows blocked.",
+        "If setup completed, check %LOCALAPPDATA%\Programs\LocalNetworkScanner\LocalNetworkScanner.exe."
+    )
+}
+elseif ($fullPathEnforcementEvents.Count -gt 0 -and $signatureStatus -eq "NotSigned") {
+    $diagnosis["code"] = "LNS-APP-005"
+    $diagnosis["result"] = "ConfirmedPolicyBlockUnsignedTarget"
+    $diagnosis["confidence"] = "High"
+    $diagnosis["policyBlockConfirmed"] = $true
+    $diagnosis["explanation"] = "Windows recorded an App Control enforcement block and the selected file has no Authenticode publisher signature. Unknown unsigned code is commonly denied by Smart App Control and managed policies."
+    $diagnosis["recommendedActions"] = @(
+        "Use a release whose SIGNING-STATE.txt says Authenticode: Signed and whose signature validates locally.",
+        "On a managed computer, ask the administrator to evaluate a publisher, catalog or hash rule.",
+        "Do not treat a matching checksum as a substitute for publisher trust."
+    )
+}
+elseif ($fullPathEnforcementEvents.Count -gt 0 -and $signatureStatus -eq "Valid") {
+    $diagnosis["code"] = "LNS-APP-005"
+    $diagnosis["result"] = "ConfirmedPolicyBlockSignedTarget"
+    $diagnosis["confidence"] = "High"
+    $diagnosis["policyBlockConfirmed"] = $true
+    $diagnosis["explanation"] = "Windows recorded an App Control enforcement block even though Authenticode validates. The active policy may not trust this publisher or may contain an explicit deny rule."
+    $diagnosis["recommendedActions"] = @(
+        "Confirm that the signer subject and thumbprint match the publisher documented by the release.",
+        "Ask the device administrator to inspect the correlated 3077 and 3089 events and the effective policy.",
+        "Do not replace or weaken the organization policy without its administrator's approval."
+    )
+}
+elseif ($fullPathEnforcementEvents.Count -gt 0) {
+    $diagnosis["code"] = "LNS-APP-005"
+    $diagnosis["result"] = "ConfirmedPolicyBlockInvalidOrUntrustedSignature"
+    $diagnosis["confidence"] = "High"
+    $diagnosis["policyBlockConfirmed"] = $true
+    $diagnosis["explanation"] = "Windows recorded an App Control enforcement block and Authenticode is not valid for the selected file."
+    $diagnosis["recommendedActions"] = @(
+        "Download the file again only from the official release and compare its SHA-256.",
+        "Use a timestamped release signed by a publicly trusted RSA Code Signing certificate.",
+        "If the signature still fails, do not execute the file and report the evidence."
+    )
+}
+elseif ($fileNameOnlyEnforcementEvents.Count -gt 0) {
+    $diagnosis["result"] = "AmbiguousFileNameOnlyEnforcementEvidence"
+    $diagnosis["confidence"] = "Low"
+    $diagnosis["explanation"] = "Windows recorded an App Control enforcement event containing the same file name, but not the selected file's complete path. This is ambiguous evidence and does not confirm that error 4551 affected the selected file."
+    $diagnosis["recommendedActions"] = @(
+        "Reproduce the block and rerun this diagnostic with -FilePath set to the exact blocked executable.",
+        "Inspect the matching event data and confirm the complete path before attributing the block.",
+        "Do not treat a file-name-only match as proof of an App Control block for this target."
+    )
+}
+elseif ($fullPathAuditEvents.Count -gt 0) {
+    $diagnosis["result"] = "WouldBeBlockedInEnforcement"
+    $diagnosis["confidence"] = "High"
+    $diagnosis["explanation"] = "Windows recorded an App Control audit event: the selected file would be denied if the policy were enforced."
+}
+elseif ($fileNameOnlyAuditEvents.Count -gt 0) {
+    $diagnosis["result"] = "AmbiguousFileNameOnlyAuditEvidence"
+    $diagnosis["confidence"] = "Low"
+    $diagnosis["explanation"] = "Windows recorded an App Control audit event containing the same file name, but not the selected file's complete path. The selected file cannot be identified with confidence."
+}
+elseif ($signatureStatus -eq "NotSigned") {
+    $diagnosis["result"] = "UnsignedWithoutCorrelatedEvent"
+    $diagnosis["confidence"] = "Medium"
+    $diagnosis["explanation"] = "The file is unsigned, but no matching enforcement event was found in the selected time window. This is a trust risk, not proof that error 4551 occurred."
+}
+elseif ($signatureStatus -eq "Valid") {
+    $diagnosis["result"] = "ValidSignatureWithoutCorrelatedEvent"
+    $diagnosis["confidence"] = "Medium"
+    $diagnosis["explanation"] = "Authenticode validates, but no matching enforcement event was found. Increase -Minutes or ask the administrator for the relevant policy logs."
+}
+else {
+    $diagnosis["result"] = "InvalidOrUntrustedSignatureWithoutCorrelatedEvent"
+    $diagnosis["confidence"] = "Medium"
+    $diagnosis["explanation"] = "Authenticode does not validate, but no matching enforcement event was found in the selected time window."
+}
+
 $report = [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     reportType = "LocalNetworkScanner.AppControlDiagnostic"
     generatedAt = [DateTimeOffset]::Now.ToString("o")
     readOnly = $true
@@ -158,12 +294,17 @@ $report = [ordered]@{
         processArchitecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
     }
     file = $fileEvidence
+    diagnosis = $diagnosis
     appControl = $policyEvidence
     codeIntegrity = [ordered]@{
         queriedAfter = $startedAfter.ToString("o")
         matchingEvents = $eventEvidence
         error = if (Get-Variable -Name eventLogError -ErrorAction SilentlyContinue) { $eventLogError } else { $null }
     }
+    officialDocumentation = @(
+        "https://learn.microsoft.com/windows/apps/develop/smart-app-control/overview",
+        "https://learn.microsoft.com/windows/apps/develop/smart-app-control/test-your-app-with-smart-app-control"
+    )
 }
 
 $json = $report | ConvertTo-Json -Depth 10

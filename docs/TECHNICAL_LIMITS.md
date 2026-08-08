@@ -37,7 +37,15 @@ No Windows e em IPv4, o pedido ICMP usa explicitamente o endereço da interface 
 
 O produto limita o scan explícito da CLI a endereços privados/locais. Isso reduz erros de utilização, mas não substitui autorização.
 
-## Endereços MAC e fabricante
+## Identidade, fabricante e modelo
+
+A identidade resulta de uma fusão determinística por campo. A aplicação mantém separadamente o titular IEEE do prefixo MAC e o fabricante/modelo anunciado por UPnP, DNS-SD ou SNMP. Cada evidência conserva método, origem e confiança; empates têm uma prioridade estável e a confiança consolidada usa o campo selecionado menos confiável. Valores contraditórios não são tratados como autenticação. O Nmap contribui hostname, tipo/OS provável e produtos de serviços, mas estes últimos permanecem banners e não são convertidos em modelo físico.
+
+Uma ausência de modelo é normal. Muitos dispositivos não publicam descrição UPnP, TXT DNS-SD ou ENTITY-MIB; firewalls podem bloquear os pedidos e MACs locais não têm um titular IEEE global. Mesmo quando existe uma resposta, o administrador ou firmware do equipamento pode ter configurado texto incorreto.
+
+As descrições UPnP só são obtidas do URL `HTTP(S)` cujo host literal é exatamente o IP privado que enviou o SSDP. Redirects, proxy, credenciais no URL, destinos diferentes, documentos grandes e XML com DTD são recusados. O scan limita este enriquecimento a 32 descrições, quatro pedidos concorrentes e um orçamento global máximo de oito segundos. Isto reduz SSRF, XXE e abuso de recursos, mas não torna os metadados autenticados.
+
+## Endereços MAC e titular IEEE
 
 O MAC é normalmente obtido através da vizinhança ARP. ARP opera no domínio de camada 2; para um destino roteado, o computador vê normalmente o MAC do gateway e não o MAC do dispositivo final. Por isso, um MAC remoto pode estar indisponível.
 
@@ -64,6 +72,12 @@ O scan de portas atual usa ligações TCP. Uma porta aberta significa apenas que
 - O risco apresentado é uma priorização heurística, não uma auditoria de conformidade nem um parecer de segurança.
 
 A coluna de protocolos resume evidências de descoberta, portas e respostas de serviço. Não representa tipos ou contagens de todos os pacotes existentes na rede. Não existe captura de pacotes nem inspeção profunda de tráfego.
+
+### Nmap opcional
+
+No perfil Avançado, o utilizador pode pedir enriquecimento através de um `nmap.exe` já instalado. A autodeteção fica limitada às instalações locais em `Program Files`; o `PATH`, caminhos UNC e device paths não são executados. Um caminho explícito tem de ser absoluto, local, existente e terminar em `nmap.exe`; a UI mostra-o antes do consentimento e recomenda confirmar a assinatura/publisher. A aplicação valida `nmap --version`, usa argumentos estruturados sem shell e executa apenas TCP Connect/version-light sem privilégios (`--unprivileged -sT -sV --version-light -Pn -n`), com alvos RFC1918, portas, lotes, output XML, tempo e tamanho limitados. Não executa NSE, scan UDP, raw sockets, tentativa de credenciais ou deteção de SO privilegiada.
+
+Nmap e Npcap não são incluídos, instalados ou licenciados pelo Local Network Scanner. O utilizador é responsável pela instalação e licença aplicáveis. A ausência ou falha do binário gera `LNS-NET-009`/`LNS-NET-010` sem invalidar o inventário nativo já recolhido.
 
 ## Intensidade do sinal Wi-Fi
 
@@ -114,7 +128,7 @@ Uma porta/interface só é apresentada como única quando existe uma única obse
 
 O switch autorizado pode fornecer vizinhos LLDP, incluindo chassis, porta e identidade do sistema anunciados. Nesta versão, o enriquecimento LLDP não recolhe a tabela separada de endereços de gestão remotos. Também não existe SNMPv3, descoberta automática de switches, seguimento de uma topologia com vários switches ou suporte garantido para MIBs específicas de fabricante. Sem dados adicionais da infraestrutura, o produto não confirma ligação física direta. Switches não geridos não fornecem esta evidência.
 
-SNMP v2c não protege os dados de acesso ao nível do protocolo. A opção deve ser usada apenas numa rede de gestão confiável, com autorização, e os dados de acesso não devem aparecer em exports, logs ou documentação partilhada.
+SNMP v2c não protege os dados de acesso ao nível do protocolo. A opção deve ser usada apenas numa rede de gestão confiável, com autorização e uma community dedicada apenas de leitura; a UI pede confirmação antes de a enviar a cada dispositivo online consultado. Os dados de acesso não devem aparecer em exports, logs ou documentação partilhada. A consulta de identidade usa somente a community indicada, MIB-II e ENTITY-MIB; não tenta valores comuns, não persiste a community e não usa texto de `sysDescr` como prova forte quando o chassis não publica campos próprios.
 
 ## Grafo de topologia e GraphML
 
@@ -124,7 +138,7 @@ A lista de dispositivos é a vista principal do resultado. O grafo só é criado
 
 A exportação GraphML transporta estes atributos para ferramentas externas. Uma ferramenta que ignore os atributos ou aplique o seu próprio layout pode fazer relações fracas parecerem tão fortes como relações confirmadas. Ao analisar ou partilhar o ficheiro, mantenha visíveis a origem e a confiança e consulte a evidência textual.
 
-O JSON schema v4 inclui a topologia, os diagnósticos estruturados e o estado TLS triestado além do inventário. Consumidores automáticos devem verificar `schemaVersion` e não assumir compatibilidade estrutural com exports de versões anteriores. HTML e GraphML podem incluir diagnósticos relevantes, mas não substituem o contexto completo do JSON.
+O JSON schema v5 inclui a topologia, os diagnósticos estruturados, o estado TLS triestado e evidências de identidade além do inventário. Consumidores automáticos devem verificar `schemaVersion` e não assumir compatibilidade estrutural com exports de versões anteriores. HTML e GraphML podem incluir diagnósticos relevantes, mas não substituem o contexto completo do JSON.
 
 LLDP descreve aquilo que um equipamento participante anuncia e o switch autorizado expõe. Pode revelar vizinhos de infraestrutura e portas, mas não garante um caminho completo de extremo a extremo: dispositivos finais frequentemente não anunciam LLDP, tabelas podem estar incompletas e equipamentos intermédios não consultados continuam desconhecidos.
 
@@ -140,7 +154,9 @@ mDNS, SSDP/UPnP e WS-Discovery dependem de multicast ou broadcast local. Os resu
 
 O browse DNS-SD começa pela enumeração PTR e faz consultas dirigidas e limitadas aos tipos, instâncias, registos SRV/TXT e endereços A/AAAA anunciados. Só acumula datagramas com cabeçalho e origem mDNS compatíveis; nomes comprimidos, referências inválidas, pacotes truncados e respostas excessivas são rejeitados ou limitados para que uma resposta multicast não possa criar trabalho ilimitado. Um registo “goodbye” com TTL zero retira a evidência correspondente já observada durante o scan.
 
-Uma resposta pode revelar apenas um nome, metadados declarados pelo dispositivo ou endpoint e não garante que todos os serviços do equipamento foram identificados. TXT é informação anunciada e não é tratada como identidade autenticada.
+Uma resposta pode revelar apenas um nome, metadados declarados pelo dispositivo ou endpoint e não garante que todos os serviços do equipamento foram identificados. TXT é informação anunciada e não é tratada como identidade autenticada. O parser só promove uma allowlist curta de chaves de fabricante/modelo e limita tamanho/quantidade; restantes valores continuam fora da identidade.
+
+WS-Discovery associa sempre a descoberta ao endereço IP que enviou o datagrama. `XAddrs` é preservado como metadado, mas não pode fazer outro IP parecer online. As respostas XML têm DTD e resolução externa desativadas, além de limites de tamanho e quantidade.
 
 ## Tipo de dispositivo e sistema operativo
 
@@ -166,7 +182,7 @@ O executável self-contained inclui o runtime .NET, mas continua dependente de A
 
 ## Dados sensíveis
 
-Snapshots e exportações podem conter IPs, MACs, SSIDs, BSSIDs, hostnames, serviços e portas. Estes dados permitem mapear uma rede. Guarde-os com controlo de acesso e remova identificadores antes de pedir suporte público.
+Snapshots e exportações podem conter IPs, MACs, SSIDs, BSSIDs, hostnames, fabricante/modelo, firmware, serial, serviços e portas. Estes dados permitem mapear e inventariar uma rede. Guarde-os com controlo de acesso e remova identificadores antes de pedir suporte público.
 
 Não existe telemetria do produto. Os únicos pedidos externos fora do scan são ações explícitas, como abrir um link ou atualizar opcionalmente as listagens IEEE; a atualização obtém ficheiros públicos sem anexar o inventário da rede.
 

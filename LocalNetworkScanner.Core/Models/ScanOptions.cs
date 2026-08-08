@@ -16,11 +16,16 @@ public sealed class ScanOptions
     public bool EnableTcpDiscovery { get; init; } = true;
     public bool EnableArp { get; init; } = true;
     public bool EnableMulticastDiscovery { get; init; } = true;
+    public bool EnableUpnpDescription { get; init; } = true;
     public bool EnableNetBiosDiscovery { get; init; } = true;
+    public bool EnableSnmpDeviceDiscovery { get; init; }
     public bool EnableSnmpTopology { get; init; }
     public IPAddress? SnmpSwitchAddress { get; init; }
     public string? SnmpCommunity { get; init; }
     public int SnmpTimeoutMs { get; init; } = 900;
+    public bool EnableNmapDiscovery { get; init; }
+    public string? NmapExecutablePath { get; init; }
+    public int NmapTimeoutMs { get; init; } = 120_000;
     public bool EnableServiceProbes { get; init; } = true;
     public IReadOnlyList<int> Ports { get; init; } = Services.ServiceCatalog.StandardPorts;
     public IReadOnlyList<int> DiscoveryPorts { get; init; } = Services.ServiceCatalog.DiscoveryPorts;
@@ -35,6 +40,7 @@ public sealed class ScanOptions
                 PingTimeoutMs = 350,
                 ConnectTimeoutMs = 250,
                 DiscoveryTimeoutMs = 800,
+                EnableUpnpDescription = false,
                 EnableNetBiosDiscovery = false,
                 EnableServiceProbes = false,
                 Ports = Services.ServiceCatalog.QuickPorts

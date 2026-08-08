@@ -43,7 +43,7 @@ try
     bool interactive = args.Length == 0 && !Console.IsInputRedirected;
     LocalNetworkInterface selectedInterface = SelectInterface(interfaces, cli.InterfaceSelector, interactive);
     ScanProfile profile = interactive ? AskProfile(cli.Profile) : cli.Profile;
-    ScanOptions scanOptions = BuildScanOptions(profile, cli.Ports);
+    ScanOptions scanOptions = BuildScanOptions(profile, cli);
 
     IpRangeService rangeService = new();
     IReadOnlyList<IPAddress> addresses = string.IsNullOrWhiteSpace(cli.Cidr)
@@ -179,9 +179,12 @@ static async Task ExportSafelyAsync(Func<Task> export, string path)
     }
 }
 
-static ScanOptions BuildScanOptions(ScanProfile profile, string? ports)
+static ScanOptions BuildScanOptions(ScanProfile profile, CliOptions cli)
 {
     ScanOptions defaults = ScanOptions.ForProfile(profile);
+    string? snmpCommunity = cli.EnableSnmpDeviceDiscovery
+        ? Environment.GetEnvironmentVariable("LNS_SNMP_COMMUNITY")
+        : null;
     return new ScanOptions
     {
         Profile = defaults.Profile,
@@ -194,12 +197,19 @@ static ScanOptions BuildScanOptions(ScanProfile profile, string? ports)
         EnableTcpDiscovery = defaults.EnableTcpDiscovery,
         EnableArp = defaults.EnableArp,
         EnableMulticastDiscovery = defaults.EnableMulticastDiscovery,
+        EnableUpnpDescription = defaults.EnableUpnpDescription && !cli.DisableUpnpDescription,
         EnableNetBiosDiscovery = defaults.EnableNetBiosDiscovery,
+        EnableSnmpDeviceDiscovery = cli.EnableSnmpDeviceDiscovery,
+        SnmpCommunity = snmpCommunity,
+        SnmpTimeoutMs = defaults.SnmpTimeoutMs,
+        EnableNmapDiscovery = cli.EnableNmapDiscovery,
+        NmapExecutablePath = cli.NmapExecutablePath,
+        NmapTimeoutMs = cli.NmapTimeoutMs,
         EnableServiceProbes = defaults.EnableServiceProbes,
         DiscoveryPorts = defaults.DiscoveryPorts,
-        Ports = string.IsNullOrWhiteSpace(ports)
+        Ports = string.IsNullOrWhiteSpace(cli.Ports)
             ? defaults.Ports
-            : ServiceCatalog.ParsePortSpecification(ports)
+            : ServiceCatalog.ParsePortSpecification(cli.Ports)
     };
 }
 
@@ -310,8 +320,17 @@ static void PrintResult(NetworkScanResult result)
                 $"{Truncate(device.MacDisplay, 17),-17}  " +
                 $"{device.RiskLevel,-5}  {device.OpenPortsText}");
             Console.WriteLine(
-                $"                 ↳ Entidade IEEE: {device.ManufacturerDisplay} · " +
+                $"                 ↳ Fabricante: {device.ManufacturerDisplay} · " +
+                $"Modelo: {device.ModelDisplay} · confiança {device.IdentityConfidenceDisplay}");
+            Console.WriteLine(
+                $"                   Titular IEEE: {device.MacAssigneeDisplay} · " +
                 $"{device.DeviceType} · {device.DiscoveryText} · {device.TopologyText}");
+            foreach (DeviceIdentityEvidence evidence in device.IdentityEvidence.Take(3))
+            {
+                Console.WriteLine(
+                    $"                   ⓘ {evidence.Source} · {evidence.Confidence}" +
+                    $"{(string.IsNullOrWhiteSpace(evidence.Model) ? string.Empty : $" · {evidence.Model}")}");
+            }
             foreach (string finding in device.SecurityFindings)
                 Console.WriteLine($"                   ⚠ {finding}");
         }
@@ -391,6 +410,11 @@ static void PrintHelp()
           --cidr <rede/prefixo>          Rede privada explícita, ex. 192.168.1.0/24
           --profile <quick|standard|advanced>
           --ports <lista>                Ex. 22,80,443 ou 1-1024 ou quick|top|deep|all
+          --no-upnp                      Não consultar descrições de dispositivo UPnP
+          --snmp-identity                Consultar MIB-II/ENTITY-MIB com LNS_SNMP_COMMUNITY
+          --nmap                         Usar Nmap local no perfil advanced (opcional)
+          --nmap-path <nmap.exe>         Caminho local; vazio procura em Program Files
+          --nmap-timeout <ms>            Orçamento global entre 5000 e 600000 ms
           --max-hosts <n>                Limite até 65536 (predefinição: 4096)
           --json <ficheiro>              Exportar relatório JSON
           --csv <ficheiro>               Exportar relatório CSV UTF-8
@@ -402,6 +426,11 @@ static void PrintHelp()
 
         Sem argumentos é iniciado o modo interativo. Usa apenas em redes próprias
         ou em redes para as quais tens autorização explícita.
+
+        SNMP v2c envia a community sem cifragem. Para evitar exposição na linha de
+        comandos, defina-a apenas na variável de ambiente LNS_SNMP_COMMUNITY.
+        O Nmap não é incluído nem descarregado pela aplicação; PATH, UNC e device paths
+        não são executados.
 
         Códigos de saída:
           0  Concluído (pode conter avisos não fatais LNS-*)
@@ -426,6 +455,11 @@ internal sealed class CliOptions
     public string? SupportPath { get; private set; }
     public int MaximumHosts { get; private set; } = IpRangeService.DefaultMaximumAddresses;
     public bool SkipHistory { get; private set; }
+    public bool DisableUpnpDescription { get; private set; }
+    public bool EnableSnmpDeviceDiscovery { get; private set; }
+    public bool EnableNmapDiscovery { get; private set; }
+    public string? NmapExecutablePath { get; private set; }
+    public int NmapTimeoutMs { get; private set; } = 120_000;
 
     public static CliOptions Parse(string[] arguments)
     {
@@ -486,6 +520,26 @@ internal sealed class CliOptions
                     break;
                 case "--no-history":
                     result.SkipHistory = true;
+                    break;
+                case "--no-upnp":
+                    result.DisableUpnpDescription = true;
+                    break;
+                case "--snmp-identity":
+                    result.EnableSnmpDeviceDiscovery = true;
+                    break;
+                case "--nmap":
+                    result.EnableNmapDiscovery = true;
+                    break;
+                case "--nmap-path":
+                    result.NmapExecutablePath = NextValue(arguments, ref index, argument);
+                    result.EnableNmapDiscovery = true;
+                    break;
+                case "--nmap-timeout":
+                    string timeoutValue = NextValue(arguments, ref index, argument);
+                    if (!int.TryParse(timeoutValue, out int timeout) || timeout is < 5_000 or > 600_000)
+                        throw new ScanInputException(
+                            DiagnosticCatalog.InvalidScanConfiguration("--nmap-timeout"));
+                    result.NmapTimeoutMs = timeout;
                     break;
                 case "--no-prompt" or "-y" or "--yes":
                     break;
