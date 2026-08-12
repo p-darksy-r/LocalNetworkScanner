@@ -4,6 +4,37 @@
 
 Todas as alterações relevantes deste projeto são registadas neste ficheiro. O formato segue os princípios de Keep a Changelog e o versionamento segue Semantic Versioning.
 
+## [1.3.1] - 2026-08-12
+
+Tag de código e QA privado preparada em 2026-08-12. Os pacotes continuam `NotSigned` enquanto não existir uma identidade Authenticode Public Trust configurada; a tag não é, por si só, uma release pública instalável.
+
+### Added
+
+- origem tipada para resoluções MAC (`LocalInterface`, `NeighborCache` e `ActiveArp`), permitindo distinguir enriquecimento passivo de confirmação ativa;
+- treze testes determinísticos adicionais para baseline ARP, interop IP Helper, índice da interface, contrato `SendARP`, cache antiga, falha fechada, diagnóstico de degradação, promoção fresca e enriquecimento sem falsa evidência de camada 2, elevando a suite para 82 testes.
+
+### Changed
+
+- a configuração do scan recolhe automaticamente quando a operação começa e pode ser reaberta a qualquer momento;
+- o botão de cancelamento permanece acessível na barra de progresso, mesmo com a configuração recolhida;
+- os painéis de inventário e detalhes usam agora uma divisão proporcional responsiva e limites menores para janelas estreitas;
+- o estado vazio distingue aplicação pronta, scan em curso, conclusão sem dispositivos, resultado parcial/cancelado e erro.
+
+### Fixed
+
+- a tabela ARP passa a ser capturada antes de ICMP/TCP; entradas preexistentes permanecem passivas e intactas, enquanto apenas uma linha nativa nova em estado `Reachable` (sem `IsUnreachable`) ou uma resposta ARP pedida sem entrada prévia confirma alcance/camada 2;
+- uma falha ao obter o baseline ARP degrada de forma fechada, sem apagar entradas do utilizador nem promover cache desconhecida, e fica visível como `LNS-NET-011`;
+- callbacks de progresso atrasados deixam de poder sobrescrever o estado final de sucesso, cancelamento ou erro, incluindo durante um diálogo modal;
+- o diagnóstico App Control distingue caminho completo confirmado, hash+caminho relativo provável, conteúdo igual e nome igual; apenas o primeiro confirma automaticamente o alvo, evitando confundir cópias idênticas sujeitas a regras por caminho diferentes;
+- as validações dos pacotes x64 e ARM64 deixam de ser ignoradas devido ao job de empacotamento mutuamente exclusivo que ficou `skipped`;
+- um novo gate terminal exige que preflight, pacote e validações nativas tenham sucesso, volta a verificar o contrato exato de dez ficheiros, os checksums e o estado de assinatura antes de permitir publicação;
+- cancelamentos de CI/release deixam de manter jobs de validação ativos através de `always()`.
+
+### Security
+
+- uma cache de vizinhos manipulada ou obsoleta já não é suficiente para provocar a promoção e o enriquecimento ativo de um alvo que falhou ICMP/TCP; entradas estáticas ou dinâmicas preexistentes não são removidas;
+- a release deixa de poder terminar com sucesso aparente quando os validadores dos pacotes exatos foram ignorados.
+
 ## [1.3.0] - 2026-08-08
 
 Tag de código e QA privado preparada em 2026-08-08. A existência da tag não transforma artefactos `NotSigned` numa release pública confiável; a publicação instalável continua sujeita aos gates de assinatura e redistribuição documentados.

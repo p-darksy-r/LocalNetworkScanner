@@ -4,7 +4,7 @@
 
 ## Versões suportadas
 
-Enquanto existir apenas a linha `1.2.x`, apenas a versão mais recente dessa linha recebe correções de segurança. Builds locais, forks e artefactos que não tenham sido publicados em [GitHub Releases](https://github.com/p-darksy-r/LocalNetworkScanner/releases) não são considerados releases oficiais.
+A linha de código suportada é `1.3.x`; apenas a revisão mais recente dessa linha recebe correções de segurança. A `1.2.x` é histórica e não deve ser usada como build de produção. Builds locais, forks, tags de QA e artefactos que não tenham sido publicados em [GitHub Releases](https://github.com/p-darksy-r/LocalNetworkScanner/releases) não são considerados releases instaláveis oficiais.
 
 ## Comunicar uma vulnerabilidade
 
@@ -51,6 +51,6 @@ Uma release pública deve:
 - ser testada numa instalação Windows limpa;
 - documentar claramente se é portátil ou instalada.
 
-Enquanto o projeto não dispuser de assinatura de código, uma release pública deve identificar os binários como não assinados, publicar checksums verificáveis e avisar sobre possíveis alertas do SmartScreen. Para uma distribuição com identidade de publisher verificável e reputação de produção é necessária uma assinatura Authenticode válida e com timestamp.
+O workflow recusa publicar uma GitHub Release enquanto os binários não tiverem assinatura Authenticode confiável e timestamp válido. Artefactos privados de QA identificam explicitamente o estado `NotSigned` e não devem ser redistribuídos como builds de produção. Para uma distribuição com identidade de publisher verificável e reputação de produção é necessária uma assinatura Authenticode Public Trust válida e com timestamp.
 
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

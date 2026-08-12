@@ -53,6 +53,7 @@ A categoria indica a origem mais provável, não atribui culpa. Uma firewall, po
 | `LNS-NET-008` | Information | Nenhum alvo respondeu à identidade SNMP opcional | Confirme autorização, community, ACL e agente; lembre-se de que SNMP v2c envia a community sem cifragem. |
 | `LNS-NET-009` | Information | Nmap opcional não encontrado ou não validado | Instale-o separadamente a partir da origem oficial ou indique um `nmap.exe` local; `PATH`, UNC e device paths não são usados. |
 | `LNS-NET-010` | Warning | O enriquecimento Nmap falhou ou excedeu os limites | Confirme executável, permissões, firewall, intervalo e timeout; o inventário nativo continua válido. |
+| `LNS-NET-011` | Warning | O baseline da tabela ARP não ficou disponível e a confirmação ARP ativa foi desativada para esse scan | Os alvos confirmados por ICMP, TCP ou multicast continuam válidos; atualize as interfaces ou repita sem contornar políticas do Windows. |
 
 ## Dispositivo — `LNS-DEV-*`
 
@@ -74,10 +75,10 @@ A categoria indica a origem mais provável, não atribui culpa. Uma firewall, po
 | `LNS-APP-002` | Error / Warning | Falha ao ler ou escrever um ficheiro | Confirme caminho, espaço, bloqueios, permissões e proteção antimalware. É aviso quando apenas o histórico opcional falha e o scan é preservado. |
 | `LNS-APP-003` | Error | O Windows recusou o acesso | Escolha um recurso permitido ou peça ao administrador que reveja a política; não contorne controlos. |
 | `LNS-APP-004` | Information | Captura integral não suportada nesta versão | Interprete a lista de protocolos como evidência do scan ativo; para analisar tráfego, use uma ferramenta dedicada numa rede autorizada. |
-| `LNS-APP-005` | Error | Windows Application Control bloqueou o ficheiro (`CreateProcess` 4551), confirmado por um evento 3077 correlacionado com o caminho completo de um alvo existente | Use uma release com assinatura Authenticode confiável ou peça ao administrador que autorize o publisher, hash ou catálogo; não desative a proteção para contornar a política. |
-| `LNS-APP-006` | Warning | O diagnóstico de Application Control é inconclusivo: existe apenas auditoria, não há evento correlacionado ou a correlação coincide apenas com o nome do ficheiro | Repita com o caminho exato do ficheiro bloqueado e uma janela temporal adequada; confirme o caminho completo nos eventos antes de atribuir o erro 4551. |
+| `LNS-APP-005` | Error | Windows Application Control bloqueou o ficheiro (`CreateProcess` 4551), confirmado por um evento 3077 com o caminho completo do alvo | Use uma release com assinatura Authenticode confiável ou peça ao administrador que autorize o publisher, hash ou catálogo; não desative a proteção para contornar a política. |
+| `LNS-APP-006` | Warning | O diagnóstico de Application Control é inconclusivo: existe apenas auditoria, não há evento confirmado ou a correlação coincide apenas com caminho relativo/conteúdo/hash/nome | Repita com o caminho exato do ficheiro bloqueado e uma janela temporal adequada; confirme o caminho completo/volume nos eventos antes de atribuir o erro 4551. |
 
-O relatório de diagnóstico App Control usa o schema v2. `policyBlockConfirmed=true` só é emitido para um alvo que ainda existe e para o qual foi encontrado um evento de enforcement 3077 com correlação `FullPath`. Uma coincidência apenas pelo nome fica preservada em `codeIntegrity.matchingEvents` com `correlation=FileNameOnly`, mas recebe baixa confiança e nunca confirma o bloqueio. Um alvo ausente também nunca é confirmado.
+O relatório de diagnóstico App Control usa o schema v2. `policyBlockConfirmed=true` só é emitido para um alvo que ainda existe e para o qual foi encontrado um evento de enforcement 3077 com correlação `FullPath`. `Sha256AndPathSuffix` exige o hash e o mesmo caminho relativo, mas recebe confiança média porque o volume NT não foi confirmado; `ContentHashOnly` também recebe confiança média e `FileNameOnly` recebe confiança baixa. Nenhum destes três casos define `policyBlockConfirmed=true`. Um alvo ausente também nunca é confirmado. Um evento de auditoria fortemente correlacionado tem prioridade sobre eventos de enforcement fracos de outras cópias.
 
 ## Build e release — `LNS-REL-*`
 

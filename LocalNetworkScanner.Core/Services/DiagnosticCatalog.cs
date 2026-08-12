@@ -28,6 +28,7 @@ public static class DiagnosticCatalog
     public const string SnmpDeviceIdentityUnavailableCode = "LNS-NET-008";
     public const string NmapUnavailableCode = "LNS-NET-009";
     public const string NmapScanFailedCode = "LNS-NET-010";
+    public const string ArpBaselineUnavailableCode = "LNS-NET-011";
 
     public const string InvalidMacAddressCode = "LNS-DEV-001";
     public const string UnknownManufacturerCode = "LNS-DEV-002";
@@ -207,6 +208,14 @@ public static class DiagnosticCatalog
         "O enriquecimento opcional Nmap não terminou com dados válidos.",
         "Confirma o executável, permissões, firewall e limites; repete apenas numa rede autorizada e num intervalo menor.",
         target);
+
+    public static ScanDiagnostic ArpBaselineUnavailable(string? interfaceName = null) => new(
+        ArpBaselineUnavailableCode,
+        DiagnosticCategory.Network,
+        DiagnosticSeverity.Warning,
+        "O Windows não disponibilizou o baseline da tabela ARP; a confirmação ARP ativa foi desativada neste scan.",
+        "Os resultados confirmados por ICMP, TCP ou multicast continuam válidos. Atualiza as interfaces ou repete o scan; não desatives controlos de segurança.",
+        interfaceName);
 
     public static ScanDiagnostic InvalidMacAddress(string target, string? observedValue = null) => new(
         InvalidMacAddressCode,

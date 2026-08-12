@@ -30,6 +30,7 @@ Diagnósticos não fatais preservam o inventário que foi possível obter. Um c�
 
 - Uma resposta ICMP é evidência direta de que o endereço respondeu naquele momento.
 - Uma ligação TCP bem-sucedida também confirma disponibilidade, mesmo quando ICMP está bloqueado.
+- Uma linha ARP que surgiu depois do baseline só confirma alcance quando continua `Reachable` e não está marcada `IsUnreachable`; uma resposta ARP direta sem entrada prévia também confirma. Uma entrada que já existia na cache de vizinhos não confirma que o alvo continua online.
 - A ausência de resposta não prova que o endereço está livre ou que o dispositivo está desligado.
 - NAT, routing, VPNs, firewalls e isolamento de clientes alteram aquilo que é visível.
 
@@ -47,7 +48,7 @@ As descrições UPnP só são obtidas do URL `HTTP(S)` cujo host literal é exat
 
 ## Endereços MAC e titular IEEE
 
-O MAC é normalmente obtido através da vizinhança ARP. ARP opera no domínio de camada 2; para um destino roteado, o computador vê normalmente o MAC do gateway e não o MAC do dispositivo final. Por isso, um MAC remoto pode estar indisponível.
+O MAC é normalmente obtido através da vizinhança ARP. ARP opera no domínio de camada 2; para um destino roteado, o computador vê normalmente o MAC do gateway e não o MAC do dispositivo final. Por isso, um MAC remoto pode estar indisponível. Antes de iniciar ICMP/TCP, a aplicação captura um baseline da vizinhança. Uma entrada que já estava nesse baseline pode preencher o MAC de um host confirmado por outro meio, mas não o torna online, não acrescenta evidência ARP/topologia e nunca é eliminada pelo scan. Se o baseline não puder ser lido, a descoberta ARP degrada de forma fechada e emite `LNS-NET-011`, sem invalidar os alvos confirmados por outros protocolos. Para um IP ausente do baseline, apenas uma linha nativa em estado `Reachable`, sem a flag `IsUnreachable`, ou uma resposta a um pedido ARP quando ainda não existe linha conta como observação fresca; estados `Incomplete`, `Stale`, `Probe`, `Delay`, `Permanent` e `Unreachable` não promovem o alvo.
 
 A aplicação inclui uma snapshot offline das listagens IEEE MA-L, MA-M, MA-S e IAB. A snapshot de 2026-07-28 contém 58 019 linhas de origem e 58 016 prefixos únicos depois da normalização. Não é necessário um download inicial. A resolução usa o prefixo mais longo disponível, na ordem `/36 → /28 → /24`, para que MA-S/IAB e MA-M não sejam escondidos por uma correspondência MA-L menos específica.
 
@@ -101,7 +102,7 @@ A deteção de VLAN limita-se à interface local. A aplicação procura:
 
 Um ID encontrado desta forma descreve a configuração conhecida do adaptador local. A aplicação não lê tags 802.1Q em tráfego capturado.
 
-Quando um dispositivo da mesma subnet tem uma entrada ARP direta, a aplicação pode associá-lo ao segmento local e apresentar a VLAN local como inferência. Isso não é uma descoberta independente da VLAN do dispositivo.
+Quando um dispositivo da mesma subnet produz uma linha ARP nova e `Reachable` ou uma resposta ARP direta sem entrada prévia, a aplicação pode associá-lo ao segmento local e apresentar a VLAN local como inferência. Uma entrada anterior/passiva na cache ou um estado nativo não alcançável não basta. Isso não é uma descoberta independente da VLAN do dispositivo.
 
 Se a topologia SNMP v2c opcional estiver ativada para um switch gerido, a aplicação consulta tabelas Bridge/Q-BRIDGE, a relação VLAN→FDB e PVID. O índice de uma entrada Q-BRIDGE é um FDB-ID, não uma VLAN. A aplicação só o converte em VLAN quando a tabela do switch fornece uma correspondência única. Se várias VLANs partilharem a mesma FDB, a VLAN fica desconhecida.
 
@@ -111,7 +112,7 @@ Interfaces trunk, adaptadores virtuais, bridges, teaming, VPNs, drivers que remo
 
 ## Mesmo segmento e mesmo switch
 
-Uma entrada ARP direta, combinada com a mesma subnet IP, suporta com confiança moderada a hipótese de alcance direto em camada 2. Ainda assim, o segmento pode atravessar vários switches, bridges ou uma infraestrutura virtual.
+Uma linha ARP nova e `Reachable`, ou uma resposta ARP direta sem entrada prévia, combinada com a mesma subnet IP, suporta com confiança moderada a hipótese de alcance direto em camada 2. Uma entrada passiva/antiga ou um estado nativo não alcançável não produz essa inferência. Ainda assim, o segmento pode atravessar vários switches, bridges ou uma infraestrutura virtual.
 
 Sem integração de infraestrutura, o programa não confirma que dois dispositivos estão ligados ao mesmo switch físico.
 

@@ -59,9 +59,48 @@ function Test-ContainsOrdinalIgnoreCase {
         $Text.IndexOf($Value, [StringComparison]::OrdinalIgnoreCase) -ge 0
 }
 
+function ConvertTo-NormalizedSha256 {
+    param([AllowNull()][string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $null
+    }
+
+    $normalized = ($Value -replace "[^0-9A-Fa-f]", "").ToLowerInvariant()
+    if ($normalized.Length -eq 64) {
+        return $normalized
+    }
+    return $null
+}
+
+function Test-RootRelativePathSuffix {
+    param(
+        [AllowNull()][string]$EventPath,
+        [AllowNull()][string]$RootRelativeTarget
+    )
+
+    if ([string]::IsNullOrWhiteSpace($EventPath) -or
+        [string]::IsNullOrWhiteSpace($RootRelativeTarget)) {
+        return $false
+    }
+
+    $normalizedEventPath = $EventPath.Replace('/', '\').TrimEnd('\')
+    $normalizedRelativeTarget = $RootRelativeTarget.Replace('/', '\').TrimStart('\')
+    return $normalizedEventPath.EndsWith(
+        "\$normalizedRelativeTarget",
+        [StringComparison]::OrdinalIgnoreCase)
+}
+
 $targetPath = [IO.Path]::GetFullPath($FilePath)
 $targetExists = Test-Path -LiteralPath $targetPath -PathType Leaf
 $targetLeaf = Split-Path $targetPath -Leaf
+$targetRoot = [IO.Path]::GetPathRoot($targetPath)
+$targetRootRelativePath = if ([string]::IsNullOrWhiteSpace($targetRoot)) {
+    $null
+}
+else {
+    $targetPath.Substring($targetRoot.Length).TrimStart('\', '/')
+}
 $startedAfter = [DateTime]::Now.AddMinutes(-$Minutes)
 
 $fileEvidence = [ordered]@{
@@ -142,13 +181,39 @@ try {
             $matchesFileName = @($eventText | Where-Object {
                 Test-ContainsOrdinalIgnoreCase -Text ([string]$_) -Value $targetLeaf
             }).Count -gt 0
+            $eventFilePath = [string]$eventData["File Name"]
+            $matchesRootRelativePath = Test-RootRelativePathSuffix `
+                -EventPath $eventFilePath `
+                -RootRelativeTarget $targetRootRelativePath
+            $matchesSha256 = $false
+            if ($targetExists) {
+                $targetSha256 = ConvertTo-NormalizedSha256 -Value ([string]$fileEvidence["sha256"])
+                $eventFlatHashes = @($eventData.GetEnumerator() | Where-Object {
+                    $_.Key -match "^(?i:SHA256 Flat Hash)$"
+                } | ForEach-Object {
+                    ConvertTo-NormalizedSha256 -Value ([string]$_.Value)
+                } | Where-Object { $null -ne $_ })
+                $matchesSha256 = $null -ne $targetSha256 -and
+                    $eventFlatHashes -contains $targetSha256
+            }
 
-            if ($matchesFullPath -or $matchesFileName) {
+            if ($matchesSha256 -or $matchesFullPath -or $matchesFileName) {
                 $eventEvidence += [ordered]@{
                     id = $event.Id
                     timeCreated = $event.TimeCreated
                     level = $event.LevelDisplayName
-                    correlation = if ($matchesFullPath) { "FullPath" } else { "FileNameOnly" }
+                    correlation = if ($matchesFullPath) {
+                        "FullPath"
+                    }
+                    elseif ($matchesSha256 -and $matchesRootRelativePath) {
+                        "Sha256AndPathSuffix"
+                    }
+                    elseif ($matchesSha256) {
+                        "ContentHashOnly"
+                    }
+                    else {
+                        "FileNameOnly"
+                    }
                     message = $message
                     data = $eventData
                 }
@@ -171,14 +236,26 @@ catch {
     }
 }
 
-$fullPathEnforcementEvents = @($eventEvidence | Where-Object {
+$confirmedEnforcementEvents = @($eventEvidence | Where-Object {
     $_.id -eq 3077 -and $_.correlation -eq "FullPath"
+})
+$pathSuffixEnforcementEvents = @($eventEvidence | Where-Object {
+    $_.id -eq 3077 -and $_.correlation -eq "Sha256AndPathSuffix"
+})
+$contentHashOnlyEnforcementEvents = @($eventEvidence | Where-Object {
+    $_.id -eq 3077 -and $_.correlation -eq "ContentHashOnly"
 })
 $fileNameOnlyEnforcementEvents = @($eventEvidence | Where-Object {
     $_.id -eq 3077 -and $_.correlation -eq "FileNameOnly"
 })
-$fullPathAuditEvents = @($eventEvidence | Where-Object {
+$confirmedAuditEvents = @($eventEvidence | Where-Object {
     $_.id -eq 3076 -and $_.correlation -eq "FullPath"
+})
+$pathSuffixAuditEvents = @($eventEvidence | Where-Object {
+    $_.id -eq 3076 -and $_.correlation -eq "Sha256AndPathSuffix"
+})
+$contentHashOnlyAuditEvents = @($eventEvidence | Where-Object {
+    $_.id -eq 3076 -and $_.correlation -eq "ContentHashOnly"
 })
 $fileNameOnlyAuditEvents = @($eventEvidence | Where-Object {
     $_.id -eq 3076 -and $_.correlation -eq "FileNameOnly"
@@ -207,7 +284,7 @@ if (-not $targetExists) {
         "If setup completed, check %LOCALAPPDATA%\Programs\LocalNetworkScanner\LocalNetworkScanner.exe."
     )
 }
-elseif ($fullPathEnforcementEvents.Count -gt 0 -and $signatureStatus -eq "NotSigned") {
+elseif ($confirmedEnforcementEvents.Count -gt 0 -and $signatureStatus -eq "NotSigned") {
     $diagnosis["code"] = "LNS-APP-005"
     $diagnosis["result"] = "ConfirmedPolicyBlockUnsignedTarget"
     $diagnosis["confidence"] = "High"
@@ -219,7 +296,7 @@ elseif ($fullPathEnforcementEvents.Count -gt 0 -and $signatureStatus -eq "NotSig
         "Do not treat a matching checksum as a substitute for publisher trust."
     )
 }
-elseif ($fullPathEnforcementEvents.Count -gt 0 -and $signatureStatus -eq "Valid") {
+elseif ($confirmedEnforcementEvents.Count -gt 0 -and $signatureStatus -eq "Valid") {
     $diagnosis["code"] = "LNS-APP-005"
     $diagnosis["result"] = "ConfirmedPolicyBlockSignedTarget"
     $diagnosis["confidence"] = "High"
@@ -231,7 +308,7 @@ elseif ($fullPathEnforcementEvents.Count -gt 0 -and $signatureStatus -eq "Valid"
         "Do not replace or weaken the organization policy without its administrator's approval."
     )
 }
-elseif ($fullPathEnforcementEvents.Count -gt 0) {
+elseif ($confirmedEnforcementEvents.Count -gt 0) {
     $diagnosis["code"] = "LNS-APP-005"
     $diagnosis["result"] = "ConfirmedPolicyBlockInvalidOrUntrustedSignature"
     $diagnosis["confidence"] = "High"
@@ -243,6 +320,41 @@ elseif ($fullPathEnforcementEvents.Count -gt 0) {
         "If the signature still fails, do not execute the file and report the evidence."
     )
 }
+elseif ($confirmedAuditEvents.Count -gt 0) {
+    $diagnosis["result"] = "WouldBeBlockedInEnforcement"
+    $diagnosis["confidence"] = "High"
+    $diagnosis["explanation"] = "Windows recorded an App Control audit event: the selected file would be denied if the policy were enforced."
+}
+elseif ($pathSuffixEnforcementEvents.Count -gt 0) {
+    $diagnosis["result"] = "LikelyMatchingPathAndContentEnforcementEvidence"
+    $diagnosis["confidence"] = "Medium"
+    $diagnosis["explanation"] = "Windows blocked byte-identical content at the same root-relative path, but the NT device volume could not be mapped to the selected drive. This is strong supporting evidence, not proof for the selected copy when path-specific rules are possible."
+    $diagnosis["recommendedActions"] = @(
+        "Reproduce the block and compare the structured NT File Name with the selected drive using an administrator-approved diagnostic.",
+        "Ask the device administrator to confirm the volume mapping and effective App Control rule.",
+        "Do not treat a matching suffix and content hash as proof for this particular copy."
+    )
+}
+elseif ($pathSuffixAuditEvents.Count -gt 0) {
+    $diagnosis["result"] = "LikelyMatchingPathAndContentAuditEvidence"
+    $diagnosis["confidence"] = "Medium"
+    $diagnosis["explanation"] = "Windows audited byte-identical content at the same root-relative path, but the NT device volume could not be mapped to the selected drive. The evidence is likely related, not conclusive for a path-specific policy."
+}
+elseif ($contentHashOnlyEnforcementEvents.Count -gt 0) {
+    $diagnosis["result"] = "AmbiguousMatchingContentEnforcementEvidence"
+    $diagnosis["confidence"] = "Medium"
+    $diagnosis["explanation"] = "Windows blocked byte-identical content, but the event path does not identify the selected copy. A path-specific policy can treat two identical copies differently, so this does not confirm error 4551 for the selected path."
+    $diagnosis["recommendedActions"] = @(
+        "Reproduce the block and rerun this diagnostic with -FilePath set to the exact executable that Windows attempted to start.",
+        "Compare the structured File Name field with the selected path before attributing the block.",
+        "Do not treat a content-hash-only match as proof that this particular copy was denied."
+    )
+}
+elseif ($contentHashOnlyAuditEvents.Count -gt 0) {
+    $diagnosis["result"] = "AmbiguousMatchingContentAuditEvidence"
+    $diagnosis["confidence"] = "Medium"
+    $diagnosis["explanation"] = "Windows audited byte-identical content, but the event path does not identify the selected copy. This is useful content evidence, not confirmation for a path-specific policy."
+}
 elseif ($fileNameOnlyEnforcementEvents.Count -gt 0) {
     $diagnosis["result"] = "AmbiguousFileNameOnlyEnforcementEvidence"
     $diagnosis["confidence"] = "Low"
@@ -252,11 +364,6 @@ elseif ($fileNameOnlyEnforcementEvents.Count -gt 0) {
         "Inspect the matching event data and confirm the complete path before attributing the block.",
         "Do not treat a file-name-only match as proof of an App Control block for this target."
     )
-}
-elseif ($fullPathAuditEvents.Count -gt 0) {
-    $diagnosis["result"] = "WouldBeBlockedInEnforcement"
-    $diagnosis["confidence"] = "High"
-    $diagnosis["explanation"] = "Windows recorded an App Control audit event: the selected file would be denied if the policy were enforced."
 }
 elseif ($fileNameOnlyAuditEvents.Count -gt 0) {
     $diagnosis["result"] = "AmbiguousFileNameOnlyAuditEvidence"

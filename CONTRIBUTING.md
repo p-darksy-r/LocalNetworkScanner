@@ -44,6 +44,6 @@ Não abra uma issue pública para uma vulnerabilidade explorável. Use um [GitHu
 
 ## Releases
 
-Uma tag `vX.Y.Z` só é aceite pelo workflow de release quando corresponde à versão de `Directory.Build.props`. Apenas o responsável pelo repositório deve criar tags de release. Os builds públicos permanecem não assinados até existir um processo Authenticode documentado; nunca adicione certificados ou secrets ao repositório.
+Uma tag `vX.Y.Z` só é aceite pelo workflow de release quando corresponde à versão de `Directory.Build.props`. Apenas o responsável pelo repositório deve criar tags de release. O workflow pode gerar candidatos privados `NotSigned`, mas recusa uma release pública até existir assinatura Authenticode Public Trust validada, testes nativos dos pacotes exatos e autorização de redistribuição aplicável; nunca adicione certificados, chaves ou secrets ao repositório.
 
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

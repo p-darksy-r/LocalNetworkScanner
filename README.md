@@ -2,7 +2,7 @@
 
 # Local Network Scanner
 
-[![source v1.3.0](https://img.shields.io/badge/source-v1.3.0-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.3.0)
+[![source v1.3.1](https://img.shields.io/badge/source-v1.3.1-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.3.1)
 ![Windows](https://img.shields.io/badge/Windows-x64%20%7C%20ARM64-0078d4)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/LICENSE)
 
@@ -10,7 +10,7 @@
 
 Scanner de redes locais para Windows com uma UI WPF simples, uma CLI para automação, diagnósticos acionáveis e topologia opcional. O programa separa observações diretas, dados fornecidos pela infraestrutura e inferências, para que um resultado provável nunca seja apresentado como facto confirmado.
 
-> **Estado de distribuição:** a `v1.2.0` é histórica e não é recomendada para instalação porque foi publicada sem Authenticode. A tag privada `v1.3.0` identifica o código validado, mas não existe ainda uma GitHub Release 1.3.0 pública e assinada.
+> **Estado de distribuição:** a `v1.2.0` é histórica e não é recomendada para instalação porque foi publicada sem Authenticode. A tag privada `v1.3.1` identifica o candidato de código e QA mais recente, mas não existe ainda uma GitHub Release 1.3.1 pública e assinada.
 >
 > O repositório é privado. Uma tag pode executar QA dos pacotes sem os publicar; a release pública só é autorizada depois dos gates de assinatura, validação x64/ARM64 nativa e redistribuição indicados abaixo. Consulte o [guia de assinatura](docs/SIGNING.md).
 
@@ -35,7 +35,7 @@ Os dois formatos incluem a UI, a CLI e o runtime .NET necessário. O instalador 
 
 | Alvo | Estado |
 | --- | --- |
-| Windows 11 x64 | código 1.3.0: build Release, 69 testes e smoke UI/CLI concluídos; o pacote self-contained exato é novamente validado pelo workflow da tag |
+| Windows 11 x64 | código 1.3.1: build Release, testes determinísticos e smoke UI/CLI obrigatórios; o workflow da tag instala, executa e remove o pacote self-contained exato antes de o marcar como validado |
 | Windows 11 ARM64 | CI e release exigem build, testes e smoke num runner Windows ARM64 nativo; o cross-build isolado deixou de contar como validação |
 | Windows 10 | o .NET 10 limita o suporte atual a edições LTSC/Enterprise compatíveis; consulte a [matriz oficial da Microsoft](https://learn.microsoft.com/dotnet/core/install/windows#supported-versions) |
 
@@ -68,9 +68,11 @@ Comece com um intervalo pequeno e use o perfil **Avançado** apenas quando preci
 ## O que o diferencia
 
 - **Resultados honestos:** cada relação de topologia preserva origem, confiança e evidência.
+- **UI adaptável:** a configuração recolhe durante o scan, o cancelamento permanece acessível e os painéis ajustam-se ao espaço disponível.
 - **Lista primeiro:** o inventário continua a ser a vista principal depois do scan.
 - **Topologia a pedido:** o mapa abre numa janela separada sem repetir ou alterar o scan.
 - **Diagnósticos pesquisáveis:** códigos `LNS-*` distinguem entrada, rede, dispositivo e falhas internas.
+- **Degradação visível:** se o Windows não disponibilizar o baseline ARP, `LNS-NET-011` explica por que a confirmação ARP ficou desativada sem invalidar ICMP/TCP/multicast.
 - **Três profundidades:** Rápido, Normal e Avançado para utilizadores com necessidades diferentes.
 - **Identidade por evidências:** fabricante, modelo, nome, firmware e serial são fundidos com origem e confiança, sem confundir anúncios com factos autenticados.
 - **Descoberta multicamada:** ICMP ligado à interface escolhida, TCP, ARP, mDNS/DNS-SD, SSDP/UPnP, WS-Discovery, NetBIOS, SNMP opcional e Nmap local opcional.
@@ -100,13 +102,13 @@ As opções técnicas da UI podem substituir partes do perfil. A identidade SNMP
 | Área | Informação apresentada | Origem ou limite principal |
 | --- | --- | --- |
 | Identidade | IP, hostname, NetBIOS, MAC, titular IEEE, fabricante, modelo, nome anunciado, firmware, serial, fonte e confiança | UPnP, DNS-SD, SNMP e Nmap são evidências não autenticadas ou dependentes da configuração; campos podem ficar desconhecidos ou conflituosos |
-| Disponibilidade | latência e métodos de descoberta | firewalls podem bloquear ICMP sem tornar o equipamento offline |
+| Disponibilidade | latência e métodos de descoberta | ICMP, TCP ou ARP fresco (`Reachable`/resposta direta) confirmam o alvo naquele instante; a cache existente antes do scan só enriquece um alvo já confirmado |
 | Portas e serviços | portas TCP abertas, nome provável, resposta leve e estado TLS verificado | uma porta convencional não prova cifragem; não existe autenticação, exploração ou inspeção profunda |
 | Protocolos | ICMP, ARP, TCP e protocolos associados às respostas observadas | não é uma captura nem uma contagem de pacotes |
 | Equipamento | tipo, sistema operativo provável e risco | classificação heurística, nunca identificação garantida |
 | Wi-Fi | SSID, BSSID, canal, rádio e percentagem de sinal local | sinal do computador para o access point, não de cada dispositivo |
 | VLAN | configuração exposta pelo adaptador ou evidência inequívoca do switch | não captura tags 802.1Q |
-| Camada 2 | alcance direto quando existe evidência ARP | não confirma o switch físico |
+| Camada 2 | alcance direto quando existe evidência ARP ativa | uma entrada passiva em cache não basta e o resultado não confirma o switch físico |
 | Histórico | novo, alterado, visto anteriormente, favorito, alias e notas | snapshots locais; MACs aleatórios podem mudar a identidade |
 | Ações | copiar dados, abrir endpoints e Wake-on-LAN | execute apenas ações autorizadas e confirme o alvo |
 | Exportações | JSON schema v5, CSV UTF-8, HTML, GraphML e relatório de suporte agregado | os relatórios de inventário incluem evidência/serial quando disponíveis e são sensíveis; o relatório de suporte exclui identificadores |
@@ -181,7 +183,7 @@ O enriquecimento Nmap é explicitamente opt-in, limitado a IPv4 privado e TCP Co
 - Um equipamento pode bloquear ICMP e continuar acessível por TCP, ARP ou multicast.
 - O sinal Wi-Fi pertence à ligação local do computador, não aos clientes remotos.
 - A VLAN pode vir do adaptador local ou de dados inequívocos do switch; não é descoberta universal por dispositivo.
-- ARP sustenta uma inferência de segmento L2, mas não identifica o switch físico.
+- Só uma observação ARP posterior ao baseline e ainda marcada `Reachable`, ou uma resposta ARP direta sem entrada prévia, sustenta a inferência de segmento L2; uma entrada anterior na cache não torna um host online, não é eliminada e não identifica o switch físico.
 - O titular IEEE do prefixo, o fabricante físico, o tipo de equipamento, o sistema operativo e o risco não são identificações garantidas.
 - Multicast pode ser bloqueado por firewall, isolamento Wi-Fi, VLANs ou políticas da rede. Respostas têm limites globais; um endereço apenas anunciado dentro de mDNS não cria um dispositivo online sem evidência direta do remetente.
 - SSDP/UPnP, mDNS/DNS-SD, WS-Discovery, SNMP e os banners Nmap são declarações do equipamento e podem ser incompletos, antigos ou forjados; a UI preserva origem, confiança e conflitos.
@@ -254,7 +256,7 @@ Validação completa:
 powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1 -Configuration Release -VerifyFormat
 ```
 
-O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
+O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.3.1`, a suite contém 82 testes. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
 
 Executar a UI:
 
@@ -285,7 +287,7 @@ Instalador Inno Setup:
 powershell -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -RuntimeIdentifier win-x64
 ```
 
-Uma tag `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia QA privada dos pacotes. A publicação só é pedida através de `workflow_dispatch` explícito, selecionando essa tag e `publish_release=true`. Antes do build, um preflight confirma que a tag aponta para o HEAD atual de `main` e apresenta códigos `LNS-REL-*` para configuração ou autorizações ausentes. A assinatura pública usa Microsoft Artifact Signing por OIDC: a chave permanece num HSM/serviço e não existe PFX no GitHub. Depois do empacotamento, os ZIPs e instaladores exatos são instalados, executados e removidos em runners Windows x64 e ARM64 nativos. Artefactos privados podem ser gerados como `NotSigned` para QA, mas uma **GitHub Release publicada só é criada** quando todos os ficheiros executáveis e o diagnóstico PowerShell têm Authenticode confiável, os dois testes nativos passaram e a autorização de redistribuição IEEE está registada.
+Uma tag `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia QA privada dos pacotes. A publicação só é pedida através de `workflow_dispatch` explícito, selecionando essa tag e `publish_release=true`. Antes do build, um preflight confirma que a tag aponta para o HEAD atual de `main` e apresenta códigos `LNS-REL-*` para configuração ou autorizações ausentes. A assinatura pública usa Microsoft Artifact Signing por OIDC: a chave permanece num HSM/serviço e não existe PFX no GitHub. Depois do empacotamento, os ZIPs e instaladores exatos são instalados, executados e removidos em runners Windows x64 e ARM64 nativos. Um gate terminal volta a descarregar o artefacto `windows-validated`, exige o contrato exato de dez ficheiros, confirma os hashes e recusa estados nativos incompletos. Artefactos privados podem ser gerados como `NotSigned` para QA, mas uma **GitHub Release publicada só é criada** quando todos os ficheiros executáveis e o diagnóstico PowerShell têm Authenticode confiável, os dois testes nativos passaram e a autorização de redistribuição IEEE está registada.
 
 A publicação corre num job separado com permissão de escrita mínima, exige o conjunto exato de assets, volta a verificar hashes, timestamps e o mesmo signer e prepara tudo como draft antes de tornar a release visível. Uma tag que já tenha uma GitHub Release não é alterada nem recebe assets substituídos: publique uma versão nova em vez de modificar binários já distribuídos. Consulte [Windows App Control e erro 4551](docs/APP_CONTROL.md).
 

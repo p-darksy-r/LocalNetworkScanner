@@ -85,7 +85,7 @@ jobs:
 
   gate:
     name: CI gate
-    if: always()
+    if: ${{ !cancelled() }}
     needs: [validate, validate-arm64]
     runs-on: windows-latest
     timeout-minutes: 5

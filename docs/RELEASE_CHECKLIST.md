@@ -59,7 +59,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1
 
 - [ ] A UI liga para `docs/TECHNICAL_LIMITS.md` ou apresenta um resumo equivalente.
 - [ ] VLAN é descrita como informação da interface local ou inferência, nunca como scan por dispositivo.
-- [ ] “Mesmo segmento L2” mostra a confiança; uma observação SNMP/FDB nunca é apresentada como prova de ligação ao mesmo switch físico.
+- [ ] “Mesmo segmento L2” exige uma linha ARP nova e `Reachable` (sem `IsUnreachable`) ou resposta direta sem entrada prévia e mostra a confiança; uma entrada anterior/passiva, estado nativo não alcançável ou observação SNMP/FDB nunca é apresentada como prova de ligação ao mesmo switch físico.
 - [ ] SNMP permanece opt-in; timeouts, switch sem resposta e tabela incompleta degradam para “desconhecido”, não para uma conclusão falsa.
 - [ ] FDB-ID só é convertido em VLAN com mapeamento VLAN→FDB único; PVID é apenas referência, não a VLAN inferida do dispositivo.
 - [ ] MACs repetidos preservam múltiplas observações e não são reduzidos arbitrariamente a uma porta.
@@ -96,6 +96,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeI
 - [ ] Cada pasta de publish contém os executáveis esperados e não contém PDBs, segredos ou ficheiros temporários.
 - [ ] O smoke test `LocalNetworkScanner.Cli.exe --help` termina com exit code `0` numa máquina da arquitetura publicada; o workflow confirma `OSArchitecture=Arm64` antes do smoke ARM64.
 - [ ] Os jobs de release instalaram, executaram e removeram os ZIPs e instaladores exatos em x64 e ARM64; o binário testado é o mesmo cujo hash será publicado.
+- [ ] O job `Require successful native Windows validation` terminou com sucesso e o artefacto `windows-validated` contém exatamente os dez ficheiros esperados, hashes coerentes e ambos os estados nativos como `Validated`.
 - [ ] A UI arranca, inicia e cancela um scan de laboratório e fecha sem processo residual.
 - [ ] O ZIP inclui UI, CLI, README, licença, changelog, limites técnicos, `docs/VENDOR_DATABASE.md` e `THIRD_PARTY_NOTICES.md`.
 - [ ] Exports JSON schema v5 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações, identidade, diagnósticos ou estado TLS documentados.
@@ -105,7 +106,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeI
 Verificação manual do checksum:
 
 ```powershell
-$zip = '.\artifacts\release\LocalNetworkScanner-1.3.0-win-x64.zip'
+$version = '<versão>'
+$zip = ".\artifacts\release\LocalNetworkScanner-$version-win-x64.zip"
 $expected = (Get-Content "$zip.sha256").Split(' ')[0]
 $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actual -ne $expected) { throw 'SHA-256 invalido.' }

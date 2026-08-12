@@ -39,7 +39,7 @@ $tool = "$env:LOCALAPPDATA\Programs\LocalNetworkScanner\tools\diagnose-app-contr
 & $tool -FilePath $exe -Minutes 60 -OutputPath "$env:USERPROFILE\Desktop\LNS-AppControl.json"
 ```
 
-Ao trabalhar a partir do repositório, use `.\scripts\diagnose-app-control.ps1`. O schema v2 classifica separadamente ficheiro ausente, alvo sem assinatura, assinatura inválida/não confiável, publisher válido mas bloqueado e ausência de evento correlacionado. Reveja o JSON antes de o partilhar: eventos de Code Integrity podem conter caminhos locais e identificadores da política da organização.
+Ao trabalhar a partir do repositório, use `.\scripts\diagnose-app-control.ps1`. O schema v2 classifica separadamente ficheiro ausente, alvo sem assinatura, assinatura inválida/não confiável, publisher válido mas bloqueado e ausência de evento correlacionado. Apenas uma coincidência pelo caminho completo confirma o alvo automaticamente. Quando o Windows regista `\Device\...`, o `SHA256 Flat Hash` exato em conjunto com o mesmo caminho relativo à raiz produz evidência média/provável, mas não confirma o volume: duas cópias podem estar sujeitas a regras por caminho diferentes. Uma coincidência apenas pelo hash identifica conteúdo byte a byte igual e também permanece inconclusiva; uma coincidência só pelo nome tem confiança baixa. Reveja o JSON antes de o partilhar: eventos de Code Integrity podem conter caminhos locais, hashes e identificadores da política da organização.
 
 4. Em Windows 11 22H2 ou mais recente, liste as políticas ativas sem as alterar:
 

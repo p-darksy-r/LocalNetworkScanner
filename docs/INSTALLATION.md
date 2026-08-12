@@ -2,7 +2,7 @@
 
 # Instalação no Windows
 
-As releases disponibilizam dois formatos para cada arquitetura suportada. A partir do candidato 1.3.0, ambos incluem o runtime .NET e a snapshot offline MA-L/MA-M/MA-S/IAB da versão, sem exigir a instalação separada do SDK, do runtime ou de uma base de fabricantes.
+As releases disponibilizam dois formatos para cada arquitetura suportada. A partir da linha 1.3.x, ambos incluem o runtime .NET e a snapshot offline MA-L/MA-M/MA-S/IAB da versão, sem exigir a instalação separada do SDK, do runtime ou de uma base de fabricantes.
 
 O primeiro arranque e a identificação de titulares de prefixos IEEE não exigem Internet. A aplicação só contacta as listagens públicas da IEEE quando o utilizador escolhe explicitamente a atualização opcional. Os pacotes incluem `THIRD_PARTY_NOTICES.md`; confirme os termos e a autorização aplicáveis antes de redistribuir publicamente uma build que contenha a snapshot.
 
@@ -39,7 +39,7 @@ O pacote contém também `LocalNetworkScanner.Cli.exe` para automação. O hist�
 Compare o SHA-256 do ficheiro descarregado com `SHA256SUMS.txt` ou com o ficheiro `.sha256` adjacente na release:
 
 ```powershell
-$file = '.\LocalNetworkScanner-1.3.0-win-x64.zip'
+$file = '.\LocalNetworkScanner-<versão>-win-x64.zip'
 (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
 ```
 

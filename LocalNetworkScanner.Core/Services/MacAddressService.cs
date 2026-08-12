@@ -1,9 +1,10 @@
 // Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
 
 using System.Collections.Concurrent;
-using System.Net;
-using System.Runtime.InteropServices;
 using System.Globalization;
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using LocalNetworkScanner.Core.Models;
 using LocalNetworkScanner.Core.Utilities;
@@ -13,15 +14,22 @@ namespace LocalNetworkScanner.Core.Services;
 public sealed partial class MacAddressService
 {
     private const int DefaultMaximumActiveConcurrency = 32;
+    private const int ErrorNotFound = 1_168;
+    private const int NeighborStateReachable = 5;
+    private const byte NeighborFlagIsUnreachable = 0x02;
+    private const int EthernetAddressLength = 6;
+    private const int SendArpBufferLength = 8;
 
     private readonly Func<LocalNetworkInterface, CancellationToken, Task<string?>> _neighborTableReader;
-    private readonly Func<IPAddress, IPAddress, CancellationToken, Task<string?>> _activeResolver;
+    private readonly Func<IPAddress, IPAddress, uint?, CancellationToken, Task<string?>> _activeResolver;
+    private readonly Func<LocalNetworkInterface, uint?> _interfaceIndexResolver;
     private readonly int _maximumActiveConcurrency;
 
     public MacAddressService()
         : this(
             ReadNeighborTableAsync,
-            ResolveWithSendArpAsync,
+            ResolveWithFreshNeighborAsync,
+            ResolveIpv4InterfaceIndex,
             DefaultMaximumActiveConcurrency)
     {
     }
@@ -30,13 +38,29 @@ public sealed partial class MacAddressService
         Func<LocalNetworkInterface, CancellationToken, Task<string?>> neighborTableReader,
         Func<IPAddress, IPAddress, CancellationToken, Task<string?>> activeResolver,
         int maximumActiveConcurrency = DefaultMaximumActiveConcurrency)
+        : this(
+            neighborTableReader,
+            (address, sourceAddress, _, cancellationToken) =>
+                activeResolver(address, sourceAddress, cancellationToken),
+            _ => null,
+            maximumActiveConcurrency)
+    {
+    }
+
+    internal MacAddressService(
+        Func<LocalNetworkInterface, CancellationToken, Task<string?>> neighborTableReader,
+        Func<IPAddress, IPAddress, uint?, CancellationToken, Task<string?>> activeResolver,
+        Func<LocalNetworkInterface, uint?> interfaceIndexResolver,
+        int maximumActiveConcurrency = DefaultMaximumActiveConcurrency)
     {
         ArgumentNullException.ThrowIfNull(neighborTableReader);
         ArgumentNullException.ThrowIfNull(activeResolver);
+        ArgumentNullException.ThrowIfNull(interfaceIndexResolver);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumActiveConcurrency);
 
         _neighborTableReader = neighborTableReader;
         _activeResolver = activeResolver;
+        _interfaceIndexResolver = interfaceIndexResolver;
         _maximumActiveConcurrency = maximumActiveConcurrency;
     }
 
@@ -45,9 +69,21 @@ public sealed partial class MacAddressService
         LocalNetworkInterface networkInterface,
         CancellationToken cancellationToken)
     {
+        MacAddressResolution? result = await ResolveWithEvidenceAsync(
+            address,
+            networkInterface,
+            cancellationToken);
+        return result?.MacAddress;
+    }
+
+    public async Task<MacAddressResolution?> ResolveWithEvidenceAsync(
+        IPAddress address,
+        LocalNetworkInterface networkInterface,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(networkInterface);
         await using ScanSession session = CreateScanSession(networkInterface, cancellationToken);
-        return await session.ResolveAsync(address, cancellationToken);
+        return await session.ResolveWithEvidenceAsync(address, cancellationToken);
     }
 
     internal ScanSession CreateScanSession(
@@ -59,6 +95,7 @@ public sealed partial class MacAddressService
             networkInterface,
             _neighborTableReader,
             _activeResolver,
+            _interfaceIndexResolver(networkInterface),
             _maximumActiveConcurrency,
             cancellationToken);
     }
@@ -107,9 +144,10 @@ public sealed partial class MacAddressService
             cancellationToken);
     }
 
-    private static async Task<string?> ResolveWithSendArpAsync(
+    private static async Task<string?> ResolveWithFreshNeighborAsync(
         IPAddress address,
         IPAddress sourceAddress,
+        uint? interfaceIndex,
         CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsWindows())
@@ -120,10 +158,17 @@ public sealed partial class MacAddressService
         {
             try
             {
-                return ResolveWithSendArp(address, sourceAddress);
+                return ResolveWithFreshNeighbor(
+                    address,
+                    sourceAddress,
+                    interfaceIndex,
+                    GetIpNetEntry2Native,
+                    SendArpNative);
             }
             catch (Exception exception) when (
-                exception is DllNotFoundException or EntryPointNotFoundException)
+                exception is DllNotFoundException or
+                    EntryPointNotFoundException or
+                    BadImageFormatException)
             {
                 return null;
             }
@@ -131,25 +176,182 @@ public sealed partial class MacAddressService
         return await resolution.WaitAsync(cancellationToken);
     }
 
-    private static string? ResolveWithSendArp(IPAddress address, IPAddress sourceAddress)
+    internal static string? ResolveWithFreshNeighbor(
+        IPAddress address,
+        IPAddress sourceAddress,
+        uint? interfaceIndex,
+        GetIpNetEntry2Callback getIpNetEntry,
+        SendArpCallback sendArp)
     {
+        ArgumentNullException.ThrowIfNull(address);
+        ArgumentNullException.ThrowIfNull(sourceAddress);
+        ArgumentNullException.ThrowIfNull(getIpNetEntry);
+        ArgumentNullException.ThrowIfNull(sendArp);
+
         byte[] addressBytes = address.GetAddressBytes();
         byte[] sourceBytes = sourceAddress.GetAddressBytes();
-        if (addressBytes.Length != 4 || sourceBytes.Length != 4)
+        if (addressBytes.Length != 4 ||
+            sourceBytes.Length != 4 ||
+            sourceAddress.Equals(IPAddress.Any) ||
+            interfaceIndex is null or 0)
+        {
             return null;
+        }
 
-        byte[] mac = new byte[6];
-        int length = mac.Length;
+        MibIpNetRow2 row = new()
+        {
+            Address = SockaddrInet.FromIpv4Bytes(addressBytes),
+            InterfaceIndex = interfaceIndex.Value
+        };
+        // A sessão captura a tabela antes dos probes. Se a entrada só existe agora,
+        // nasceu durante este scan e constitui evidência fresca sem ser removida.
+        int existingEntryResult = getIpNetEntry(ref row);
+        if (existingEntryResult == 0)
+        {
+            bool isReachable = row.State == NeighborStateReachable &&
+                (row.Flags & NeighborFlagIsUnreachable) == 0;
+            string? existingMac = isReachable &&
+                row.PhysicalAddressLength == EthernetAddressLength
+                    ? FormatEthernetAddress(row.GetEthernetAddress())
+                    : null;
+            return TryNormalizeDeviceAddress(existingMac, out string existingNormalized)
+                ? existingNormalized
+                : null;
+        }
+        else if (existingEntryResult != ErrorNotFound)
+        {
+            return null;
+        }
+
+        byte[] mac = new byte[SendArpBufferLength];
+        int length = SendArpBufferLength;
         uint destination = BitConverter.ToUInt32(addressBytes, 0);
         uint source = BitConverter.ToUInt32(sourceBytes, 0);
-        int result = SendARP(destination, source, mac, ref length);
-        string candidate = result == 0 && length == mac.Length
-            ? string.Join(":", mac.Select(value => value.ToString("X2", CultureInfo.InvariantCulture)))
-            : string.Empty;
+        int result = sendArp(destination, source, mac, ref length);
+        string? candidate = result == 0 && length == EthernetAddressLength
+            ? FormatEthernetAddress(mac.AsSpan(0, EthernetAddressLength))
+            : null;
         return TryNormalizeDeviceAddress(candidate, out string normalized)
             ? normalized
             : null;
     }
+
+    private static string FormatEthernetAddress(ReadOnlySpan<byte> address) =>
+        string.Join(
+            ":",
+            address.ToArray().Select(value =>
+                value.ToString("X2", CultureInfo.InvariantCulture)));
+
+    private static uint? ResolveIpv4InterfaceIndex(
+        LocalNetworkInterface networkInterface)
+    {
+        ArgumentNullException.ThrowIfNull(networkInterface);
+
+        NetworkInterface[] adapters;
+        try
+        {
+            adapters = NetworkInterface.GetAllNetworkInterfaces();
+        }
+        catch (Exception exception) when (
+            exception is NetworkInformationException or
+                PlatformNotSupportedException)
+        {
+            return null;
+        }
+
+        foreach (NetworkInterface adapter in adapters)
+        {
+            if (TryGetAdapterId(adapter, out string? id) &&
+                string.Equals(id, networkInterface.Id, StringComparison.OrdinalIgnoreCase) &&
+                TryGetIpv4InterfaceIndex(adapter, out uint interfaceIndex))
+            {
+                return interfaceIndex;
+            }
+        }
+
+        foreach (NetworkInterface adapter in adapters)
+        {
+            if (TryGetIpv4InterfaceIndex(
+                    adapter,
+                    networkInterface.IpAddress,
+                    out uint interfaceIndex))
+            {
+                return interfaceIndex;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryGetAdapterId(NetworkInterface adapter, out string? id)
+    {
+        id = null;
+        try
+        {
+            id = adapter.Id;
+            return true;
+        }
+        catch (Exception exception) when (IsAdapterInspectionException(exception))
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetIpv4InterfaceIndex(
+        NetworkInterface adapter,
+        out uint interfaceIndex)
+    {
+        interfaceIndex = 0;
+        try
+        {
+            int index = adapter.GetIPProperties().GetIPv4Properties().Index;
+            if (index <= 0)
+                return false;
+
+            interfaceIndex = checked((uint)index);
+            return true;
+        }
+        catch (Exception exception) when (IsAdapterInspectionException(exception))
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetIpv4InterfaceIndex(
+        NetworkInterface adapter,
+        IPAddress sourceAddress,
+        out uint interfaceIndex)
+    {
+        interfaceIndex = 0;
+        try
+        {
+            IPInterfaceProperties properties = adapter.GetIPProperties();
+            if (!properties.UnicastAddresses.Any(item =>
+                    item.Address.Equals(sourceAddress)))
+            {
+                return false;
+            }
+
+            int index = properties.GetIPv4Properties().Index;
+            if (index <= 0)
+                return false;
+
+            interfaceIndex = checked((uint)index);
+            return true;
+        }
+        catch (Exception exception) when (IsAdapterInspectionException(exception))
+        {
+            return false;
+        }
+    }
+
+    private static bool IsAdapterInspectionException(Exception exception) =>
+        exception is NetworkInformationException or
+            PlatformNotSupportedException or
+            InvalidOperationException or
+            NotSupportedException or
+            ObjectDisposedException or
+            OverflowException;
 
     public static string Normalize(string value)
     {
@@ -201,8 +403,116 @@ public sealed partial class MacAddressService
         return true;
     }
 
-    [DllImport("iphlpapi.dll", ExactSpelling = true)]
-    private static extern int SendARP(uint destinationIp, uint sourceIp, byte[] macAddress, ref int physicalAddressLength);
+    internal delegate int GetIpNetEntry2Callback(ref MibIpNetRow2 row);
+
+    internal delegate int SendArpCallback(
+        uint destinationIp,
+        uint sourceIp,
+        byte[] macAddress,
+        ref int physicalAddressLength);
+
+    [DllImport("iphlpapi.dll", EntryPoint = "GetIpNetEntry2", ExactSpelling = true)]
+    private static extern int GetIpNetEntry2Native(ref MibIpNetRow2 row);
+
+    [DllImport("iphlpapi.dll", EntryPoint = "SendARP", ExactSpelling = true)]
+    private static extern int SendArpNative(
+        uint destinationIp,
+        uint sourceIp,
+        byte[] macAddress,
+        ref int physicalAddressLength);
+
+    [StructLayout(LayoutKind.Explicit, Size = 28)]
+    internal struct SockaddrInet
+    {
+        private const ushort AddressFamilyInet = 2;
+
+        [FieldOffset(0)]
+        public ushort Family;
+
+        [FieldOffset(2)]
+        public ushort Port;
+
+        [FieldOffset(4)]
+        public byte AddressByte0;
+
+        [FieldOffset(5)]
+        public byte AddressByte1;
+
+        [FieldOffset(6)]
+        public byte AddressByte2;
+
+        [FieldOffset(7)]
+        public byte AddressByte3;
+
+        public static SockaddrInet FromIpv4Bytes(byte[] bytes)
+        {
+            ArgumentNullException.ThrowIfNull(bytes);
+            if (bytes.Length != 4)
+                throw new ArgumentException("É necessário um endereço IPv4.", nameof(bytes));
+
+            return new SockaddrInet
+            {
+                Family = AddressFamilyInet,
+                AddressByte0 = bytes[0],
+                AddressByte1 = bytes[1],
+                AddressByte2 = bytes[2],
+                AddressByte3 = bytes[3]
+            };
+        }
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 88)]
+    internal struct MibIpNetRow2
+    {
+        [FieldOffset(0)]
+        public SockaddrInet Address;
+
+        [FieldOffset(28)]
+        public uint InterfaceIndex;
+
+        [FieldOffset(32)]
+        public ulong InterfaceLuid;
+
+        [FieldOffset(40)]
+        public byte PhysicalAddressByte0;
+
+        [FieldOffset(41)]
+        public byte PhysicalAddressByte1;
+
+        [FieldOffset(42)]
+        public byte PhysicalAddressByte2;
+
+        [FieldOffset(43)]
+        public byte PhysicalAddressByte3;
+
+        [FieldOffset(44)]
+        public byte PhysicalAddressByte4;
+
+        [FieldOffset(45)]
+        public byte PhysicalAddressByte5;
+
+        [FieldOffset(72)]
+        public uint PhysicalAddressLength;
+
+        [FieldOffset(76)]
+        public int State;
+
+        [FieldOffset(80)]
+        public byte Flags;
+
+        [FieldOffset(84)]
+        public uint ReachabilityTime;
+
+        public byte[] GetEthernetAddress() =>
+        [
+            PhysicalAddressByte0,
+            PhysicalAddressByte1,
+            PhysicalAddressByte2,
+            PhysicalAddressByte3,
+            PhysicalAddressByte4,
+            PhysicalAddressByte5
+        ];
+    }
 
     [GeneratedRegex(
         @"(?i)(?<![0-9a-f])[0-9a-f]{2}(?<separator>[:-])(?:[0-9a-f]{2}\k<separator>){4}[0-9a-f]{2}(?![0-9a-f])",
@@ -219,33 +529,68 @@ public sealed partial class MacAddressService
         RegexOptions.CultureInvariant)]
     private static partial Regex ValidDeviceMacRegex();
 
+    private sealed record NeighborTableSnapshot(
+        bool IsAvailable,
+        IReadOnlyDictionary<IPAddress, string> Entries);
+
     internal sealed class ScanSession : IAsyncDisposable
     {
         private readonly LocalNetworkInterface _networkInterface;
-        private readonly Func<IPAddress, IPAddress, CancellationToken, Task<string?>> _activeResolver;
+        private readonly Func<IPAddress, IPAddress, uint?, CancellationToken, Task<string?>> _activeResolver;
+        private readonly uint? _interfaceIndex;
         private readonly CancellationToken _scanCancellationToken;
         private readonly SemaphoreSlim _activeGate;
-        private readonly Lazy<Task<IReadOnlyDictionary<IPAddress, string>>> _neighborTable;
-        private readonly ConcurrentDictionary<IPAddress, Lazy<Task<string?>>> _addressCache = [];
+        private readonly Lazy<Task<NeighborTableSnapshot>> _neighborTable;
+        private readonly ConcurrentDictionary<IPAddress, Lazy<Task<MacAddressResolution?>>> _addressCache = [];
+        private readonly ConcurrentDictionary<IPAddress, Lazy<Task<MacAddressResolution?>>> _activeAddressCache = [];
 
         internal ScanSession(
             LocalNetworkInterface networkInterface,
             Func<LocalNetworkInterface, CancellationToken, Task<string?>> neighborTableReader,
-            Func<IPAddress, IPAddress, CancellationToken, Task<string?>> activeResolver,
+            Func<IPAddress, IPAddress, uint?, CancellationToken, Task<string?>> activeResolver,
+            uint? interfaceIndex,
             int maximumActiveConcurrency,
             CancellationToken scanCancellationToken)
         {
             _networkInterface = networkInterface;
             _activeResolver = activeResolver;
+            _interfaceIndex = interfaceIndex;
             _scanCancellationToken = scanCancellationToken;
             _activeGate = new SemaphoreSlim(maximumActiveConcurrency, maximumActiveConcurrency);
-            _neighborTable = new Lazy<Task<IReadOnlyDictionary<IPAddress, string>>>(
-                async () => ParseNeighborTable(
-                    await neighborTableReader(networkInterface, scanCancellationToken)),
+            _neighborTable = new Lazy<Task<NeighborTableSnapshot>>(
+                async () =>
+                {
+                    string? output = await neighborTableReader(
+                        networkInterface,
+                        scanCancellationToken);
+                    return output is null
+                        ? new NeighborTableSnapshot(false, new Dictionary<IPAddress, string>())
+                        : new NeighborTableSnapshot(true, ParseNeighborTable(output));
+                },
                 LazyThreadSafetyMode.ExecutionAndPublication);
         }
 
         public async Task<string?> ResolveAsync(
+            IPAddress address,
+            CancellationToken cancellationToken)
+        {
+            MacAddressResolution? result = await ResolveWithEvidenceAsync(
+                address,
+                cancellationToken);
+            return result?.MacAddress;
+        }
+
+        public bool IsNeighborBaselineAvailable { get; private set; }
+
+        internal async Task InitializeAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            NeighborTableSnapshot snapshot =
+                await _neighborTable.Value.WaitAsync(cancellationToken);
+            IsNeighborBaselineAvailable = snapshot.IsAvailable;
+        }
+
+        public async Task<MacAddressResolution?> ResolveWithEvidenceAsync(
             IPAddress address,
             CancellationToken cancellationToken)
         {
@@ -257,7 +602,9 @@ public sealed partial class MacAddressService
                 return TryNormalizeDeviceAddress(
                     _networkInterface.MacAddress,
                     out string localMac)
-                    ? localMac
+                    ? new MacAddressResolution(
+                        localMac,
+                        MacAddressResolutionSource.LocalInterface)
                     : null;
             }
 
@@ -269,32 +616,60 @@ public sealed partial class MacAddressService
                 return null;
             }
 
-            Lazy<Task<string?>> cached = _addressCache.GetOrAdd(
+            Lazy<Task<MacAddressResolution?>> cached = _addressCache.GetOrAdd(
                 address,
-                static (target, session) => new Lazy<Task<string?>>(
-                    () => session.ResolveCoreAsync(target),
+                static (target, session) => new Lazy<Task<MacAddressResolution?>>(
+                    () => session.ResolveWithCacheCoreAsync(target),
                     LazyThreadSafetyMode.ExecutionAndPublication),
                 this);
             return await cached.Value.WaitAsync(cancellationToken);
         }
 
-        private async Task<string?> ResolveCoreAsync(IPAddress address)
+        private async Task<MacAddressResolution?> ResolveWithCacheCoreAsync(IPAddress address)
         {
             _scanCancellationToken.ThrowIfCancellationRequested();
-            IReadOnlyDictionary<IPAddress, string> neighbors =
+            NeighborTableSnapshot snapshot =
                 await _neighborTable.Value.WaitAsync(_scanCancellationToken);
-            if (neighbors.TryGetValue(address, out string? cachedMac))
-                return cachedMac;
+            IsNeighborBaselineAvailable = snapshot.IsAvailable;
+            if (!snapshot.IsAvailable)
+                return null;
 
+            if (snapshot.Entries.TryGetValue(address, out string? cachedMac))
+            {
+                return new MacAddressResolution(
+                    cachedMac,
+                    MacAddressResolutionSource.NeighborCache);
+            }
+
+            return await GetActiveResolutionAsync(address);
+        }
+
+        private async Task<MacAddressResolution?> GetActiveResolutionAsync(IPAddress address)
+        {
+            Lazy<Task<MacAddressResolution?>> cached = _activeAddressCache.GetOrAdd(
+                address,
+                static (target, session) => new Lazy<Task<MacAddressResolution?>>(
+                    () => session.ResolveActiveCoreAsync(target),
+                    LazyThreadSafetyMode.ExecutionAndPublication),
+                this);
+            return await cached.Value.WaitAsync(_scanCancellationToken);
+        }
+
+        private async Task<MacAddressResolution?> ResolveActiveCoreAsync(IPAddress address)
+        {
+            _scanCancellationToken.ThrowIfCancellationRequested();
             await _activeGate.WaitAsync(_scanCancellationToken);
             try
             {
                 string? resolved = await _activeResolver(
                     address,
                     _networkInterface.IpAddress,
+                    _interfaceIndex,
                     _scanCancellationToken);
                 return TryNormalizeDeviceAddress(resolved, out string normalized)
-                    ? normalized
+                    ? new MacAddressResolution(
+                        normalized,
+                        MacAddressResolutionSource.ActiveArp)
                     : null;
             }
             finally
@@ -305,9 +680,11 @@ public sealed partial class MacAddressService
 
         public async ValueTask DisposeAsync()
         {
-            Task<string?>[] pending = _addressCache.Values
+            Task<MacAddressResolution?>[] pending = _addressCache.Values
+                .Concat(_activeAddressCache.Values)
                 .Where(value => value.IsValueCreated)
                 .Select(value => value.Value)
+                .Distinct()
                 .ToArray();
             try
             {

@@ -28,6 +28,9 @@ public sealed class NetworkScannerService
     private readonly UpnpDescriptionService _upnpDescriptionService;
     private readonly DeviceIdentityService _deviceIdentityService;
     private readonly NmapDiscoveryService _nmapDiscoveryService;
+    private readonly Func<IPAddress, int, IPAddress?, CancellationToken, Task<PingProbeResult>> _pingProbe;
+    private readonly Func<IPAddress, IReadOnlyList<int>, int, IPAddress?, CancellationToken, Task<int?>>
+        _tcpDiscoveryProbe;
 
     public NetworkScannerService(
         PingScannerService? pingScanner = null,
@@ -61,6 +64,29 @@ public sealed class NetworkScannerService
         _upnpDescriptionService = upnpDescriptionService ?? new UpnpDescriptionService();
         _deviceIdentityService = deviceIdentityService ?? new DeviceIdentityService();
         _nmapDiscoveryService = nmapDiscoveryService ?? new NmapDiscoveryService();
+        _pingProbe = (address, timeoutMs, sourceAddress, cancellationToken) =>
+            _pingScanner.ProbeAsync(address, timeoutMs, sourceAddress, cancellationToken);
+        _tcpDiscoveryProbe = (address, ports, timeoutMs, localAddress, cancellationToken) =>
+            _portScanner.FindAnyOpenPortAsync(
+                address,
+                ports,
+                timeoutMs,
+                localAddress,
+                cancellationToken);
+    }
+
+    internal NetworkScannerService(
+        MacAddressService macAddressService,
+        Func<IPAddress, int, IPAddress?, CancellationToken, Task<PingProbeResult>> pingProbe,
+        Func<IPAddress, IReadOnlyList<int>, int, IPAddress?, CancellationToken, Task<int?>>
+            tcpDiscoveryProbe)
+        : this(macAddressService: macAddressService)
+    {
+        ArgumentNullException.ThrowIfNull(pingProbe);
+        ArgumentNullException.ThrowIfNull(tcpDiscoveryProbe);
+
+        _pingProbe = pingProbe;
+        _tcpDiscoveryProbe = tcpDiscoveryProbe;
     }
 
     public async Task<NetworkScanResult> ScanAsync(
@@ -82,6 +108,9 @@ public sealed class NetworkScannerService
         await using MacAddressService.ScanSession? macScanSession = options.EnableArp
             ? _macAddressService.CreateScanSession(networkInterface, cancellationToken)
             : null;
+        if (macScanSession is not null)
+            await macScanSession.InitializeAsync(cancellationToken);
+
         int completedHosts = 0;
         int onlineHosts = 0;
 
@@ -115,14 +144,14 @@ public sealed class NetworkScannerService
             else
             {
                 Task<PingProbeResult> pingTask = options.EnableIcmp
-                    ? _pingScanner.ProbeAsync(
+                    ? _pingProbe(
                         address,
                         options.PingTimeoutMs,
                         networkInterface.IpAddress,
                         token)
                     : Task.FromResult(new PingProbeResult(false, null, null));
                 Task<int?> tcpTask = options.EnableTcpDiscovery
-                    ? _portScanner.FindAnyOpenPortAsync(
+                    ? _tcpDiscoveryProbe(
                         address,
                         options.DiscoveryPorts,
                         options.ConnectTimeoutMs,
@@ -130,30 +159,29 @@ public sealed class NetworkScannerService
                         token)
                     : Task.FromResult<int?>(null);
 
-                // ICMP/TCP fazem o sistema operativo resolver primeiro a vizinhança.
-                // Assim a sessão ARP pode reutilizar a tabela local e só recorre a
-                // SendARP uma vez para endereços que continuem sem entrada.
                 await Task.WhenAll(pingTask, tcpTask);
                 PingProbeResult ping = await pingTask;
                 int? discoveryPort = await tcpTask;
-                string? discoveredMac = options.EnableArp
-                    ? await macScanSession!.ResolveAsync(address, token)
+                bool confirmedByProbe = ping.Success || discoveryPort.HasValue;
+                MacAddressResolution? macResolution = options.EnableArp
+                    ? await macScanSession!.ResolveWithEvidenceAsync(address, token)
                     : null;
+                bool confirmedByActiveArp = macResolution?.ConfirmsReachability == true;
 
-                if (ping.Success || discoveryPort.HasValue || !string.IsNullOrWhiteSpace(discoveredMac))
+                if (confirmedByProbe || confirmedByActiveArp)
                 {
                     DiscoveryMethod methods = DiscoveryMethod.None;
                     if (ping.Success)
                         methods |= DiscoveryMethod.Icmp;
                     if (discoveryPort.HasValue)
                         methods |= DiscoveryMethod.Tcp;
-                    if (!string.IsNullOrWhiteSpace(discoveredMac))
+                    if (confirmedByActiveArp)
                         methods |= DiscoveryMethod.Arp;
 
                     device = CreateOnlineDevice(address, methods);
                     device.ResponseTimeMs = ping.RoundtripTimeMs;
                     device.ReplyTtl = ping.ReplyTtl;
-                    device.MacAddress = discoveredMac;
+                    device.MacAddress = macResolution?.MacAddress;
                 }
             }
 
@@ -244,9 +272,9 @@ public sealed class NetworkScannerService
                 ? Task.FromResult<string?>(Dns.GetHostName())
                 : _hostnameResolver.ResolveAsync(device.IpAddress, 1_200, token);
             bool shouldResolveMacWithArp = options.EnableArp && string.IsNullOrWhiteSpace(device.MacAddress);
-            Task<string?> macTask = shouldResolveMacWithArp
-                ? macScanSession!.ResolveAsync(device.IpAddress, token)
-                : Task.FromResult(device.MacAddress);
+            Task<MacAddressResolution?> macTask = shouldResolveMacWithArp
+                ? macScanSession!.ResolveWithEvidenceAsync(device.IpAddress, token)
+                : Task.FromResult<MacAddressResolution?>(null);
             Task<NetBiosInfo?> netBiosTask = options.EnableNetBiosDiscovery
                 ? _netBiosDiscoveryService.ProbeAsync(
                     device.IpAddress,
@@ -265,8 +293,10 @@ public sealed class NetworkScannerService
 
             await Task.WhenAll(hostnameTask, macTask, netBiosTask, portsTask);
             device.Hostname ??= await hostnameTask;
-            device.MacAddress = await macTask;
-            if (shouldResolveMacWithArp && !string.IsNullOrWhiteSpace(device.MacAddress))
+            MacAddressResolution? macResolution = await macTask;
+            if (shouldResolveMacWithArp)
+                device.MacAddress = macResolution?.MacAddress;
+            if (macResolution?.ConfirmsReachability == true)
                 device.DiscoveryMethods |= DiscoveryMethod.Arp;
             NetBiosInfo? netBios = await netBiosTask;
             if (netBios is not null)
@@ -489,6 +519,7 @@ public sealed class NetworkScannerService
         IReadOnlyList<ScanDiagnostic> diagnostics = BuildDiagnostics(
             networkInterface,
             ordered,
+            options.EnableArp && macScanSession is not null && !macScanSession.IsNeighborBaselineAvailable,
             options.SnmpSwitchAddress,
             snmpUnavailable,
             snmpIdentityAttempts,
@@ -763,6 +794,7 @@ public sealed class NetworkScannerService
     private static IReadOnlyList<ScanDiagnostic> BuildDiagnostics(
         LocalNetworkInterface networkInterface,
         IReadOnlyList<NetworkDevice> devices,
+        bool arpBaselineUnavailable,
         IPAddress? snmpSwitchAddress,
         bool snmpUnavailable,
         int snmpIdentityAttempts,
@@ -783,6 +815,8 @@ public sealed class NetworkScannerService
             diagnostics.Add(DiagnosticCatalog.VlanUnavailable(networkInterface.Name));
         if (networkInterface.IsWireless && networkInterface.WifiSignalPercent is null)
             diagnostics.Add(DiagnosticCatalog.WifiTelemetryUnavailable(networkInterface.Name));
+        if (arpBaselineUnavailable)
+            diagnostics.Add(DiagnosticCatalog.ArpBaselineUnavailable(networkInterface.Name));
         if (snmpUnavailable)
             diagnostics.Add(DiagnosticCatalog.SnmpUnavailable(snmpSwitchAddress?.ToString()));
         if (snmpIdentityAttempts > 0 && snmpIdentityResponders == 0)

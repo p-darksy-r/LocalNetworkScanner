@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Formats.Asn1;
 using System.IO;
 using System.IO.Compression;
@@ -16,6 +17,7 @@ using System.Text.Json;
 using System.Xml.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using LocalNetworkScanner.Core.Models;
 using LocalNetworkScanner.Core.Services;
 using LocalNetworkScanner.Core.Utilities;
@@ -210,7 +212,7 @@ List<(string Name, Func<Task> Run)> tests =
             .Select(field => (string)field.GetRawConstantValue()!)
             .ToArray();
 
-        Equal(31, codes.Length);
+        Equal(32, codes.Length);
         Equal(codes.Length, codes.Distinct(StringComparer.Ordinal).Count());
         True(codes.All(code => code.Length == 11 && code.StartsWith("LNS-", StringComparison.Ordinal)),
             "Todos os códigos públicos devem seguir o contrato LNS-CAT-NNN.");
@@ -1112,6 +1114,192 @@ List<(string Name, Func<Task> Run)> tests =
         True(!neighbors.ContainsKey(IPAddress.Parse("192.168.1.250")),
             "Uma entrada multicast não pode ser aceite como identidade ARP.");
     })),
+    ("IP Helper neighbor interop layout", () => Sync(() =>
+    {
+        Type? socketAddressType = typeof(MacAddressService).GetNestedType(
+            "SockaddrInet",
+            BindingFlags.NonPublic);
+        Type? neighborRowType = typeof(MacAddressService).GetNestedType(
+            "MibIpNetRow2",
+            BindingFlags.NonPublic);
+        NotNull(socketAddressType);
+        NotNull(neighborRowType);
+
+        Equal(28, Marshal.SizeOf(socketAddressType!));
+        Equal(88, Marshal.SizeOf(neighborRowType!));
+        Equal(new IntPtr(28), Marshal.OffsetOf(neighborRowType!, "InterfaceIndex"));
+        Equal(new IntPtr(32), Marshal.OffsetOf(neighborRowType!, "InterfaceLuid"));
+        Equal(new IntPtr(72), Marshal.OffsetOf(neighborRowType!, "PhysicalAddressLength"));
+    })),
+    ("Fresh neighbor accepts a valid post-baseline entry without mutation", () => Sync(() =>
+    {
+        int sendArpCalls = 0;
+        string? resolved = MacAddressService.ResolveWithFreshNeighbor(
+            IPAddress.Parse("192.168.1.20"),
+            IPAddress.Parse("192.168.1.10"),
+            37,
+            (ref MacAddressService.MibIpNetRow2 row) =>
+            {
+                Equal<uint>(37, row.InterfaceIndex);
+                SetNeighborRow(
+                    ref row,
+                    [0x00, 0x11, 0x22, 0x33, 0x44, 0x55],
+                    physicalAddressLength: 6,
+                    state: 5);
+                return 0;
+            },
+            (uint _, uint _, byte[] _, ref int _) =>
+            {
+                Interlocked.Increment(ref sendArpCalls);
+                return 0;
+            });
+
+        Equal("00:11:22:33:44:55", resolved);
+        Equal(0, Volatile.Read(ref sendArpCalls));
+    })),
+    ("Fresh neighbor rejects non-reachable or invalid rows without cache reuse", () => Sync(() =>
+    {
+        (uint Length, int State, byte Flags, byte FirstByte)[] invalidRows =
+        [
+            (6, 0, 0x00, 0x00),
+            (6, 1, 0x00, 0x00),
+            (6, 2, 0x00, 0x00),
+            (6, 3, 0x00, 0x00),
+            (6, 4, 0x00, 0x00),
+            (6, 6, 0x00, 0x00),
+            (6, 7, 0x00, 0x00),
+            (6, 5, 0x02, 0x00),
+            (5, 5, 0x00, 0x00),
+            (6, 5, 0x00, 0x01)
+        ];
+        int sendArpCalls = 0;
+
+        foreach ((uint length, int state, byte flags, byte firstByte) in invalidRows)
+        {
+            string? resolved = MacAddressService.ResolveWithFreshNeighbor(
+                IPAddress.Parse("192.168.1.21"),
+                IPAddress.Parse("192.168.1.10"),
+                38,
+                (ref MacAddressService.MibIpNetRow2 row) =>
+                {
+                    SetNeighborRow(
+                        ref row,
+                        [firstByte, 0x11, 0x22, 0x33, 0x44, 0x55],
+                        length,
+                        state,
+                        flags);
+                    return 0;
+                },
+                (uint _, uint _, byte[] _, ref int _) =>
+                {
+                    Interlocked.Increment(ref sendArpCalls);
+                    return 0;
+                });
+
+            Equal<string?>(null, resolved);
+        }
+
+        Equal(0, Volatile.Read(ref sendArpCalls));
+    })),
+    ("SendARP result and returned length are validated strictly", () => Sync(() =>
+    {
+        IPAddress destinationAddress = IPAddress.Parse("192.168.1.22");
+        IPAddress sourceAddress = IPAddress.Parse("192.168.1.10");
+        int successfulCalls = 0;
+        string? successfulResolution = MacAddressService.ResolveWithFreshNeighbor(
+            destinationAddress,
+            sourceAddress,
+            39,
+            (ref MacAddressService.MibIpNetRow2 _) => 1_168,
+            (uint destination, uint source, byte[] buffer, ref int physicalAddressLength) =>
+            {
+                Interlocked.Increment(ref successfulCalls);
+                Equal(BitConverter.ToUInt32(destinationAddress.GetAddressBytes(), 0), destination);
+                Equal(BitConverter.ToUInt32(sourceAddress.GetAddressBytes(), 0), source);
+                Equal(8, buffer.Length);
+                Equal(8, physicalAddressLength);
+                byte[] response = [0x00, 0xAA, 0xBB, 0xCC, 0xDD, 0x22];
+                response.CopyTo(buffer, 0);
+                buffer[6] = 0xFE;
+                buffer[7] = 0xFF;
+                physicalAddressLength = 6;
+                return 0;
+            });
+        Equal("00:AA:BB:CC:DD:22", successfulResolution);
+        Equal(1, Volatile.Read(ref successfulCalls));
+
+        foreach ((int nativeResult, int returnedLength) in new[] { (1, 6), (0, 8) })
+        {
+            string? resolved = MacAddressService.ResolveWithFreshNeighbor(
+                destinationAddress,
+                sourceAddress,
+                39,
+                (ref MacAddressService.MibIpNetRow2 _) => 1_168,
+                (uint _, uint _, byte[] buffer, ref int physicalAddressLength) =>
+                {
+                    Equal(8, buffer.Length);
+                    Equal(8, physicalAddressLength);
+                    byte[] response = [0x00, 0xAA, 0xBB, 0xCC, 0xDD, 0x22];
+                    response.CopyTo(buffer, 0);
+                    physicalAddressLength = returnedLength;
+                    return nativeResult;
+                });
+
+            Equal<string?>(null, resolved);
+        }
+    })),
+    ("Unexpected neighbor API errors fail closed", () => Sync(() =>
+    {
+        int sendArpCalls = 0;
+        string? resolved = MacAddressService.ResolveWithFreshNeighbor(
+            IPAddress.Parse("192.168.1.23"),
+            IPAddress.Parse("192.168.1.10"),
+            40,
+            (ref MacAddressService.MibIpNetRow2 _) => 5,
+            (uint _, uint _, byte[] _, ref int _) =>
+            {
+                Interlocked.Increment(ref sendArpCalls);
+                return 0;
+            });
+
+        Equal<string?>(null, resolved);
+        Equal(0, Volatile.Read(ref sendArpCalls));
+    })),
+    ("ARP scan session resolves and forwards the interface index once", async () =>
+    {
+        int interfaceIndexResolutions = 0;
+        int activeResolutions = 0;
+        MacAddressService service = new(
+            (_, _) => Task.FromResult<string?>(string.Empty),
+            (_, _, interfaceIndex, _) =>
+            {
+                Interlocked.Increment(ref activeResolutions);
+                Equal<uint?>(41, interfaceIndex);
+                return Task.FromResult<string?>("00-AA-BB-CC-DD-41");
+            },
+            networkInterface =>
+            {
+                Equal("test-interface", networkInterface.Id);
+                Interlocked.Increment(ref interfaceIndexResolutions);
+                return 41;
+            });
+        await using MacAddressService.ScanSession session =
+            service.CreateScanSession(CreateInterface());
+
+        Equal(1, Volatile.Read(ref interfaceIndexResolutions));
+        Equal(false, session.IsNeighborBaselineAvailable);
+        await session.InitializeAsync(CancellationToken.None);
+        Equal(true, session.IsNeighborBaselineAvailable);
+
+        Equal("00:AA:BB:CC:DD:41", await session.ResolveAsync(
+            IPAddress.Parse("192.168.1.41"),
+            CancellationToken.None));
+        Equal("00:AA:BB:CC:DD:41", await session.ResolveAsync(
+            IPAddress.Parse("192.168.1.42"),
+            CancellationToken.None));
+        Equal(1, Volatile.Read(ref interfaceIndexResolutions));
+        Equal(2, Volatile.Read(ref activeResolutions));
+    }),
     ("ARP scan session caches table and addresses", async () =>
     {
         int tableReads = 0;
@@ -1139,7 +1327,12 @@ List<(string Name, Func<Task> Run)> tests =
             session.ResolveAsync(tableAddress, CancellationToken.None),
             session.ResolveAsync(tableAddress, CancellationToken.None));
         True(tableResults.All(value => value == "00:11:22:33:44:55"),
-            "A tabela de vizinhos deveria resolver o endereço sem SendARP.");
+            "A tabela de vizinhos deveria resolver o endereço sem resolução ativa.");
+        MacAddressResolution? cachedEvidence = await session.ResolveWithEvidenceAsync(
+            tableAddress,
+            CancellationToken.None);
+        Equal(MacAddressResolutionSource.NeighborCache, cachedEvidence!.Source);
+        Equal(false, cachedEvidence.ConfirmsReachability);
 
         IPAddress activeAddress = IPAddress.Parse("192.168.1.30");
         string?[] activeResults = await Task.WhenAll(
@@ -1147,6 +1340,11 @@ List<(string Name, Func<Task> Run)> tests =
             session.ResolveAsync(activeAddress, CancellationToken.None));
         True(activeResults.All(value => value == "00:AA:BB:CC:DD:01"),
             "A resolução ativa deveria ser normalizada e reutilizada.");
+        MacAddressResolution? activeEvidence = await session.ResolveWithEvidenceAsync(
+            activeAddress,
+            CancellationToken.None);
+        Equal(MacAddressResolutionSource.ActiveArp, activeEvidence!.Source);
+        Equal(true, activeEvidence.ConfirmsReachability);
 
         IPAddress invalidAddress = IPAddress.Parse("192.168.1.40");
         Equal<string?>(null, await session.ResolveAsync(invalidAddress, CancellationToken.None));
@@ -1158,6 +1356,337 @@ List<(string Name, Func<Task> Run)> tests =
 
         Equal(1, Volatile.Read(ref tableReads));
         Equal(2, Volatile.Read(ref activeResolutions));
+    }),
+    ("ARP baseline is captured before reachability probes", async () =>
+    {
+        TaskCompletionSource tableRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseTable = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int pingProbes = 0;
+        int tcpProbes = 0;
+        IPAddress target = IPAddress.Parse("192.168.1.59");
+        MacAddressService macService = new(
+            async (_, cancellationToken) =>
+            {
+                tableRequested.TrySetResult();
+                await releaseTable.Task.WaitAsync(cancellationToken);
+                return string.Empty;
+            },
+            (_, _, _) => Task.FromResult<string?>(null));
+        NetworkScannerService scanner = new(
+            macService,
+            (_, _, _, _) =>
+            {
+                Interlocked.Increment(ref pingProbes);
+                return Task.FromResult(new PingProbeResult(false, null, null));
+            },
+            (_, _, _, _, _) =>
+            {
+                Interlocked.Increment(ref tcpProbes);
+                return Task.FromResult<int?>(null);
+            });
+
+        Task<NetworkScanResult> scanTask = scanner.ScanAsync(
+            [target],
+            CreateInterface(),
+            new ScanOptions
+            {
+                EnableIcmp = true,
+                EnableTcpDiscovery = true,
+                EnableArp = true,
+                EnableMulticastDiscovery = false,
+                EnableUpnpDescription = false,
+                EnableNetBiosDiscovery = false,
+                EnableServiceProbes = false,
+                Ports = [65_535],
+                DiscoveryPorts = [65_535]
+            });
+
+        try
+        {
+            await tableRequested.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Equal(0, Volatile.Read(ref pingProbes));
+            Equal(0, Volatile.Read(ref tcpProbes));
+        }
+        finally
+        {
+            releaseTable.TrySetResult();
+        }
+
+        await scanTask;
+        Equal(1, Volatile.Read(ref pingProbes));
+        Equal(1, Volatile.Read(ref tcpProbes));
+    }),
+    ("Cached ARP is never flushed by active resolution", async () =>
+    {
+        int activeResolutions = 0;
+        IPAddress target = IPAddress.Parse("192.168.1.60");
+        MacAddressService service = new(
+            (_, _) => Task.FromResult<string?>(
+                $"{target}  00-11-22-33-44-55  dynamic"),
+            (_, _, _) =>
+            {
+                Interlocked.Increment(ref activeResolutions);
+                return Task.FromResult<string?>("00-AA-BB-CC-DD-66");
+            });
+        await using MacAddressService.ScanSession session =
+            service.CreateScanSession(CreateInterface());
+
+        MacAddressResolution? cached = await session.ResolveWithEvidenceAsync(
+            target,
+            CancellationToken.None);
+        Equal("00:11:22:33:44:55", cached!.MacAddress);
+        Equal(MacAddressResolutionSource.NeighborCache, cached.Source);
+        Equal(false, cached.ConfirmsReachability);
+
+        MacAddressResolution? repeated = await session.ResolveWithEvidenceAsync(
+            target,
+            CancellationToken.None);
+        Equal("00:11:22:33:44:55", repeated!.MacAddress);
+        Equal(MacAddressResolutionSource.NeighborCache, repeated.Source);
+        Equal(false, repeated.ConfirmsReachability);
+        Equal(0, Volatile.Read(ref activeResolutions));
+    }),
+    ("Active ARP fails closed when the neighbor table is unavailable", async () =>
+    {
+        int activeResolutions = 0;
+        MacAddressService service = new(
+            (_, _) => Task.FromResult<string?>(null),
+            (_, _, _) =>
+            {
+                Interlocked.Increment(ref activeResolutions);
+                return Task.FromResult<string?>("00-AA-BB-CC-DD-61");
+            });
+
+        await using MacAddressService.ScanSession session =
+            service.CreateScanSession(CreateInterface());
+        await session.InitializeAsync(CancellationToken.None);
+        Equal(false, session.IsNeighborBaselineAvailable);
+
+        MacAddressResolution? resolution = await session.ResolveWithEvidenceAsync(
+            IPAddress.Parse("192.168.1.61"),
+            CancellationToken.None);
+
+        Equal<MacAddressResolution?>(null, resolution);
+        Equal(0, Volatile.Read(ref activeResolutions));
+    }),
+    ("Unavailable ARP baseline is reported without invalidating other protocols", async () =>
+    {
+        int activeResolutions = 0;
+        IPAddress target = IPAddress.Parse("127.0.0.2");
+        LocalNetworkInterface loopbackInterface = new()
+        {
+            Id = "test-loopback-baseline-unavailable",
+            Name = "Loopback",
+            Description = "Interface loopback sem baseline ARP",
+            IpAddress = IPAddress.Loopback,
+            SubnetMask = IPAddress.Parse("255.0.0.0"),
+            GatewayAddress = IPAddress.Loopback,
+            MacAddress = "00:AA:BB:CC:DD:EE",
+            InterfaceType = NetworkInterfaceType.Ethernet,
+            SpeedBitsPerSecond = 1_000_000_000
+        };
+        MacAddressService macService = new(
+            (_, _) => Task.FromResult<string?>(null),
+            (_, _, _) =>
+            {
+                Interlocked.Increment(ref activeResolutions);
+                return Task.FromResult<string?>("00-AA-BB-CC-DD-62");
+            });
+        NetworkScannerService scanner = new(
+            macService,
+            (_, _, _, _) => Task.FromResult(new PingProbeResult(true, 1, 128)),
+            (_, _, _, _, _) => Task.FromResult<int?>(null));
+
+        NetworkScanResult result = await scanner.ScanAsync(
+            [target],
+            loopbackInterface,
+            new ScanOptions
+            {
+                EnableIcmp = true,
+                EnableTcpDiscovery = false,
+                EnableArp = true,
+                EnableMulticastDiscovery = false,
+                EnableUpnpDescription = false,
+                EnableNetBiosDiscovery = false,
+                EnableServiceProbes = false,
+                Ports = [65_535],
+                DiscoveryPorts = [65_535]
+            });
+
+        Equal(1, result.Devices.Count);
+        Equal(true, result.Devices[0].DiscoveryMethods.HasFlag(DiscoveryMethod.Icmp));
+        Equal(false, result.Devices[0].DiscoveryMethods.HasFlag(DiscoveryMethod.Arp));
+        Equal(0, Volatile.Read(ref activeResolutions));
+        True(result.Diagnostics.Any(item =>
+                item.Code.Equals(DiagnosticCatalog.ArpBaselineUnavailableCode, StringComparison.Ordinal)),
+            "A degradação ARP deveria ficar visível sem invalidar o dispositivo ICMP.");
+    }),
+    ("Cached ARP alone does not promote an offline host", async () =>
+    {
+        int tableReads = 0;
+        int activeResolutions = 0;
+        int pingProbes = 0;
+        int tcpProbes = 0;
+        IPAddress target = IPAddress.Parse("192.168.1.70");
+        MacAddressService macService = new(
+            (_, _) =>
+            {
+                Interlocked.Increment(ref tableReads);
+                return Task.FromResult<string?>(
+                    $"{target}  00-11-22-33-44-77  dynamic");
+            },
+            (_, _, _) =>
+            {
+                Interlocked.Increment(ref activeResolutions);
+                return Task.FromResult<string?>(null);
+            });
+        NetworkScannerService scanner = new(
+            macService,
+            (_, _, _, _) =>
+            {
+                Interlocked.Increment(ref pingProbes);
+                return Task.FromResult(new PingProbeResult(false, null, null));
+            },
+            (_, _, _, _, _) =>
+            {
+                Interlocked.Increment(ref tcpProbes);
+                return Task.FromResult<int?>(null);
+            });
+
+        NetworkScanResult result = await scanner.ScanAsync(
+            [target],
+            CreateInterface(),
+            new ScanOptions
+            {
+                EnableIcmp = true,
+                EnableTcpDiscovery = true,
+                EnableArp = true,
+                EnableMulticastDiscovery = false,
+                EnableUpnpDescription = false,
+                EnableNetBiosDiscovery = false,
+                EnableServiceProbes = false,
+                Ports = [65_535],
+                DiscoveryPorts = [65_535]
+            });
+
+        Equal(0, result.Devices.Count);
+        Equal(1, Volatile.Read(ref pingProbes));
+        Equal(1, Volatile.Read(ref tcpProbes));
+        Equal(0, Volatile.Read(ref activeResolutions));
+        Equal(1, Volatile.Read(ref tableReads));
+    }),
+    ("Fresh ARP promotes an otherwise silent local host", async () =>
+    {
+        int tableReads = 0;
+        int activeResolutions = 0;
+        IPAddress target = IPAddress.Parse("127.0.0.2");
+        LocalNetworkInterface loopbackInterface = new()
+        {
+            Id = "test-loopback-active",
+            Name = "Loopback",
+            Description = "Interface loopback de teste ARP",
+            IpAddress = IPAddress.Loopback,
+            SubnetMask = IPAddress.Parse("255.0.0.0"),
+            GatewayAddress = IPAddress.Loopback,
+            MacAddress = "00:AA:BB:CC:DD:EE",
+            InterfaceType = NetworkInterfaceType.Ethernet,
+            SpeedBitsPerSecond = 1_000_000_000
+        };
+        MacAddressService macService = new(
+            (_, _) =>
+            {
+                Interlocked.Increment(ref tableReads);
+                return Task.FromResult<string?>(string.Empty);
+            },
+            (_, _, _) =>
+            {
+                Interlocked.Increment(ref activeResolutions);
+                return Task.FromResult<string?>("00-AA-BB-CC-DD-71");
+            });
+        NetworkScannerService scanner = new(
+            macService,
+            (_, _, _, _) => Task.FromResult(new PingProbeResult(false, null, null)),
+            (_, _, _, _, _) => Task.FromResult<int?>(null));
+
+        NetworkScanResult result = await scanner.ScanAsync(
+            [target],
+            loopbackInterface,
+            new ScanOptions
+            {
+                EnableIcmp = true,
+                EnableTcpDiscovery = true,
+                EnableArp = true,
+                EnableMulticastDiscovery = false,
+                EnableUpnpDescription = false,
+                EnableNetBiosDiscovery = false,
+                EnableServiceProbes = false,
+                Ports = [65_535],
+                DiscoveryPorts = [65_535]
+            });
+
+        Equal(1, result.Devices.Count);
+        NetworkDevice device = result.Devices[0];
+        Equal("00:AA:BB:CC:DD:71", device.MacAddress);
+        Equal(true, device.DiscoveryMethods.HasFlag(DiscoveryMethod.Arp));
+        Equal(true, device.Topology.SameLayer2Segment);
+        Equal(true, device.ObservedProtocols.Contains("ARP"));
+        Equal(1, Volatile.Read(ref activeResolutions));
+        Equal(1, Volatile.Read(ref tableReads));
+    }),
+    ("Cached ARP enriches a confirmed host without fresh ARP evidence", async () =>
+    {
+        int activeResolutions = 0;
+        IPAddress target = IPAddress.Parse("127.0.0.2");
+        LocalNetworkInterface loopbackInterface = new()
+        {
+            Id = "test-loopback",
+            Name = "Loopback",
+            Description = "Interface loopback de teste",
+            IpAddress = IPAddress.Loopback,
+            SubnetMask = IPAddress.Parse("255.0.0.0"),
+            GatewayAddress = IPAddress.Loopback,
+            MacAddress = "00:AA:BB:CC:DD:EE",
+            InterfaceType = NetworkInterfaceType.Ethernet,
+            SpeedBitsPerSecond = 1_000_000_000
+        };
+        MacAddressService macService = new(
+            (_, _) => Task.FromResult<string?>(
+                $"{target}  00-11-22-33-44-88  dynamic"),
+            (_, _, _) =>
+            {
+                Interlocked.Increment(ref activeResolutions);
+                return Task.FromResult<string?>(null);
+            });
+        NetworkScannerService scanner = new(
+            macService,
+            (_, _, _, _) => Task.FromResult(new PingProbeResult(true, 1, 128)),
+            (_, _, _, _, _) => Task.FromResult<int?>(null));
+
+        NetworkScanResult result = await scanner.ScanAsync(
+            [target],
+            loopbackInterface,
+            new ScanOptions
+            {
+                EnableIcmp = true,
+                EnableTcpDiscovery = true,
+                EnableArp = true,
+                EnableMulticastDiscovery = false,
+                EnableUpnpDescription = false,
+                EnableNetBiosDiscovery = false,
+                EnableServiceProbes = false,
+                ConnectTimeoutMs = 50,
+                Ports = [65_535],
+                DiscoveryPorts = [65_535]
+            });
+
+        Equal(1, result.Devices.Count);
+        NetworkDevice device = result.Devices[0];
+        Equal("00:11:22:33:44:88", device.MacAddress);
+        Equal(true, device.DiscoveryMethods.HasFlag(DiscoveryMethod.Icmp));
+        Equal(false, device.DiscoveryMethods.HasFlag(DiscoveryMethod.Arp));
+        Equal<bool?>(null, device.Topology.SameLayer2Segment);
+        Equal(false, device.ObservedProtocols.Contains("ARP"));
+        Equal(0, Volatile.Read(ref activeResolutions));
     }),
     ("ARP scan session propagates cancellation", async () =>
     {
@@ -2723,6 +3252,60 @@ List<(string Name, Func<Task> Run)> tests =
             window.Arrange(new Rect(0, 0, 1_440, 880));
             window.UpdateLayout();
 
+            ToggleButton? configurationToggle =
+                window.FindName("ScanConfigurationToggle") as ToggleButton;
+            ScrollViewer? configurationPanel =
+                window.FindName("ScanConfigurationPanel") as ScrollViewer;
+            Button? progressCancelButton =
+                window.FindName("ProgressCancelButton") as Button;
+            TextBlock? emptyStateTitle =
+                window.FindName("EmptyStateTitleText") as TextBlock;
+            NotNull(configurationToggle);
+            NotNull(configurationPanel);
+            NotNull(progressCancelButton);
+            NotNull(emptyStateTitle);
+            Equal(true, window.ViewModel.IsScanConfigurationExpanded);
+            Equal("Ocultar configuração", configurationToggle!.Content?.ToString());
+            Equal(Visibility.Visible, configurationPanel!.Visibility);
+            Equal(Visibility.Collapsed, progressCancelButton!.Visibility);
+            Equal("Ainda não existem resultados", emptyStateTitle!.Text);
+
+            window.ViewModel.IsScanConfigurationExpanded = false;
+            configurationToggle.GetBindingExpression(ContentControl.ContentProperty)?.UpdateTarget();
+            configurationPanel.GetBindingExpression(UIElement.VisibilityProperty)?.UpdateTarget();
+            Equal("Configuração do scan", configurationToggle.Content?.ToString());
+            Equal(Visibility.Collapsed, configurationPanel.Visibility);
+            window.ViewModel.IsScanConfigurationExpanded = true;
+
+            PropertyInfo isScanningProperty = typeof(MainViewModel)
+                .GetProperty(nameof(MainViewModel.IsScanning))!;
+            PropertyInfo isCancellingProperty = typeof(MainViewModel)
+                .GetProperty(nameof(MainViewModel.IsCancelling))!;
+            PropertyInfo progressPhaseProperty = typeof(MainViewModel)
+                .GetProperty(nameof(MainViewModel.ProgressPhase))!;
+            PropertyInfo statusMessageProperty = typeof(MainViewModel)
+                .GetProperty(nameof(MainViewModel.StatusMessage))!;
+            FieldInfo activeGenerationField = typeof(MainViewModel)
+                .GetField("_activeProgressGeneration", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            MethodInfo applyProgressMethod = typeof(MainViewModel)
+                .GetMethod("ApplyProgress", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            isScanningProperty.SetValue(window.ViewModel, true);
+            isCancellingProperty.SetValue(window.ViewModel, true);
+            progressPhaseProperty.SetValue(window.ViewModel, "A cancelar");
+            statusMessageProperty.SetValue(window.ViewModel, "A cancelar o scan com segurança...");
+            activeGenerationField.SetValue(window.ViewModel, 42L);
+            applyProgressMethod.Invoke(
+                window.ViewModel,
+                [42L, new ScanProgress("Descoberta", 1, 2, 0, "Mensagem tardia")]);
+            emptyStateTitle.GetBindingExpression(TextBlock.TextProperty)?.UpdateTarget();
+            Equal("A cancelar o scan", emptyStateTitle.Text);
+            Equal("A cancelar", window.ViewModel.ProgressPhase);
+            Equal("A cancelar o scan com segurança...", window.ViewModel.StatusMessage);
+            Equal(1, window.ViewModel.ScannedCount);
+            activeGenerationField.SetValue(window.ViewModel, 0L);
+            isCancellingProperty.SetValue(window.ViewModel, false);
+            isScanningProperty.SetValue(window.ViewModel, false);
+
             result.Devices[0].ResponseTimeMs = 7;
             row.Update(result.Devices[0]);
             window.UpdateLayout();
@@ -2859,6 +3442,25 @@ static LocalNetworkInterface CreateInterface() => new()
     InterfaceType = NetworkInterfaceType.Ethernet,
     SpeedBitsPerSecond = 1_000_000_000
 };
+
+static void SetNeighborRow(
+    ref MacAddressService.MibIpNetRow2 row,
+    IReadOnlyList<byte> macAddress,
+    uint physicalAddressLength,
+    int state,
+    byte flags = 0)
+{
+    Equal(6, macAddress.Count);
+    row.PhysicalAddressByte0 = macAddress[0];
+    row.PhysicalAddressByte1 = macAddress[1];
+    row.PhysicalAddressByte2 = macAddress[2];
+    row.PhysicalAddressByte3 = macAddress[3];
+    row.PhysicalAddressByte4 = macAddress[4];
+    row.PhysicalAddressByte5 = macAddress[5];
+    row.PhysicalAddressLength = physicalAddressLength;
+    row.State = state;
+    row.Flags = flags;
+}
 
 static NetworkScanResult CreateResult(
     IReadOnlyList<NetworkDevice> devices,

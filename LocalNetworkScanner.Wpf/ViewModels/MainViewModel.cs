@@ -53,12 +53,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string _elapsedText = "00:00";
     private double _progressPercentage;
     private bool _isAdvancedMode;
+    private bool _isScanConfigurationExpanded = true;
     private bool _isLoadingInterfaces;
     private bool _isScanning;
     private bool _isCancelling;
     private bool _suppressAutomaticCidr;
     private bool _hasInitialized;
     private bool _isSynchronizingTopologySelection;
+    private long _progressGeneration;
+    private long _activeProgressGeneration;
     private int _maximumHosts = 4_096;
     private int _maximumHostConcurrency = 96;
     private int _maximumPortConcurrency = 48;
@@ -144,7 +147,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         DevicesView = CollectionViewSource.GetDefaultView(Devices);
         DevicesView.Filter = FilterDevice;
 
-        ScanCommand = new AsyncRelayCommand(ScanAsync, CanStartScan, HandleUnexpectedException);
+        ScanCommand = new AsyncRelayCommand(ScanAsync, CanStartScan, HandleUnexpectedScanException);
         RefreshInterfacesCommand = new AsyncRelayCommand(
             RefreshInterfacesAsync,
             () => !IsScanning && !IsLoadingInterfaces,
@@ -397,7 +400,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string ProgressPhase
     {
         get => _progressPhase;
-        private set => SetProperty(ref _progressPhase, value);
+        private set
+        {
+            if (SetProperty(ref _progressPhase, value))
+                NotifyEmptyStateChanged();
+        }
     }
 
     public string ElapsedText
@@ -420,12 +427,23 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (!SetProperty(ref _isAdvancedMode, value))
                 return;
 
-            OnPropertyChanged(nameof(ModeLabel));
             OnPropertyChanged(nameof(SelectedProfileDescription));
             OnPropertyChanged(nameof(HasNmapPathValidationError));
             OnPropertyChanged(nameof(HasBlockingInputValidationErrors));
             OnPropertyChanged(nameof(InputValidationMessage));
             RaiseScanCanExecuteChanged();
+        }
+    }
+
+    public bool IsScanConfigurationExpanded
+    {
+        get => _isScanConfigurationExpanded;
+        set
+        {
+            if (!SetProperty(ref _isScanConfigurationExpanded, value))
+                return;
+
+            OnPropertyChanged(nameof(ScanConfigurationToggleLabel));
         }
     }
 
@@ -456,6 +474,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             OnPropertyChanged(nameof(CanEditScanSettings));
             OnPropertyChanged(nameof(IsNotScanning));
+            NotifyEmptyStateChanged();
             RaiseAllCanExecuteChanged();
         }
     }
@@ -465,8 +484,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get => _isCancelling;
         private set
         {
-            if (SetProperty(ref _isCancelling, value))
-                CancelCommand.RaiseCanExecuteChanged();
+            if (!SetProperty(ref _isCancelling, value))
+                return;
+
+            NotifyEmptyStateChanged();
+            CancelCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -660,6 +682,42 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool CanEditScanSettings => !IsScanning && !IsLoadingInterfaces;
     public bool IsNotScanning => !IsScanning;
     public bool HasNoVisibleDevices => Devices.Count > 0 && VisibleDeviceCount == 0;
+    public string ScanConfigurationToggleLabel => IsScanConfigurationExpanded
+        ? "Ocultar configuração"
+        : "Configuração do scan";
+    public string EmptyStateTitle => IsCancelling
+        ? "A cancelar o scan"
+        : IsScanning
+            ? "A procurar dispositivos"
+        : _lastResult?.IsPartial == true
+            ? "Scan cancelado sem resultados completos"
+            : ProgressPhase.Equals("Erro", StringComparison.Ordinal)
+                ? "O scan não pôde ser concluído"
+                : _lastResult is not null
+                    ? "Scan concluído sem dispositivos"
+                    : "Ainda não existem resultados";
+    public string EmptyStateDescription => IsCancelling
+        ? "A terminar as operações de rede em curso e a preservar todos os resultados parciais já confirmados."
+        : IsScanning
+            ? "Os dispositivos aparecem aqui à medida que forem confirmados. Podes cancelar sem perder resultados já encontrados."
+        : _lastResult?.IsPartial == true
+            ? "Não foi concluído qualquer dispositivo antes do cancelamento. Consulta os diagnósticos e repete o scan quando estiveres pronto."
+            : ProgressPhase.Equals("Erro", StringComparison.Ordinal)
+                ? "Consulta o diagnóstico apresentado abaixo e revê a interface, a rede e os parâmetros antes de tentar novamente."
+                : _lastResult is not null
+                    ? "O scan terminou, mas nenhum dispositivo foi confirmado online. Confirma o CIDR, a interface e eventuais regras de firewall."
+                    : "Seleciona uma interface e inicia um scan. Os dispositivos aparecem aqui à medida que forem encontrados.";
+    public string EmptyStateGlyph => IsCancelling
+        ? "\uE711"
+        : IsScanning
+            ? "\uE895"
+        : ProgressPhase.Equals("Erro", StringComparison.Ordinal)
+            ? "\uEA39"
+            : _lastResult?.IsPartial == true
+                ? "\uE7BA"
+                : _lastResult is not null
+                    ? "\uE711"
+                    : "\uE950";
     public bool HasInputValidationErrors => _inputValidationErrorCount > 0;
     public bool HasNmapPathValidationError => IsAdvancedMode &&
         EnableNmapDiscovery &&
@@ -683,7 +741,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool HasWarnings => Warnings.Count > 0;
     public bool IsSnmpEnabled => EnableSnmpDeviceDiscovery || EnableSnmpTopology;
     public bool IsNmapProfileEligible => SelectedProfile.Value == ScanProfile.Deep;
-    public string ModeLabel => IsAdvancedMode ? "Ocultar ajustes técnicos" : "Personalizar scan";
     public string SelectedProfileDescription => IsAdvancedMode
         ? $"{SelectedProfile.Description}. As opções abaixo substituem o perfil."
         : SelectedProfile.Description;
@@ -891,6 +948,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         ClearResultsCore();
         SaveSettings();
+        long progressGeneration = Interlocked.Increment(ref _progressGeneration);
+        Volatile.Write(ref _activeProgressGeneration, progressGeneration);
+        IsScanConfigurationExpanded = false;
         IsScanning = true;
         IsCancelling = false;
         _scanStartedAt = DateTimeOffset.UtcNow;
@@ -903,7 +963,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            Progress<ScanProgress> progress = new(ApplyProgress);
+            Progress<ScanProgress> progress = new(
+                update => ApplyProgress(progressGeneration, update));
             NetworkScanResult result = await _scanner.ScanAsync(
                 prepared.Addresses,
                 prepared.NetworkInterface,
@@ -911,6 +972,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 progress,
                 _scanCancellation.Token);
 
+            DeactivateProgress(progressGeneration);
             FlushPendingDeviceUpdates();
             if (EnableHistory)
             {
@@ -948,6 +1010,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             // Progress<T> publica no Dispatcher. Cede a prioridade uma vez para que
             // observações já enfileiradas entrem no snapshot parcial antes da exportação.
             await Dispatcher.Yield(DispatcherPriority.Background);
+            DeactivateProgress(progressGeneration);
             FlushPendingDeviceUpdates();
             IReadOnlyList<NetworkDevice> partialDevices = Devices
                 .Select(item => item.Device)
@@ -980,11 +1043,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             exception is InvalidOperationException or ArgumentException or FormatException or IOException)
         {
             ScanDiagnostic diagnostic = DiagnosticMapper.FromException(exception, NetworkCidr);
+            DeactivateProgress(progressGeneration);
             ProgressPhase = "Erro";
+            IsScanConfigurationExpanded = true;
             PresentDiagnostic("Não foi possível concluir o scan", diagnostic);
         }
         finally
         {
+            DeactivateProgress(progressGeneration);
             UpdateElapsedTime();
             _uiTimer.Stop();
             _scanCancellation?.Dispose();
@@ -999,6 +1065,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         if (SelectedNetworkInterface is null)
         {
+            IsScanConfigurationExpanded = true;
             PresentDiagnostic("Interface necessária", DiagnosticCatalog.InvalidInterface("nenhuma interface selecionada"));
             return null;
         }
@@ -1050,6 +1117,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         catch (Exception exception) when (
             exception is InvalidOperationException or ArgumentException or FormatException)
         {
+            IsScanConfigurationExpanded = true;
             PresentDiagnostic(
                 "Configuração inválida",
                 DiagnosticMapper.FromException(exception, NetworkCidr));
@@ -1193,18 +1261,33 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 label);
     }
 
-    private void ApplyProgress(ScanProgress update)
+    private void ApplyProgress(long progressGeneration, ScanProgress update)
     {
-        ProgressPhase = update.Phase;
+        if (progressGeneration != Volatile.Read(ref _activeProgressGeneration))
+            return;
+
         ProgressPercentage = update.Percentage;
         OnlineCount = update.Online;
-        StatusMessage = update.Message;
+
+        if (!IsCancelling)
+        {
+            ProgressPhase = update.Phase;
+            StatusMessage = update.Message;
+        }
 
         if (update.Phase.Equals("Descoberta", StringComparison.OrdinalIgnoreCase))
             ScannedCount = update.Completed;
 
         if (update.Device is not null)
             _pendingDeviceUpdates[update.Device.IpAddressText] = update.Device;
+    }
+
+    private void DeactivateProgress(long progressGeneration)
+    {
+        Interlocked.CompareExchange(
+            ref _activeProgressGeneration,
+            0,
+            progressGeneration);
     }
 
     private void OnUiTimerTick(object? sender, EventArgs e)
@@ -1355,6 +1438,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
 
         ClearResultsCore();
+        IsScanConfigurationExpanded = true;
         ProgressPhase = "Pronto";
         StatusMessage = "Resultados limpos. Pronto para um novo scan.";
         ElapsedText = "00:00";
@@ -1768,6 +1852,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasNoVisibleDevices));
     }
 
+    private void NotifyEmptyStateChanged()
+    {
+        OnPropertyChanged(nameof(EmptyStateTitle));
+        OnPropertyChanged(nameof(EmptyStateDescription));
+        OnPropertyChanged(nameof(EmptyStateGlyph));
+    }
+
     private bool CanStartScan() =>
         !IsScanning &&
         !IsLoadingInterfaces &&
@@ -1863,6 +1954,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         PresentDiagnostic(
             "Erro inesperado",
             DiagnosticMapper.FromException(exception, "interface gráfica"));
+    }
+
+    private void HandleUnexpectedScanException(Exception exception)
+    {
+        Volatile.Write(ref _activeProgressGeneration, 0);
+        ProgressPhase = "Erro";
+        IsScanConfigurationExpanded = true;
+        PresentDiagnostic(
+            "Erro inesperado durante o scan",
+            DiagnosticMapper.FromException(exception, NetworkCidr));
     }
 
     private static string ConfidenceToText(ConfidenceLevel confidence) => confidence switch

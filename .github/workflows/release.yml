@@ -526,7 +526,7 @@ jobs:
 
   package:
     name: Select isolated release package path
-    if: always() && needs.preflight.result == 'success'
+    if: ${{ !cancelled() && needs.preflight.result == 'success' }}
     needs: [preflight, package-private-qa, package-public]
     runs-on: windows-latest
     timeout-minutes: 5
@@ -564,6 +564,7 @@ jobs:
 
   validate-x64:
     name: Validate exact x64 package and installer
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.package.result == 'success' }}
     needs: [preflight, package]
     runs-on: windows-latest
     timeout-minutes: 15
@@ -606,6 +607,7 @@ jobs:
 
   validate-arm64:
     name: Validate exact package on native Windows ARM64
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.package.result == 'success' && needs.validate-x64.result == 'success' }}
     needs: [preflight, package, validate-x64]
     runs-on: windows-11-arm
     timeout-minutes: 20
@@ -675,10 +677,150 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  validation-gate:
+    name: Require successful native Windows validation
+    if: ${{ !cancelled() }}
+    needs: [preflight, package, validate-x64, validate-arm64]
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Require package and native validation jobs
+        shell: pwsh
+        env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          PACKAGE_RESULT: ${{ needs.package.result }}
+          X64_RESULT: ${{ needs.validate-x64.result }}
+          ARM64_RESULT: ${{ needs.validate-arm64.result }}
+          PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
+          SIGNING_STATE: ${{ needs.package.outputs.signing_state }}
+        run: |
+          $requiredResults = [ordered]@{
+            Preflight = $env:PREFLIGHT_RESULT
+            Package = $env:PACKAGE_RESULT
+            'Native x64 validation' = $env:X64_RESULT
+            'Native ARM64 validation' = $env:ARM64_RESULT
+          }
+          $failedResults = @($requiredResults.GetEnumerator() | Where-Object {
+            $_.Value -ne 'success'
+          })
+
+          $expectedSigningState = if ($env:PUBLIC_RELEASE -eq 'true') {
+            'Signed'
+          }
+          else {
+            'NotSigned'
+          }
+
+          @(
+            '## Native Windows validation gate',
+            '',
+            "- Preflight: ``$env:PREFLIGHT_RESULT``",
+            "- Package selection: ``$env:PACKAGE_RESULT``",
+            "- Native x64 validation: ``$env:X64_RESULT``",
+            "- Native ARM64 validation: ``$env:ARM64_RESULT``",
+            "- Signing state: ``$env:SIGNING_STATE``"
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+
+          if ($failedResults.Count -ne 0) {
+            $details = $failedResults | ForEach-Object { "$($_.Key)=$($_.Value)" }
+            throw "LNS-REL-007: release validation did not complete successfully: $($details -join ', ')."
+          }
+          if ($env:SIGNING_STATE -ne $expectedSigningState) {
+            throw "LNS-REL-005: selected package signing state is '$env:SIGNING_STATE'; expected '$expectedSigningState'."
+          }
+
+      - name: Download exact validated payload
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          gh run download $env:GITHUB_RUN_ID `
+            --repo $env:GITHUB_REPOSITORY `
+            --name "LocalNetworkScanner-$env:RELEASE_VERSION-windows-validated" `
+            --dir .\artifacts\release
+          if ($LASTEXITCODE -ne 0) {
+            throw 'LNS-REL-008: unable to download the exact validated payload.'
+          }
+
+      - name: Verify exact validated payload contract
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+          PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
+        run: |
+          $releaseRoot = (Resolve-Path .\artifacts\release).Path
+          $binaryNames = @(
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-x64.zip",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-arm64.zip",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-x64-setup.exe",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-arm64-setup.exe"
+          )
+          $expectedNames = @(
+            $binaryNames
+            $binaryNames | ForEach-Object { "$_.sha256" }
+            'SHA256SUMS.txt'
+            'SIGNING-STATE.txt'
+          ) | Sort-Object
+          $actualNames = @(Get-ChildItem -LiteralPath $releaseRoot -File |
+            Select-Object -ExpandProperty Name |
+            Sort-Object)
+          $difference = @(
+            Compare-Object -ReferenceObject $expectedNames -DifferenceObject $actualNames
+          )
+          if ($difference.Count -ne 0) {
+            throw "LNS-REL-008: validated payload does not match the exact 10-file contract: $($difference | Out-String)"
+          }
+
+          $manifestLines = @(Get-Content -LiteralPath (Join-Path $releaseRoot 'SHA256SUMS.txt'))
+          if ($manifestLines.Count -ne $binaryNames.Count) {
+            throw "LNS-REL-008: SHA256SUMS.txt must contain exactly $($binaryNames.Count) entries."
+          }
+          foreach ($binaryName in $binaryNames) {
+            $binaryPath = Join-Path $releaseRoot $binaryName
+            $expectedLine = '{0} *{1}' -f (
+              Get-FileHash -LiteralPath $binaryPath -Algorithm SHA256
+            ).Hash.ToLowerInvariant(), $binaryName
+            if ((Get-Content -LiteralPath "$binaryPath.sha256" -Raw).Trim() -cne $expectedLine -or
+                $manifestLines -cnotcontains $expectedLine) {
+              throw "LNS-REL-008: checksum mismatch for $binaryName."
+            }
+          }
+
+          $expectedSigningState = if ($env:PUBLIC_RELEASE -eq 'true') {
+            'Signed'
+          }
+          else {
+            'NotSigned'
+          }
+          $expectedReleaseMode = if ($env:PUBLIC_RELEASE -eq 'true') {
+            'PublicRelease'
+          }
+          else {
+            'PrivateQa'
+          }
+          $state = @(Get-Content -LiteralPath (Join-Path $releaseRoot 'SIGNING-STATE.txt'))
+          foreach ($requiredState in @(
+              "Version: $env:RELEASE_VERSION",
+              "Authenticode: $expectedSigningState",
+              'Native x64: Validated',
+              'Native ARM64: Validated',
+              "Release mode: $expectedReleaseMode"
+            )) {
+            if ($state -cnotcontains $requiredState) {
+              throw "LNS-REL-007: SIGNING-STATE.txt is missing '$requiredState'."
+            }
+          }
+          Write-Host "Exact $expectedReleaseMode payload passed the terminal native validation gate."
+
   publish:
     name: Publish immutable GitHub Release
-    if: needs.preflight.outputs.public_release == 'true'
-    needs: [preflight, package, validate-x64, validate-arm64]
+    if: needs.preflight.outputs.public_release == 'true' && needs.validation-gate.result == 'success'
+    needs: [preflight, package, validation-gate]
     runs-on: windows-latest
     timeout-minutes: 10
     permissions:
