@@ -16,12 +16,19 @@ public partial class MainWindow : Window
     private int _inputValidationErrorCount;
 
     public MainWindow()
+        : this(new UiSettingsService())
     {
+    }
+
+    public MainWindow(UiSettingsService settingsService)
+    {
+        ArgumentNullException.ThrowIfNull(settingsService);
         InitializeComponent();
         ViewModel = new MainViewModel(
             new UserDialogService(),
             new DesktopActionService(),
-            new UiSettingsService());
+            settingsService);
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         DataContext = ViewModel;
     }
 
@@ -73,7 +80,18 @@ public partial class MainWindow : Window
 
         _topologyWindow?.Close();
         ViewModel.SaveSettings();
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         ViewModel.Dispose();
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.SnmpCommunity) &&
+            string.IsNullOrEmpty(ViewModel.SnmpCommunity) &&
+            SnmpCommunityPasswordBox.Password.Length > 0)
+        {
+            SnmpCommunityPasswordBox.Clear();
+        }
     }
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)

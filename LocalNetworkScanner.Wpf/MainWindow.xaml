@@ -261,15 +261,22 @@
         </Border>
         </ScrollViewer>
 
-        <Expander Grid.Row="2"
+        <Expander x:Name="CustomScanSettingsExpander"
+                  Grid.Row="2"
                   Margin="0,10,0,0"
-                  IsExpanded="{Binding IsAdvancedMode, Mode=TwoWay}"
+                  IsExpanded="{Binding IsCustomScanSettingsExpanded, Mode=TwoWay}"
                   IsEnabled="{Binding CanEditScanSettings}"
                   Visibility="{Binding IsScanConfigurationExpanded, Converter={StaticResource BooleanToVisibilityConverter}}"
                   AutomationProperties.Name="Parâmetros técnicos personalizados do scan">
             <Expander.Header>
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="Parâmetros técnicos personalizados" />
+                    <TextBlock Margin="10,0,0,0"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource AccentBrush}"
+                               Text="{Binding CustomOverridesStatus}"
+                               AutomationProperties.LiveSetting="Polite" />
                     <TextBlock Margin="10,0,0,0"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource DangerBrush}"
@@ -283,7 +290,38 @@
                            VerticalScrollBarVisibility="Auto">
             <Border MinWidth="920" Margin="0,7,0,0" Style="{StaticResource CardBorderStyle}">
                 <StackPanel>
-                    <UniformGrid Columns="7">
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <CheckBox x:Name="UseCustomScanSettingsToggle"
+                                  VerticalAlignment="Center"
+                                  IsChecked="{Binding UseCustomScanSettings, Mode=TwoWay}"
+                                  Content="Usar definições personalizadas"
+                                  FontWeight="SemiBold"
+                                  AutomationProperties.Name="Usar definições personalizadas do scan"
+                                  AutomationProperties.HelpText="Quando está desligado, o perfil selecionado controla integralmente os parâmetros técnicos." />
+                        <TextBlock Grid.Column="1"
+                                   Margin="14,0,14,0"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="{Binding CustomSettingsExplanation}"
+                                   TextWrapping="Wrap" />
+                        <Button x:Name="ResetProfileOverridesButton"
+                                Grid.Column="2"
+                                Style="{StaticResource CompactButtonStyle}"
+                                Command="{Binding ResetProfileOverridesCommand}"
+                                Content="Repor valores do perfil"
+                                ToolTip="Repõe os parâmetros técnicos nos valores do perfil selecionado sem alterar o histórico local."
+                                AutomationProperties.Name="Repor definições personalizadas para os valores do perfil"
+                                AutomationProperties.HelpText="Remove as substituições técnicas e mantém a utilização de definições personalizadas no estado atual." />
+                    </Grid>
+
+                    <UniformGrid Columns="7"
+                                 IsEnabled="{Binding UseCustomScanSettings}">
                         <StackPanel Margin="0,0,10,0">
                             <Label Content="Portas" />
                             <TextBox Text="{Binding CustomPorts, UpdateSourceTrigger=PropertyChanged}"
@@ -292,7 +330,8 @@
                         </StackPanel>
                         <StackPanel Margin="0,0,10,0">
                             <Label Content="Máx. endereços" />
-                            <TextBox Style="{StaticResource ValidatedNumericTextBoxStyle}"
+                            <TextBox x:Name="MaximumHostsTextBox"
+                                     Style="{StaticResource ValidatedNumericTextBoxStyle}"
                                      AutomationProperties.Name="Máximo de endereços">
                                 <TextBox.Text>
                                     <Binding Path="MaximumHosts"
@@ -400,7 +439,8 @@
                         </StackPanel>
                     </UniformGrid>
 
-                    <WrapPanel Margin="0,13,0,0">
+                    <StackPanel Margin="0,13,0,0">
+                    <WrapPanel IsEnabled="{Binding UseCustomScanSettings}">
                         <CheckBox Margin="0,3,20,3"
                                   IsChecked="{Binding EnableIcmp}"
                                   Content="ICMP / ping"
@@ -449,14 +489,16 @@
                                   ToolTip="Disponível apenas no perfil Avançado. Requer uma instalação externa do Nmap e gera sondas TCP ativas."
                                   AutomationProperties.Name="Ativar enriquecimento opcional com Nmap"
                                   AutomationProperties.HelpText="Disponível apenas no perfil Avançado; o Nmap é externo e não é incluído pela aplicação." />
+                    </WrapPanel>
                         <CheckBox Margin="0,3,20,3"
                                   IsChecked="{Binding EnableHistory}"
                                   Content="Guardar e comparar histórico local"
                                   ToolTip="Guarda localmente o último snapshot desta rede para detetar alterações no scan seguinte."
                                   AutomationProperties.Name="Guardar e comparar histórico local"
                                   AutomationProperties.HelpText="O histórico fica apenas neste computador e pode ser apagado a qualquer momento." />
-                    </WrapPanel>
+                    </StackPanel>
                     <Grid Margin="0,10,0,0"
+                          IsEnabled="{Binding UseCustomScanSettings}"
                           Visibility="{Binding IsSnmpEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="1.2*" />
@@ -505,6 +547,7 @@
                                    Text="A identidade SNMP consulta fabricante, modelo, série, firmware e hardware em cada dispositivo online. A topologia consulta FDB, porta e VLAN no switch indicado. SNMP v2c envia a community sem cifragem: use uma credencial dedicada, apenas de leitura e numa rede de gestão confiável; nunca é persistida pela app." />
                     </Grid>
                     <Grid Margin="0,10,0,0"
+                          IsEnabled="{Binding UseCustomScanSettings}"
                           Visibility="{Binding EnableNmapDiscovery, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="2.2*" />

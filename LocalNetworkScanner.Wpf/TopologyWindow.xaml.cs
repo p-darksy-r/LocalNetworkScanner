@@ -25,6 +25,7 @@ public partial class TopologyWindow : Window
         InitializeComponent();
         DataContext = viewModel;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        TopologyGraph.ViewportChanged += OnTopologyViewportChanged;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -37,6 +38,7 @@ public partial class TopologyWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        TopologyGraph.ViewportChanged -= OnTopologyViewportChanged;
         base.OnClosed(e);
     }
 
@@ -73,6 +75,23 @@ public partial class TopologyWindow : Window
         TopologyViews.SelectedIndex = 0;
         TopologyGraph.FitToView();
     }
+
+    private void OnZoomOutTopologyClick(object sender, RoutedEventArgs e)
+    {
+        TopologyViews.SelectedIndex = 0;
+        TopologyGraph.ZoomOut();
+        TopologyGraph.Focus();
+    }
+
+    private void OnZoomInTopologyClick(object sender, RoutedEventArgs e)
+    {
+        TopologyViews.SelectedIndex = 0;
+        TopologyGraph.ZoomIn();
+        TopologyGraph.Focus();
+    }
+
+    private void OnTopologyViewportChanged(object? sender, EventArgs e) =>
+        TopologyZoomText.Text = $"{TopologyGraph.ZoomPercent}%";
 
     private void OnResetTopologyClick(object sender, RoutedEventArgs e)
     {

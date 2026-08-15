@@ -4,6 +4,33 @@
 
 Todas as alterações relevantes deste projeto são registadas neste ficheiro. O formato segue os princípios de Keep a Changelog e o versionamento segue Semantic Versioning.
 
+## [1.3.2] - 2026-08-16
+
+Tag de código e QA privado. Os pacotes permanecem `NotSigned` até existir uma identidade Authenticode Public Trust e continuam sujeitos à autorização de redistribuição da snapshot IEEE antes de qualquer publicação de produção.
+
+### Added
+
+- ativação explícita das definições personalizadas, contador de substituições e ação para repor os valores do perfil selecionado;
+- botões de zoom, percentagem visível e informação de automação na janela de topologia;
+- workflow CodeQL C# com consultas `security-extended`, ativável apenas quando o plano do repositório permite code scanning;
+- geração e validação de um SBOM SPDX 2.2, com cobertura explícita dos runtimes `win-x64` e `win-arm64`, como artefacto de evidência separado do payload instalável;
+- teste determinístico da migração das preferências antigas e novos asserts WPF para ativação explícita, bindings e zoom, elevando a suite para 83 testes.
+
+### Changed
+
+- abrir ou fechar os parâmetros técnicos deixa de alterar a profundidade do scan; enquanto a personalização está desligada, o perfil Rápido, Normal ou Avançado mantém controlo integral;
+- definições antigas que usavam `IsAdvancedMode` são migradas sem perder a intenção do utilizador;
+- repor um perfil limpa também entradas numéricas inválidas e a community SNMP visível, sem deixar validações antigas a bloquear o scan;
+- a tipografia dos nós, chips, legenda e notas da topologia ficou maior e mais legível;
+- zoom e pan escolhidos pelo utilizador deixam de ser anulados automaticamente ao redimensionar a janela;
+- a identidade do manifesto Windows acompanha a versão 1.3.2 e as imagens atuais do README são geradas apenas com dados e preferências temporários.
+
+### Security
+
+- a release passa a produzir uma lista de materiais de software validada, mantendo os dez ficheiros executáveis sujeitos ao mesmo contrato, hashes e instalação/smoke nativos;
+- o smoke WPF e o renderer de documentação ficam isolados das preferências reais do utilizador;
+- as verificações CodeQL usam actions fixadas por SHA e permissões explícitas; em repositórios privados sem a capacidade necessária, o job fica explicitamente ignorado e não apresenta uma análise inexistente como concluída.
+
 ## [1.3.1] - 2026-08-12
 
 Tag de código e QA privado preparada em 2026-08-12. Os pacotes continuam `NotSigned` enquanto não existir uma identidade Authenticode Public Trust configurada; a tag não é, por si só, uma release pública instalável.

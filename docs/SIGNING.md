@@ -23,7 +23,7 @@ O workflow usa **Microsoft Artifact Signing com OIDC**, sem PFX ou chave privada
 7. o ZIP e instalador **exatos** são instalados, executados e removidos primeiro em Windows x64 e depois num runner Windows ARM64 nativo;
 8. só o mesmo conjunto de ficheiros aprovado pelos dois jobs pode chegar ao job de publicação.
 
-Artefactos privados de QA permanecem `NotSigned` e nunca são promovidos automaticamente a GitHub Release. O campo `SIGNING-STATE.txt` distingue `PrivateQa`, validação pendente e validação nativa concluída.
+Artefactos privados de QA permanecem `NotSigned` e nunca são promovidos automaticamente a GitHub Release. O campo `SIGNING-STATE.txt` distingue `PrivateQa`, validação pendente e validação nativa concluída. O responsável pode espelhar manualmente o payload validado como prerelease no próprio repositório privado, desde que o título e as notas indiquem claramente `Private QA (NotSigned)` e não o apresentem como produção ou `Latest`.
 
 Criar ou fazer push de uma tag `vX.Y.Z` executa deliberadamente o caminho privado de QA e **não** tenta publicar. A publicação assinada só é pedida por `workflow_dispatch`, selecionando essa mesma tag e definindo explicitamente `publish_release=true`. Assim, uma tag de versão pode existir no repositório privado sem gerar uma falha inevitável enquanto a identidade Public Trust e os restantes gates externos ainda não estiverem disponíveis.
 
@@ -131,6 +131,7 @@ O runner `windows-11-arm` valida uma VM Windows ARM64 nativa; não substitui um 
 | `LNS-REL-007` | instalação/smoke nativo x64 ou ARM64 falhou | corrija o pacote exato; cross-build não substitui este gate |
 | `LNS-REL-008` | contrato de assets, conteúdo ou checksums divergente | gere uma release nova a partir de uma árvore limpa |
 | `LNS-REL-009` | versão, tag, ref ou commit não corresponde ao `main` confiável | use uma tag nova no HEAD atual de `main` |
+| `LNS-REL-010` | o SBOM não pôde ser gerado/validado ou não cobre `win-x64` e `win-arm64` | preserve o payload, confirme a ferramenta fixada, os metadados dos dois runtimes e os caminhos sob `artifacts`, e repita sem publicar evidência incompleta |
 
 ## Referências oficiais
 

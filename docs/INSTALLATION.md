@@ -57,7 +57,7 @@ Não desligue Smart App Control, App Control for Business/WDAC, AppLocker ou Mic
 
 ## Assinatura, App Control e SmartScreen
 
-Os artefactos históricos da release `v1.2.0` estão explicitamente marcados **`NotSigned`** e não são recomendados para instalação de produção. O Microsoft Defender SmartScreen ou uma política App Control podem recusá-los. As novas GitHub Releases são bloqueadas se não estiverem `Signed`; artefactos privados de QA podem continuar `NotSigned`. Confirme sempre `SIGNING-STATE.txt` e o resultado local de `Get-AuthenticodeSignature`.
+Os artefactos históricos da release `v1.2.0` estão explicitamente marcados **`NotSigned`** e não são recomendados para instalação de produção. O Microsoft Defender SmartScreen ou uma política App Control podem recusá-los. Uma prerelease visível apenas no repositório privado pode continuar `Private QA (NotSigned)`; o workflow bloqueia qualquer publicação de produção que não esteja `Signed`. Confirme sempre `SIGNING-STATE.txt` e o resultado local de `Get-AuthenticodeSignature`.
 
 O checksum deteta alterações no ficheiro relativamente à release publicada, mas não substitui uma assinatura de código nem confirma, sozinho, a identidade do publisher.
 

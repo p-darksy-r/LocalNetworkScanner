@@ -69,7 +69,7 @@ Se o PC for gerido, o administrador deve decidir se autoriza o publisher, o hash
 
 ## Assinatura das releases
 
-Os artefactos oficiais históricos já publicados sem certificado, incluindo a release `v1.2.0`, são explicitamente **`NotSigned`**. As novas GitHub Releases são bloqueadas se os binários não estiverem `Signed`; artefactos privados de QA podem continuar `NotSigned`. Confirme sempre `SIGNING-STATE.txt` e valide localmente com `Get-AuthenticodeSignature`. Um checksum confirma que o ficheiro é igual ao publicado, mas não substitui Authenticode nem prova a identidade do publisher.
+Os artefactos oficiais históricos já publicados sem certificado, incluindo a release `v1.2.0`, são explicitamente **`NotSigned`**. Uma prerelease visível apenas no repositório privado pode continuar `Private QA (NotSigned)`; o workflow bloqueia qualquer publicação de produção que não esteja `Signed`. Confirme sempre `SIGNING-STATE.txt` e valide localmente com `Get-AuthenticodeSignature`. Um checksum confirma que o ficheiro é igual ao publicado, mas não substitui Authenticode nem prova a identidade do publisher.
 
 A `v1.2.0` não deve ser tratada como uma distribuição de produção compatível com Smart App Control. Criar um certificado autoassinado durante o build também não resolve a distribuição geral: o computador do utilizador não possui uma cadeia pública que confirme a identidade desse publisher.
 

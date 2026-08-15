@@ -6,6 +6,7 @@ using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 using System.Windows.Data;
 using System.Windows.Threading;
 using LocalNetworkScanner.Core.Models;
@@ -52,7 +53,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string _progressPhase = "Pronto";
     private string _elapsedText = "00:00";
     private double _progressPercentage;
-    private bool _isAdvancedMode;
+    private bool _useCustomScanSettings;
+    private bool _isCustomScanSettingsExpanded;
     private bool _isScanConfigurationExpanded = true;
     private bool _isLoadingInterfaces;
     private bool _isScanning;
@@ -158,6 +160,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ResetFiltersCommand = new RelayCommand(
             ResetFilters,
             () => SearchText.Length > 0 || !SelectedFilter.Key.Equals("all", StringComparison.Ordinal));
+        ResetProfileOverridesCommand = new RelayCommand(ResetProfileOverrides);
         ExportCsvCommand = new AsyncRelayCommand(ExportCsvAsync, CanExport, HandleUnexpectedException);
         ExportJsonCommand = new AsyncRelayCommand(ExportJsonAsync, CanExport, HandleUnexpectedException);
         ExportHtmlCommand = new AsyncRelayCommand(ExportHtmlAsync, CanExport, HandleUnexpectedException);
@@ -226,6 +229,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand ClearResultsCommand { get; }
     public RelayCommand ClearSearchCommand { get; }
     public RelayCommand ResetFiltersCommand { get; }
+    public RelayCommand ResetProfileOverridesCommand { get; }
     public AsyncRelayCommand ExportCsvCommand { get; }
     public AsyncRelayCommand ExportJsonCommand { get; }
     public AsyncRelayCommand ExportHtmlCommand { get; }
@@ -279,6 +283,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(HasNmapPathValidationError));
             OnPropertyChanged(nameof(HasBlockingInputValidationErrors));
             OnPropertyChanged(nameof(InputValidationMessage));
+            NotifyCustomOverridesChanged();
             RaiseScanCanExecuteChanged();
         }
     }
@@ -382,7 +387,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string CustomPorts
     {
         get => _customPorts;
-        set => SetProperty(ref _customPorts, value ?? string.Empty);
+        set => SetCustomScanProperty(ref _customPorts, value ?? string.Empty);
     }
 
     public string StatusMessage
@@ -419,20 +424,36 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _progressPercentage, value);
     }
 
-    public bool IsAdvancedMode
+    public bool UseCustomScanSettings
     {
-        get => _isAdvancedMode;
+        get => _useCustomScanSettings;
         set
         {
-            if (!SetProperty(ref _isAdvancedMode, value))
+            if (!SetProperty(ref _useCustomScanSettings, value))
                 return;
 
+            OnPropertyChanged(nameof(IsAdvancedMode));
             OnPropertyChanged(nameof(SelectedProfileDescription));
             OnPropertyChanged(nameof(HasNmapPathValidationError));
             OnPropertyChanged(nameof(HasBlockingInputValidationErrors));
             OnPropertyChanged(nameof(InputValidationMessage));
+            NotifyCustomOverridesChanged();
             RaiseScanCanExecuteChanged();
         }
+    }
+
+    // Alias mantido para bindings e preferências de versões anteriores à separação
+    // entre expandir o painel e ativar substituições ao perfil.
+    public bool IsAdvancedMode
+    {
+        get => UseCustomScanSettings;
+        set => UseCustomScanSettings = value;
+    }
+
+    public bool IsCustomScanSettingsExpanded
+    {
+        get => _isCustomScanSettingsExpanded;
+        set => SetProperty(ref _isCustomScanSettingsExpanded, value);
     }
 
     public bool IsScanConfigurationExpanded
@@ -495,55 +516,55 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public int MaximumHosts
     {
         get => _maximumHosts;
-        set => SetProperty(ref _maximumHosts, value);
+        set => SetCustomScanProperty(ref _maximumHosts, value);
     }
 
     public int MaximumHostConcurrency
     {
         get => _maximumHostConcurrency;
-        set => SetProperty(ref _maximumHostConcurrency, value);
+        set => SetCustomScanProperty(ref _maximumHostConcurrency, value);
     }
 
     public int MaximumPortConcurrency
     {
         get => _maximumPortConcurrency;
-        set => SetProperty(ref _maximumPortConcurrency, value);
+        set => SetCustomScanProperty(ref _maximumPortConcurrency, value);
     }
 
     public int PingTimeoutMs
     {
         get => _pingTimeoutMs;
-        set => SetProperty(ref _pingTimeoutMs, value);
+        set => SetCustomScanProperty(ref _pingTimeoutMs, value);
     }
 
     public int ConnectTimeoutMs
     {
         get => _connectTimeoutMs;
-        set => SetProperty(ref _connectTimeoutMs, value);
+        set => SetCustomScanProperty(ref _connectTimeoutMs, value);
     }
 
     public int DiscoveryTimeoutMs
     {
         get => _discoveryTimeoutMs;
-        set => SetProperty(ref _discoveryTimeoutMs, value);
+        set => SetCustomScanProperty(ref _discoveryTimeoutMs, value);
     }
 
     public bool EnableIcmp
     {
         get => _enableIcmp;
-        set => SetProperty(ref _enableIcmp, value);
+        set => SetCustomScanProperty(ref _enableIcmp, value);
     }
 
     public bool EnableTcpDiscovery
     {
         get => _enableTcpDiscovery;
-        set => SetProperty(ref _enableTcpDiscovery, value);
+        set => SetCustomScanProperty(ref _enableTcpDiscovery, value);
     }
 
     public bool EnableArp
     {
         get => _enableArp;
-        set => SetProperty(ref _enableArp, value);
+        set => SetCustomScanProperty(ref _enableArp, value);
     }
 
     public bool EnableMulticastDiscovery
@@ -551,7 +572,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get => _enableMulticastDiscovery;
         set
         {
-            if (!SetProperty(ref _enableMulticastDiscovery, value))
+            if (!SetCustomScanProperty(ref _enableMulticastDiscovery, value))
                 return;
 
             if (!value)
@@ -562,13 +583,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool EnableUpnpDescription
     {
         get => _enableUpnpDescription;
-        set => SetProperty(ref _enableUpnpDescription, value);
+        set => SetCustomScanProperty(ref _enableUpnpDescription, value);
     }
 
     public bool EnableNetBiosDiscovery
     {
         get => _enableNetBiosDiscovery;
-        set => SetProperty(ref _enableNetBiosDiscovery, value);
+        set => SetCustomScanProperty(ref _enableNetBiosDiscovery, value);
     }
 
     public bool EnableHistory
@@ -582,7 +603,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get => _enableSnmpDeviceDiscovery;
         set
         {
-            if (SetProperty(ref _enableSnmpDeviceDiscovery, value))
+            if (SetCustomScanProperty(ref _enableSnmpDeviceDiscovery, value))
                 OnPropertyChanged(nameof(IsSnmpEnabled));
         }
     }
@@ -592,7 +613,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get => _enableSnmpTopology;
         set
         {
-            if (SetProperty(ref _enableSnmpTopology, value))
+            if (SetCustomScanProperty(ref _enableSnmpTopology, value))
                 OnPropertyChanged(nameof(IsSnmpEnabled));
         }
     }
@@ -600,7 +621,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string SnmpSwitchAddress
     {
         get => _snmpSwitchAddress;
-        set => SetProperty(ref _snmpSwitchAddress, value ?? string.Empty);
+        set => SetCustomScanProperty(ref _snmpSwitchAddress, value ?? string.Empty);
     }
 
     public string SnmpCommunity
@@ -612,7 +633,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public int SnmpTimeoutMs
     {
         get => _snmpTimeoutMs;
-        set => SetProperty(ref _snmpTimeoutMs, value);
+        set => SetCustomScanProperty(ref _snmpTimeoutMs, value);
     }
 
     public bool EnableNmapDiscovery
@@ -620,7 +641,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get => _enableNmapDiscovery;
         set
         {
-            if (!SetProperty(ref _enableNmapDiscovery, value && IsNmapProfileEligible))
+            if (!SetCustomScanProperty(ref _enableNmapDiscovery, value && IsNmapProfileEligible))
                 return;
 
             NotifyNmapValidationChanged();
@@ -632,7 +653,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get => _nmapExecutablePath;
         set
         {
-            if (SetProperty(ref _nmapExecutablePath, value ?? string.Empty))
+            if (SetCustomScanProperty(ref _nmapExecutablePath, value ?? string.Empty))
                 NotifyNmapValidationChanged();
         }
     }
@@ -640,13 +661,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public int NmapTimeoutMs
     {
         get => _nmapTimeoutMs;
-        set => SetProperty(ref _nmapTimeoutMs, value);
+        set => SetCustomScanProperty(ref _nmapTimeoutMs, value);
     }
 
     public bool EnableServiceProbes
     {
         get => _enableServiceProbes;
-        set => SetProperty(ref _enableServiceProbes, value);
+        set => SetCustomScanProperty(ref _enableServiceProbes, value);
     }
 
     public int ScannedCount
@@ -719,12 +740,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     ? "\uE711"
                     : "\uE950";
     public bool HasInputValidationErrors => _inputValidationErrorCount > 0;
-    public bool HasNmapPathValidationError => IsAdvancedMode &&
+    public bool HasNmapPathValidationError => UseCustomScanSettings &&
         EnableNmapDiscovery &&
         !string.IsNullOrWhiteSpace(NmapExecutablePath) &&
         !IsNmapExecutablePathValid(NmapExecutablePath);
     public bool HasBlockingInputValidationErrors =>
-        HasInputValidationErrors || HasNmapPathValidationError;
+        (UseCustomScanSettings && HasInputValidationErrors) || HasNmapPathValidationError;
     public string InputValidationMessage => HasBlockingInputValidationErrors
         ? HasNmapPathValidationError && _inputValidationErrorCount == 0
             ? "O caminho explícito do Nmap é inválido. Corrige-o ou deixa-o vazio para autodeteção."
@@ -741,9 +762,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool HasWarnings => Warnings.Count > 0;
     public bool IsSnmpEnabled => EnableSnmpDeviceDiscovery || EnableSnmpTopology;
     public bool IsNmapProfileEligible => SelectedProfile.Value == ScanProfile.Deep;
-    public string SelectedProfileDescription => IsAdvancedMode
-        ? $"{SelectedProfile.Description}. As opções abaixo substituem o perfil."
-        : SelectedProfile.Description;
+    public int CustomOverrideCount => CountCustomOverrides();
+    public int ActiveCustomOverrideCount => UseCustomScanSettings ? CustomOverrideCount : 0;
+    public string CustomOverridesStatus => UseCustomScanSettings
+        ? ActiveCustomOverrideCount == 1
+            ? "1 substituição ativa"
+            : $"{ActiveCustomOverrideCount:N0} substituições ativas"
+        : "0 substituições ativas · perfil em controlo";
+    public string CustomSettingsExplanation => UseCustomScanSettings
+        ? CustomOverrideCount == 0
+            ? $"As definições correspondem ao perfil {SelectedProfile.DisplayName}."
+            : $"Os valores alterados abaixo substituem o perfil {SelectedProfile.DisplayName}."
+        : $"O perfil {SelectedProfile.DisplayName} comanda o scan; os valores guardados abaixo estão inativos.";
+    public string SelectedProfileDescription => UseCustomScanSettings
+        ? $"{SelectedProfile.Description}. As definições personalizadas ativas podem substituir este perfil."
+        : $"{SelectedProfile.Description}. Este perfil comanda o scan.";
     public string SelectedInterfaceSummary => SelectedNetworkInterface is null
         ? "Nenhuma interface selecionada"
         : $"{SelectedNetworkInterface.IpAddress}/{SelectedNetworkInterface.PrefixLength}  ·  " +
@@ -784,7 +817,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             LastInterfaceAddress = SelectedNetworkInterface?.IpAddress.ToString(),
             LastCidr = NetworkCidr,
             Profile = SelectedProfile.Value,
-            IsAdvancedMode = IsAdvancedMode,
+            IsAdvancedMode = UseCustomScanSettings,
+            UseCustomScanSettings = UseCustomScanSettings,
+            IsCustomScanSettingsExpanded = IsCustomScanSettingsExpanded,
             CustomPorts = CustomPorts,
             MaximumHosts = MaximumHosts,
             MaximumHostConcurrency = MaximumHostConcurrency,
@@ -825,7 +860,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void ApplyLoadedSettings()
     {
-        _isAdvancedMode = _loadedSettings.IsAdvancedMode;
+        _useCustomScanSettings = _loadedSettings.UseCustomScanSettings ?? _loadedSettings.IsAdvancedMode;
+        _isCustomScanSettingsExpanded = _loadedSettings.IsCustomScanSettingsExpanded ??
+            _loadedSettings.IsAdvancedMode;
         _customPorts = _loadedSettings.CustomPorts;
         _maximumHosts = _loadedSettings.MaximumHosts;
         _maximumHostConcurrency = _loadedSettings.MaximumHostConcurrency;
@@ -849,6 +886,26 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _nmapExecutablePath = _loadedSettings.NmapExecutablePath;
         _nmapTimeoutMs = _loadedSettings.NmapTimeoutMs;
         _enableServiceProbes = _loadedSettings.EnableServiceProbes;
+    }
+
+    private bool SetCustomScanProperty<T>(
+        ref T storage,
+        T value,
+        [CallerMemberName] string? propertyName = null)
+    {
+        if (!SetProperty(ref storage, value, propertyName))
+            return false;
+
+        NotifyCustomOverridesChanged();
+        return true;
+    }
+
+    private void NotifyCustomOverridesChanged()
+    {
+        OnPropertyChanged(nameof(CustomOverrideCount));
+        OnPropertyChanged(nameof(ActiveCustomOverrideCount));
+        OnPropertyChanged(nameof(CustomOverridesStatus));
+        OnPropertyChanged(nameof(CustomSettingsExplanation));
     }
 
     private async Task RefreshInterfacesAsync()
@@ -1075,7 +1132,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             ValidateAdvancedValues();
             IReadOnlyList<IPAddress> addresses = _ipRangeService.GenerateFromCidr(
                 NetworkCidr,
-                IsAdvancedMode ? MaximumHosts : IpRangeService.DefaultMaximumAddresses);
+                UseCustomScanSettings ? MaximumHosts : IpRangeService.DefaultMaximumAddresses);
 
             if (addresses.Any(address => !IpAddressHelper.IsPrivate(address)))
             {
@@ -1089,16 +1146,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 return null;
             }
 
-            if (EnableSnmpDeviceDiscovery && !_dialogs.Confirm(
-                    "Confirmar identidade SNMP v2c",
-                    "O SNMP v2c envia a community sem cifragem a cada dispositivo online consultado. " +
+            if (UseCustomScanSettings && IsSnmpEnabled && !_dialogs.Confirm(
+                    "Confirmar consultas SNMP v2c",
+                    "O SNMP v2c envia a community sem cifragem aos alvos configurados. " +
+                    "A identidade SNMP consulta cada dispositivo online; a topologia consulta apenas o switch indicado. " +
                     "Utiliza uma community dedicada e apenas de leitura numa rede de gestão confiável. " +
-                    "Confirma que administras estes dispositivos e autorizas esta consulta."))
+                    "Confirma que administras estes dispositivos e autorizas estas consultas."))
             {
                 return null;
             }
 
-            if (IsAdvancedMode && EnableNmapDiscovery && !_dialogs.Confirm(
+            if (UseCustomScanSettings && EnableNmapDiscovery && !_dialogs.Confirm(
                     "Confirmar enriquecimento Nmap",
                     "O Nmap é uma ferramenta externa e executará sondas TCP ativas nos dispositivos online. " +
                     (string.IsNullOrWhiteSpace(NmapExecutablePath)
@@ -1125,10 +1183,110 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void ResetProfileOverrides()
+    {
+        ScanOptions defaults = ScanOptions.ForProfile(SelectedProfile.Value);
+
+        CustomPorts = string.Empty;
+        MaximumHosts = IpRangeService.DefaultMaximumAddresses;
+        MaximumHostConcurrency = defaults.MaximumHostConcurrency;
+        MaximumPortConcurrency = defaults.MaximumPortConcurrency;
+        PingTimeoutMs = defaults.PingTimeoutMs;
+        ConnectTimeoutMs = defaults.ConnectTimeoutMs;
+        DiscoveryTimeoutMs = defaults.DiscoveryTimeoutMs;
+        EnableIcmp = defaults.EnableIcmp;
+        EnableTcpDiscovery = defaults.EnableTcpDiscovery;
+        EnableArp = defaults.EnableArp;
+        EnableMulticastDiscovery = defaults.EnableMulticastDiscovery;
+        EnableUpnpDescription = defaults.EnableUpnpDescription;
+        EnableNetBiosDiscovery = defaults.EnableNetBiosDiscovery;
+        EnableSnmpDeviceDiscovery = defaults.EnableSnmpDeviceDiscovery;
+        EnableSnmpTopology = defaults.EnableSnmpTopology;
+        SnmpSwitchAddress = string.Empty;
+        SnmpCommunity = string.Empty;
+        SnmpTimeoutMs = defaults.SnmpTimeoutMs;
+        EnableNmapDiscovery = defaults.EnableNmapDiscovery;
+        NmapExecutablePath = string.Empty;
+        NmapTimeoutMs = defaults.NmapTimeoutMs;
+        EnableServiceProbes = defaults.EnableServiceProbes;
+
+        RefreshCustomScanEditorValues();
+        StatusMessage = $"Definições personalizadas repostas para o perfil {SelectedProfile.DisplayName}.";
+    }
+
+    private void RefreshCustomScanEditorValues()
+    {
+        string[] propertyNames =
+        [
+            nameof(CustomPorts),
+            nameof(MaximumHosts),
+            nameof(MaximumHostConcurrency),
+            nameof(MaximumPortConcurrency),
+            nameof(PingTimeoutMs),
+            nameof(ConnectTimeoutMs),
+            nameof(DiscoveryTimeoutMs),
+            nameof(EnableIcmp),
+            nameof(EnableTcpDiscovery),
+            nameof(EnableArp),
+            nameof(EnableMulticastDiscovery),
+            nameof(EnableUpnpDescription),
+            nameof(EnableNetBiosDiscovery),
+            nameof(EnableSnmpDeviceDiscovery),
+            nameof(EnableSnmpTopology),
+            nameof(SnmpSwitchAddress),
+            nameof(SnmpCommunity),
+            nameof(SnmpTimeoutMs),
+            nameof(EnableNmapDiscovery),
+            nameof(NmapExecutablePath),
+            nameof(NmapTimeoutMs),
+            nameof(EnableServiceProbes)
+        ];
+
+        foreach (string propertyName in propertyNames)
+            OnPropertyChanged(propertyName);
+
+        OnPropertyChanged(nameof(IsSnmpEnabled));
+        NotifyNmapValidationChanged();
+        NotifyCustomOverridesChanged();
+    }
+
+    private int CountCustomOverrides()
+    {
+        ScanOptions defaults = ScanOptions.ForProfile(SelectedProfile.Value);
+        int count = 0;
+
+        Count(!string.IsNullOrWhiteSpace(CustomPorts));
+        Count(MaximumHosts != IpRangeService.DefaultMaximumAddresses);
+        Count(MaximumHostConcurrency != defaults.MaximumHostConcurrency);
+        Count(MaximumPortConcurrency != defaults.MaximumPortConcurrency);
+        Count(PingTimeoutMs != defaults.PingTimeoutMs);
+        Count(ConnectTimeoutMs != defaults.ConnectTimeoutMs);
+        Count(DiscoveryTimeoutMs != defaults.DiscoveryTimeoutMs);
+        Count(EnableIcmp != defaults.EnableIcmp);
+        Count(EnableTcpDiscovery != defaults.EnableTcpDiscovery);
+        Count(EnableArp != defaults.EnableArp);
+        Count(EnableMulticastDiscovery != defaults.EnableMulticastDiscovery);
+        Count(EnableUpnpDescription != defaults.EnableUpnpDescription);
+        Count(EnableNetBiosDiscovery != defaults.EnableNetBiosDiscovery);
+        Count(EnableSnmpDeviceDiscovery != defaults.EnableSnmpDeviceDiscovery);
+        Count(EnableSnmpTopology != defaults.EnableSnmpTopology);
+        Count(IsSnmpEnabled && SnmpTimeoutMs != defaults.SnmpTimeoutMs);
+        Count(EnableNmapDiscovery != defaults.EnableNmapDiscovery);
+        Count(EnableNmapDiscovery && NmapTimeoutMs != defaults.NmapTimeoutMs);
+        Count(EnableServiceProbes != defaults.EnableServiceProbes);
+        return count;
+
+        void Count(bool isOverride)
+        {
+            if (isOverride)
+                count++;
+        }
+    }
+
     private ScanOptions BuildScanOptions()
     {
         ScanOptions defaults = ScanOptions.ForProfile(SelectedProfile.Value);
-        if (!IsAdvancedMode)
+        if (!UseCustomScanSettings)
             return defaults;
 
         IReadOnlyList<int> ports = string.IsNullOrWhiteSpace(CustomPorts)
@@ -1170,7 +1328,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void ValidateAdvancedValues()
     {
-        if (!IsAdvancedMode)
+        if (!UseCustomScanSettings)
             return;
 
         ValidateRange(MaximumHosts, 1, IpRangeService.AbsoluteMaximumAddresses, "Máximo de endereços");

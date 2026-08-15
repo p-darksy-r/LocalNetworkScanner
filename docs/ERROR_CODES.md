@@ -95,6 +95,7 @@ Estes códigos pertencem ao workflow e aos scripts de distribuição; não são 
 | `LNS-REL-007` | Error | Build, instalação, smoke ou remoção nativa x64/ARM64 falhou | Corrija o pacote exato; um cross-build x64 não substitui este gate. |
 | `LNS-REL-008` | Error | Contrato de assets ou checksums divergente | Gere uma versão nova a partir de uma árvore limpa; não substitua ficheiros já publicados. |
 | `LNS-REL-009` | Error | Versão, tag, ref ou commit não corresponde ao HEAD confiável de `main` | Execute a release a partir de uma tag nova, correspondente à versão, criada no commit atual de `main`. |
+| `LNS-REL-010` | Error | O SBOM não pôde ser gerado/validado ou não cobre `win-x64` e `win-arm64` | Preserve o payload, confirme a ferramenta fixada, os metadados dos dois runtimes e os caminhos sob `artifacts`, e repita sem publicar evidência incompleta. |
 
 Consulte [Assinatura e prontidão de release](SIGNING.md) para o procedimento completo.
 

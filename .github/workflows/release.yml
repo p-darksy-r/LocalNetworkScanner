@@ -682,7 +682,7 @@ jobs:
     if: ${{ !cancelled() }}
     needs: [preflight, package, validate-x64, validate-arm64]
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       actions: read
       contents: read
@@ -732,6 +732,14 @@ jobs:
           if ($env:SIGNING_STATE -ne $expectedSigningState) {
             throw "LNS-REL-005: selected package signing state is '$env:SIGNING_STATE'; expected '$expectedSigningState'."
           }
+
+      - name: Checkout SBOM source metadata
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install .NET SDK from global.json
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
 
       - name: Download exact validated payload
         shell: pwsh
@@ -816,6 +824,20 @@ jobs:
             }
           }
           Write-Host "Exact $expectedReleaseMode payload passed the terminal native validation gate."
+
+      - name: Generate and validate SPDX SBOM outside the release payload
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+        run: .\scripts\generate-sbom.ps1 -Version $env:RELEASE_VERSION
+
+      - name: Upload validated SBOM evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: LocalNetworkScanner-${{ needs.preflight.outputs.version }}-sbom
+          path: artifacts/sbom/**
+          if-no-files-found: error
+          retention-days: 30
 
   publish:
     name: Publish immutable GitHub Release

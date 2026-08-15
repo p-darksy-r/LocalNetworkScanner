@@ -67,6 +67,7 @@ public sealed class NetworkTopologyControl : Grid
     private Point _panStart;
     private Vector _translateStart;
     private bool _isPanning;
+    private bool _isAutoFitEnabled = true;
 
     public NetworkTopologyControl()
     {
@@ -128,6 +129,10 @@ public sealed class NetworkTopologyControl : Grid
         get => (TopologyFilterMode)GetValue(FilterModeProperty);
         set => SetValue(FilterModeProperty, value);
     }
+
+    public int ZoomPercent => (int)Math.Round(_scale.ScaleX * 100, MidpointRounding.AwayFromZero);
+
+    public event EventHandler? ViewportChanged;
 
     public static bool IsNodeVisible(NetworkMapNode node, TopologyFilterMode filterMode)
     {
@@ -246,6 +251,8 @@ public sealed class NetworkTopologyControl : Grid
         _scale.ScaleY = scale;
         _translate.X = ((ActualWidth - (contentWidth * scale)) / 2) - (minX * scale);
         _translate.Y = ((ActualHeight - (contentHeight * scale)) / 2) - (minY * scale);
+        _isAutoFitEnabled = true;
+        OnViewportChanged();
     }
 
     public void ResetView()
@@ -254,7 +261,13 @@ public sealed class NetworkTopologyControl : Grid
         _scale.ScaleY = 1;
         _translate.X = Math.Max(18, (ActualWidth - _canvas.Width) / 2);
         _translate.Y = 18;
+        _isAutoFitEnabled = false;
+        OnViewportChanged();
     }
+
+    public void ZoomIn() => ZoomAtCenter(1.15);
+
+    public void ZoomOut() => ZoomAtCenter(1 / 1.15);
 
     public void ExportVisiblePng(string path)
     {
@@ -549,7 +562,7 @@ public sealed class NetworkTopologyControl : Grid
         TextBlock type = new()
         {
             Text = kindLabel.ToUpperInvariant(),
-            FontSize = 9,
+            FontSize = 10,
             FontWeight = FontWeights.Bold,
             Foreground = ResourceBrush("TextSecondaryBrush", Brushes.DimGray),
             TextTrimming = TextTrimming.CharacterEllipsis
@@ -566,7 +579,7 @@ public sealed class NetworkTopologyControl : Grid
         {
             Text = node.Subtitle,
             Margin = new Thickness(0, 2, 0, 0),
-            FontSize = 10,
+            FontSize = 11,
             Foreground = ResourceBrush("TextSecondaryBrush", Brushes.DimGray),
             TextTrimming = TextTrimming.CharacterEllipsis
         };
@@ -588,7 +601,7 @@ public sealed class NetworkTopologyControl : Grid
                 : node.RiskLevel.Equals("Médio", StringComparison.OrdinalIgnoreCase)
                     ? ResourceBrush("WarningBrush", Brushes.DarkOrange)
                     : ResourceBrush("SuccessBrush", Brushes.SeaGreen));
-        WrapPanel chips = new() { Margin = new Thickness(53, 7, 0, 0) };
+        WrapPanel chips = new() { Margin = new Thickness(0, 7, 0, 0) };
         chips.Children.Add(stateChip);
         chips.Children.Add(riskChip);
         if (node.VlanId is int vlan)
@@ -652,7 +665,7 @@ public sealed class NetworkTopologyControl : Grid
         Child = new TextBlock
         {
             Text = text,
-            FontSize = 8.5,
+            FontSize = 10,
             FontWeight = FontWeights.SemiBold,
             Foreground = foreground
         }
@@ -690,6 +703,8 @@ public sealed class NetworkTopologyControl : Grid
         _scale.ScaleY = newScale;
         _translate.X = pointer.X - (worldX * newScale);
         _translate.Y = pointer.Y - (worldY * newScale);
+        _isAutoFitEnabled = false;
+        OnViewportChanged();
         e.Handled = true;
     }
 
@@ -708,6 +723,7 @@ public sealed class NetworkTopologyControl : Grid
         _panStart = e.GetPosition(this);
         _translateStart = new Vector(_translate.X, _translate.Y);
         _isPanning = true;
+        _isAutoFitEnabled = false;
         Cursor = Cursors.Hand;
         CaptureMouse();
         e.Handled = true;
@@ -754,15 +770,19 @@ public sealed class NetworkTopologyControl : Grid
                 break;
             case Key.Left:
                 _translate.X += panStep;
+                _isAutoFitEnabled = false;
                 break;
             case Key.Right:
                 _translate.X -= panStep;
+                _isAutoFitEnabled = false;
                 break;
             case Key.Up:
                 _translate.Y += panStep;
+                _isAutoFitEnabled = false;
                 break;
             case Key.Down:
                 _translate.Y -= panStep;
+                _isAutoFitEnabled = false;
                 break;
             case Key.Home:
                 FitToView();
@@ -785,13 +805,17 @@ public sealed class NetworkTopologyControl : Grid
         _scale.ScaleY = newScale;
         _translate.X = center.X - (worldX * newScale);
         _translate.Y = center.Y - (worldY * newScale);
+        _isAutoFitEnabled = false;
+        OnViewportChanged();
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (_nodeCenters.Count > 0)
+        if (_nodeCenters.Count > 0 && _isAutoFitEnabled)
             Dispatcher.BeginInvoke(FitToView, DispatcherPriority.Loaded);
     }
+
+    private void OnViewportChanged() => ViewportChanged?.Invoke(this, EventArgs.Empty);
 
     private (Brush Brush, DoubleCollection? Dash, double Thickness, string Category) GetEdgeStyle(
         NetworkMapEdgeKind kind) => kind switch

@@ -40,6 +40,29 @@
             </StackPanel>
             <WrapPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
                 <Button Margin="4,0"
+                        MinWidth="34"
+                        Style="{StaticResource CompactButtonStyle}"
+                        Click="OnZoomOutTopologyClick"
+                        Content="−"
+                        ToolTip="Reduzir a topologia (tecla −)"
+                        AutomationProperties.Name="Reduzir topologia" />
+                <TextBlock x:Name="TopologyZoomText"
+                           MinWidth="48"
+                           Margin="2,0"
+                           VerticalAlignment="Center"
+                           TextAlignment="Center"
+                           FontWeight="SemiBold"
+                           AutomationProperties.LiveSetting="Polite"
+                           AutomationProperties.Name="Nível de ampliação da topologia"
+                           Text="100%" />
+                <Button Margin="4,0"
+                        MinWidth="34"
+                        Style="{StaticResource CompactButtonStyle}"
+                        Click="OnZoomInTopologyClick"
+                        Content="+"
+                        ToolTip="Ampliar a topologia (tecla +)"
+                        AutomationProperties.Name="Ampliar topologia" />
+                <Button Margin="4,0"
                         Style="{StaticResource CompactButtonStyle}"
                         Click="OnFitTopologyClick"
                         Content="Ajustar"
@@ -187,13 +210,13 @@
             </Grid.ColumnDefinitions>
             <StackPanel>
                 <WrapPanel>
-                    <TextBlock Margin="0,0,16,2" FontSize="10" FontWeight="SemiBold" Text="LEGENDA" />
-                    <TextBlock Margin="0,0,16,2" FontSize="10" Text="━━━━ ARP / L2 observado" />
-                    <TextBlock Margin="0,0,16,2" FontSize="10" Text="━ ━ FDB / SNMP" />
-                    <TextBlock Margin="0,0,16,2" FontSize="10" Text="···· Alcance IP inferido" />
-                    <TextBlock Margin="0,0,16,2" FontSize="10" Text="━━ Rota / LLDP" />
+                    <TextBlock Margin="0,0,16,2" FontSize="11" FontWeight="SemiBold" Text="LEGENDA" />
+                    <TextBlock Margin="0,0,16,2" FontSize="11" Text="━━━━ ARP / L2 observado" />
+                    <TextBlock Margin="0,0,16,2" FontSize="11" Text="━ ━ FDB / SNMP" />
+                    <TextBlock Margin="0,0,16,2" FontSize="11" Text="···· Alcance IP inferido" />
+                    <TextBlock Margin="0,0,16,2" FontSize="11" Text="━━ Rota / LLDP" />
                 </WrapPanel>
-                <TextBlock FontSize="10"
+                <TextBlock FontSize="11"
                            Foreground="{DynamicResource TextSecondaryBrush}"
                            TextWrapping="Wrap"
                            Text="Roda: zoom · arrastar o fundo: mover · Tab: percorrer nós · +/−: zoom · setas: mover · Home: ajustar · Ctrl+1/Ctrl+2: mapa/tabela. A FDB mostra onde o MAC foi aprendido, não prova a ligação física." />
@@ -204,7 +227,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Margin="0,1"
-                                           FontSize="10"
+                                           FontSize="11"
                                            Foreground="{DynamicResource WarningBrush}"
                                            Text="{Binding StringFormat=• {0}}"
                                            TextWrapping="Wrap" />
@@ -225,13 +248,13 @@
                     CornerRadius="7"
                     AutomationProperties.LiveSetting="Polite">
                 <StackPanel>
-                    <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Text="NÓ SELECIONADO" />
+                    <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Text="NÓ SELECIONADO" />
                     <TextBlock Margin="0,3,0,0" FontWeight="SemiBold" Text="{Binding SelectedTopologyNode.Label, TargetNullValue=Nenhum nó selecionado}" TextTrimming="CharacterEllipsis" />
                     <TextBlock Margin="0,2,0,0" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding SelectedTopologyNode.Subtitle}" TextTrimming="CharacterEllipsis" />
                     <WrapPanel Margin="0,3,0,0">
-                        <TextBlock Margin="0,0,12,0" FontSize="10" Text="{Binding SelectedTopologyNode.IpAddress, StringFormat=IP: {0}}" />
-                        <TextBlock Margin="0,0,12,0" FontSize="10" Text="{Binding SelectedTopologyNode.VlanId, StringFormat=VLAN: {0}}" />
-                        <TextBlock FontSize="10" Text="{Binding SelectedTopologyNode.RiskLevel, StringFormat=Risco: {0}}" />
+                        <TextBlock Margin="0,0,12,0" FontSize="11" Text="{Binding SelectedTopologyNode.IpAddress, StringFormat=IP: {0}}" />
+                        <TextBlock Margin="0,0,12,0" FontSize="11" Text="{Binding SelectedTopologyNode.VlanId, StringFormat=VLAN: {0}}" />
+                        <TextBlock FontSize="11" Text="{Binding SelectedTopologyNode.RiskLevel, StringFormat=Risco: {0}}" />
                     </WrapPanel>
                 </StackPanel>
             </Border>

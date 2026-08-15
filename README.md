@@ -2,7 +2,7 @@
 
 # Local Network Scanner
 
-[![source v1.3.1](https://img.shields.io/badge/source-v1.3.1-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.3.1)
+[![source v1.3.2](https://img.shields.io/badge/source-v1.3.2-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.3.2)
 ![Windows](https://img.shields.io/badge/Windows-x64%20%7C%20ARM64-0078d4)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/LICENSE)
 
@@ -10,13 +10,13 @@
 
 Scanner de redes locais para Windows com uma UI WPF simples, uma CLI para automação, diagnósticos acionáveis e topologia opcional. O programa separa observações diretas, dados fornecidos pela infraestrutura e inferências, para que um resultado provável nunca seja apresentado como facto confirmado.
 
-> **Estado de distribuição:** a `v1.2.0` é histórica e não é recomendada para instalação porque foi publicada sem Authenticode. A tag privada `v1.3.1` identifica o candidato de código e QA mais recente, mas não existe ainda uma GitHub Release 1.3.1 pública e assinada.
+> **Estado de distribuição:** a `v1.2.0` é histórica e não é recomendada para instalação porque foi publicada sem Authenticode. A `v1.3.2` identifica o candidato de código e QA mais recente; no repositório privado pode existir como prerelease `Private QA (NotSigned)`, mas não é uma distribuição pública de produção.
 >
 > O repositório é privado. Uma tag pode executar QA dos pacotes sem os publicar; a release pública só é autorizada depois dos gates de assinatura, validação x64/ARM64 nativa e redistribuição indicados abaixo. Consulte o [guia de assinatura](docs/SIGNING.md).
 
-![Janela principal com inventário de dispositivos demonstrativos](docs/images/main-window.png)
+![Janela principal com inventário de dispositivos demonstrativos](docs/images/main-window-current.png)
 
-![Topologia opcional hierárquica com dados demonstrativos](docs/images/topology-window.png)
+![Topologia opcional hierárquica com dados demonstrativos](docs/images/topology-window-current.png)
 
 _Imagens geradas com dados sintéticos; não expõem endereços nem identificadores de uma rede real._
 
@@ -35,7 +35,7 @@ Os dois formatos incluem a UI, a CLI e o runtime .NET necessário. O instalador 
 
 | Alvo | Estado |
 | --- | --- |
-| Windows 11 x64 | código 1.3.1: build Release, testes determinísticos e smoke UI/CLI obrigatórios; o workflow da tag instala, executa e remove o pacote self-contained exato antes de o marcar como validado |
+| Windows 11 x64 | código 1.3.2: build Release, testes determinísticos e smoke UI/CLI obrigatórios; o workflow da tag instala, executa e remove o pacote self-contained exato antes de o marcar como validado |
 | Windows 11 ARM64 | CI e release exigem build, testes e smoke num runner Windows ARM64 nativo; o cross-build isolado deixou de contar como validação |
 | Windows 10 | o .NET 10 limita o suporte atual a edições LTSC/Enterprise compatíveis; consulte a [matriz oficial da Microsoft](https://learn.microsoft.com/dotnet/core/install/windows#supported-versions) |
 
@@ -43,7 +43,7 @@ Os executáveis são self-contained, mas não são NativeAOT. Algumas biblioteca
 
 ### Aviso de assinatura
 
-Os artefactos históricos da `v1.2.0` e os artefactos privados de QA sem credenciais estão **sem assinatura Authenticode (`NotSigned`)**. O Microsoft Defender SmartScreen pode apresentar um aviso de reputação e o Smart App Control ou uma política empresarial pode bloquear completamente o arranque com o código `4551`. Antes de executar:
+Os artefactos históricos da `v1.2.0` e as prereleases privadas de QA `v1.3.x` sem credenciais estão **sem assinatura Authenticode (`NotSigned`)**. O Microsoft Defender SmartScreen pode apresentar um aviso de reputação e o Smart App Control ou uma política empresarial pode bloquear completamente o arranque com o código `4551`. Antes de executar:
 
 1. não use a `v1.2.0` como build de produção; aguarde uma release cujo `SIGNING-STATE.txt` indique `Authenticode: Signed`;
 2. compare o SHA-256 com `SHA256SUMS.txt` ou com o ficheiro `.sha256` adjacente;
@@ -63,6 +63,8 @@ Um checksum deteta alterações relativamente ao ficheiro publicado, mas não su
 3. Use **Rápido** para uma primeira passagem ou **Normal** para o inventário recomendado.
 4. Analise a lista de dispositivos; abra **Topologia** apenas quando quiser explorar o mapa do mesmo scan.
 
+Abrir **Parâmetros técnicos personalizados** apenas mostra os valores. Estes só substituem o perfil depois de ativar explicitamente **Usar definições personalizadas**; o contador indica quantas substituições estão efetivamente ativas.
+
 Comece com um intervalo pequeno e use o perfil **Avançado** apenas quando precisar de mais portas e detalhe. Utilize a aplicação somente numa rede própria ou explicitamente autorizada.
 
 ## O que o diferencia
@@ -74,6 +76,7 @@ Comece com um intervalo pequeno e use o perfil **Avançado** apenas quando preci
 - **Diagnósticos pesquisáveis:** códigos `LNS-*` distinguem entrada, rede, dispositivo e falhas internas.
 - **Degradação visível:** se o Windows não disponibilizar o baseline ARP, `LNS-NET-011` explica por que a confirmação ARP ficou desativada sem invalidar ICMP/TCP/multicast.
 - **Três profundidades:** Rápido, Normal e Avançado para utilizadores com necessidades diferentes.
+- **Personalização explícita:** consultar opções técnicas não altera o scan; ativação, contagem e reposição dos valores do perfil permanecem visíveis.
 - **Identidade por evidências:** fabricante, modelo, nome, firmware e serial são fundidos com origem e confiança, sem confundir anúncios com factos autenticados.
 - **Descoberta multicamada:** ICMP ligado à interface escolhida, TCP, ARP, mDNS/DNS-SD, SSDP/UPnP, WS-Discovery, NetBIOS, SNMP opcional e Nmap local opcional.
 - **Inventário útil:** IP, hostname, MAC, titular IEEE separado da marca identificada, modelo, latência, portas, serviços, protocolos observados e risco heurístico.
@@ -95,7 +98,7 @@ Comece com um intervalo pequeno e use o perfil **Avançado** apenas quando preci
 | Tolerância de timeout | menor | equilibrada | maior |
 | Utilização recomendada | primeira passagem | inventário habitual | diagnóstico autorizado e dirigido |
 
-As opções técnicas da UI podem substituir partes do perfil. A identidade SNMP v2c e a topologia SNMP são independentes e permanecem desativadas até o utilizador fornecer explicitamente uma community. A UI pede confirmação antes de enviar essa community sem cifragem aos dispositivos. A integração Nmap só fica disponível no perfil Avançado, usa um `nmap.exe` instalado separadamente e nunca é descarregada ou incluída pelo projeto.
+As opções técnicas da UI só substituem partes do perfil quando **Usar definições personalizadas** está ativado. Abrir ou fechar o painel não muda o comportamento; **Repor valores do perfil** elimina as substituições técnicas. A identidade SNMP v2c e a topologia SNMP são independentes e permanecem desativadas até o utilizador fornecer explicitamente uma community. A UI pede confirmação antes de enviar essa community sem cifragem aos dispositivos. A integração Nmap só fica disponível no perfil Avançado, usa um `nmap.exe` instalado separadamente e nunca é descarregada ou incluída pelo projeto.
 
 ## Funcionalidades
 
@@ -125,8 +128,9 @@ Consulte [Base de entidades MAC](https://github.com/p-darksy-r/LocalNetworkScann
 
 O scan termina sempre na lista de dispositivos. Quando existe um mapa, o botão com ícone **Abrir topologia** abre uma janela própria com:
 
-- zoom, pan, enquadramento automático e vista a 100%;
+- zoom com botões e percentagem visíveis, pan, enquadramento automático e vista a 100%;
 - seleção sincronizada com o inventário;
+- tabela alternativa para teclado, leitores de ecrã e consulta exata da evidência;
 - filtros de infraestrutura, clientes e alertas que preservam o caminho de contexto até ao nó correspondente;
 - distinção visual entre relações observadas, fornecidas e inferidas;
 - exportação PNG e GraphML;
@@ -149,7 +153,7 @@ Um diagnóstico inclui código, categoria, severidade, mensagem em pt-PT, ação
 | `LNS-DEV-*` | resposta ou identidade inválida/desconhecida de um dispositivo |
 | `LNS-APP-*` | ficheiro, acesso ou falha inesperada da aplicação |
 
-Um aviso de fabricante ou dispositivo desconhecido não significa que o scan falhou. O catálogo público documenta 31 códigos da aplicação/scan, 9 códigos de release e os exit codes da CLI: [Códigos de erro e diagnóstico](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/ERROR_CODES.md).
+Um aviso de fabricante ou dispositivo desconhecido não significa que o scan falhou. O catálogo público documenta 32 códigos da aplicação/scan, 10 códigos de release e os exit codes da CLI: [Códigos de erro e diagnóstico](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/ERROR_CODES.md).
 
 Ao pedir suporte, partilhe o código, a versão, a arquitetura e passos mínimos de reprodução. A CLI pode criar um relatório agregado concebido para esse fim:
 
@@ -256,7 +260,9 @@ Validação completa:
 powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1 -Configuration Release -VerifyFormat
 ```
 
-O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.3.1`, a suite contém 82 testes. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
+O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.3.2`, a suite contém 83 testes. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
+
+O workflow CodeQL analisa C# com consultas `security-extended` quando o repositório é público ou quando `CODEQL_ENABLED=true` e o plano privado permite code scanning. A release restaura metadados de dependências para `win-x64` e `win-arm64`, exige ambos os runtimes e gera/valida um SBOM SPDX 2.2 como evidência separada, sem o confundir com os dez ficheiros instaláveis validados.
 
 Executar a UI:
 
@@ -287,7 +293,7 @@ Instalador Inno Setup:
 powershell -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -RuntimeIdentifier win-x64
 ```
 
-Uma tag `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia QA privada dos pacotes. A publicação só é pedida através de `workflow_dispatch` explícito, selecionando essa tag e `publish_release=true`. Antes do build, um preflight confirma que a tag aponta para o HEAD atual de `main` e apresenta códigos `LNS-REL-*` para configuração ou autorizações ausentes. A assinatura pública usa Microsoft Artifact Signing por OIDC: a chave permanece num HSM/serviço e não existe PFX no GitHub. Depois do empacotamento, os ZIPs e instaladores exatos são instalados, executados e removidos em runners Windows x64 e ARM64 nativos. Um gate terminal volta a descarregar o artefacto `windows-validated`, exige o contrato exato de dez ficheiros, confirma os hashes e recusa estados nativos incompletos. Artefactos privados podem ser gerados como `NotSigned` para QA, mas uma **GitHub Release publicada só é criada** quando todos os ficheiros executáveis e o diagnóstico PowerShell têm Authenticode confiável, os dois testes nativos passaram e a autorização de redistribuição IEEE está registada.
+Uma tag `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia QA privada dos pacotes. A publicação de produção só é pedida através de `workflow_dispatch` explícito, selecionando essa tag e `publish_release=true`. Antes do build, um preflight confirma que a tag aponta para o HEAD atual de `main` e apresenta códigos `LNS-REL-*` para configuração ou autorizações ausentes. A assinatura pública usa Microsoft Artifact Signing por OIDC: a chave permanece num HSM/serviço e não existe PFX no GitHub. Depois do empacotamento, os ZIPs e instaladores exatos são instalados, executados e removidos em runners Windows x64 e ARM64 nativos. Um gate terminal volta a descarregar o artefacto `windows-validated`, exige o contrato exato de dez ficheiros, confirma os hashes, gera/valida o SBOM SPDX separado e recusa estados nativos incompletos. Os resultados privados podem ser espelhados no repositório privado apenas como prerelease claramente marcada `Private QA (NotSigned)`; uma **release pública de produção só é criada** quando todos os ficheiros executáveis e o diagnóstico PowerShell têm Authenticode confiável, os dois testes nativos passaram e a autorização de redistribuição IEEE está registada.
 
 A publicação corre num job separado com permissão de escrita mínima, exige o conjunto exato de assets, volta a verificar hashes, timestamps e o mesmo signer e prepara tudo como draft antes de tornar a release visível. Uma tag que já tenha uma GitHub Release não é alterada nem recebe assets substituídos: publique uma versão nova em vez de modificar binários já distribuídos. Consulte [Windows App Control e erro 4551](docs/APP_CONTROL.md).
 

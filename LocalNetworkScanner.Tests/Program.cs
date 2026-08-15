@@ -24,7 +24,16 @@ using LocalNetworkScanner.Core.Utilities;
 using LocalNetworkScanner.Wpf;
 using LocalNetworkScanner.Wpf.Controls;
 using LocalNetworkScanner.Wpf.Infrastructure;
+using LocalNetworkScanner.Wpf.Services;
 using LocalNetworkScanner.Wpf.ViewModels;
+
+if (args.Contains("--render-doc-images", StringComparer.OrdinalIgnoreCase))
+{
+    string imageDirectory = Path.Combine(Environment.CurrentDirectory, "docs", "images");
+    await RunOnSta(() => DocumentationScreenshotRenderer.Render(imageDirectory));
+    Console.WriteLine($"Imagens da documentação atualizadas em: {imageDirectory}");
+    return 0;
+}
 
 List<(string Name, Func<Task> Run)> tests =
 [
@@ -870,6 +879,75 @@ List<(string Name, Func<Task> Run)> tests =
         Equal(true, rule.Validate("50", culture).IsValid);
         Equal(true, rule.Validate("30000", culture).IsValid);
         Equal(false, rule.Validate("30001", culture).IsValid);
+    })),
+    ("Custom scan settings are explicit and migrate legacy preferences", () => RunOnSta(() =>
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            "LocalNetworkScanner.Tests",
+            Guid.NewGuid().ToString("N"));
+        string settingsPath = Path.Combine(directory, "settings.json");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            File.WriteAllText(
+                settingsPath,
+                """
+                {
+                  "Profile": 2,
+                  "IsAdvancedMode": true,
+                  "MaximumHosts": 2048,
+                  "MaximumHostConcurrency": 7
+                }
+                """);
+
+            UiSettingsService settingsService = new(settingsPath);
+            using MainViewModel viewModel = new(
+                new UserDialogService(),
+                new DesktopActionService(),
+                settingsService);
+
+            Equal(true, viewModel.UseCustomScanSettings);
+            Equal(true, viewModel.IsCustomScanSettingsExpanded);
+            True(
+                viewModel.CustomOverrideCount >= 2,
+                "As preferências técnicas legadas devem continuar identificadas como substituições.");
+
+            viewModel.IsCustomScanSettingsExpanded = false;
+            viewModel.IsCustomScanSettingsExpanded = true;
+            Equal(true, viewModel.UseCustomScanSettings);
+
+            MethodInfo buildScanOptions = typeof(MainViewModel)
+                .GetMethod("BuildScanOptions", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            viewModel.UseCustomScanSettings = false;
+            ScanOptions profileOptions = (ScanOptions)buildScanOptions.Invoke(viewModel, null)!;
+            Equal(64, profileOptions.MaximumHostConcurrency);
+            Equal(0, viewModel.ActiveCustomOverrideCount);
+
+            viewModel.UseCustomScanSettings = true;
+            ScanOptions customOptions = (ScanOptions)buildScanOptions.Invoke(viewModel, null)!;
+            Equal(7, customOptions.MaximumHostConcurrency);
+            True(
+                viewModel.ActiveCustomOverrideCount >= 2,
+                "As substituições devem ficar ativas apenas depois de o utilizador as ativar explicitamente.");
+
+            viewModel.EnableHistory = false;
+            viewModel.ResetProfileOverridesCommand.Execute(null);
+            Equal(0, viewModel.CustomOverrideCount);
+            Equal(64, viewModel.MaximumHostConcurrency);
+            Equal(false, viewModel.EnableHistory);
+
+            viewModel.SaveSettings();
+            UiSettings migrated = settingsService.Load();
+            Equal<bool?>(true, migrated.UseCustomScanSettings);
+            Equal<bool?>(true, migrated.IsCustomScanSettingsExpanded);
+            Equal(true, migrated.IsAdvancedMode);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
     })),
     ("Device rows expose typed sort keys", () => Sync(() =>
     {
@@ -3233,7 +3311,7 @@ List<(string Name, Func<Task> Run)> tests =
         App application = new();
         application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         application.InitializeComponent();
-        MainWindow window = new()
+        MainWindow window = new(new UiSettingsService(Path.Combine(directory, "settings.json")))
         {
             Opacity = 0,
             ShowActivated = false,
@@ -3256,12 +3334,27 @@ List<(string Name, Func<Task> Run)> tests =
                 window.FindName("ScanConfigurationToggle") as ToggleButton;
             ScrollViewer? configurationPanel =
                 window.FindName("ScanConfigurationPanel") as ScrollViewer;
+            Expander? customSettingsExpander =
+                window.FindName("CustomScanSettingsExpander") as Expander;
+            CheckBox? useCustomSettingsToggle =
+                window.FindName("UseCustomScanSettingsToggle") as CheckBox;
+            Button? resetProfileOverridesButton =
+                window.FindName("ResetProfileOverridesButton") as Button;
+            TextBox? maximumHostsTextBox =
+                window.FindName("MaximumHostsTextBox") as TextBox;
+            PasswordBox? snmpCommunityPasswordBox =
+                window.FindName("SnmpCommunityPasswordBox") as PasswordBox;
             Button? progressCancelButton =
                 window.FindName("ProgressCancelButton") as Button;
             TextBlock? emptyStateTitle =
                 window.FindName("EmptyStateTitleText") as TextBlock;
             NotNull(configurationToggle);
             NotNull(configurationPanel);
+            NotNull(customSettingsExpander);
+            NotNull(useCustomSettingsToggle);
+            NotNull(resetProfileOverridesButton);
+            NotNull(maximumHostsTextBox);
+            NotNull(snmpCommunityPasswordBox);
             NotNull(progressCancelButton);
             NotNull(emptyStateTitle);
             Equal(true, window.ViewModel.IsScanConfigurationExpanded);
@@ -3276,6 +3369,31 @@ List<(string Name, Func<Task> Run)> tests =
             Equal("Configuração do scan", configurationToggle.Content?.ToString());
             Equal(Visibility.Collapsed, configurationPanel.Visibility);
             window.ViewModel.IsScanConfigurationExpanded = true;
+
+            window.ViewModel.UseCustomScanSettings = false;
+            window.ViewModel.IsCustomScanSettingsExpanded = false;
+            customSettingsExpander!.GetBindingExpression(Expander.IsExpandedProperty)?.UpdateTarget();
+            customSettingsExpander.IsExpanded = true;
+            customSettingsExpander.GetBindingExpression(Expander.IsExpandedProperty)?.UpdateSource();
+            Equal(true, window.ViewModel.IsCustomScanSettingsExpanded);
+            Equal(false, window.ViewModel.UseCustomScanSettings);
+            useCustomSettingsToggle!.GetBindingExpression(ToggleButton.IsCheckedProperty)?.UpdateTarget();
+            Equal(false, useCustomSettingsToggle.IsChecked);
+            Equal(window.ViewModel.ResetProfileOverridesCommand, resetProfileOverridesButton!.Command);
+            window.ViewModel.UseCustomScanSettings = true;
+            maximumHostsTextBox!.Text = "invalid";
+            maximumHostsTextBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+            Equal(true, Validation.GetHasError(maximumHostsTextBox));
+            Equal(true, window.ViewModel.HasBlockingInputValidationErrors);
+            snmpCommunityPasswordBox!.Password = "temporary-test-community";
+            Equal("temporary-test-community", window.ViewModel.SnmpCommunity);
+            window.ViewModel.ResetProfileOverridesCommand.Execute(null);
+            maximumHostsTextBox.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
+            Equal(IpRangeService.DefaultMaximumAddresses.ToString(CultureInfo.CurrentCulture), maximumHostsTextBox.Text);
+            Equal(false, Validation.GetHasError(maximumHostsTextBox));
+            Equal(false, window.ViewModel.HasBlockingInputValidationErrors);
+            Equal(string.Empty, window.ViewModel.SnmpCommunity);
+            Equal(string.Empty, snmpCommunityPasswordBox.Password);
 
             PropertyInfo isScanningProperty = typeof(MainViewModel)
                 .GetProperty(nameof(MainViewModel.IsScanning))!;
@@ -3350,8 +3468,17 @@ List<(string Name, Func<Task> Run)> tests =
             Equal(window.ViewModel, topologyWindow.DataContext);
             NetworkTopologyControl? optionalTopology =
                 topologyWindow.FindName("TopologyGraph") as NetworkTopologyControl;
+            TextBlock? topologyZoomText =
+                topologyWindow.FindName("TopologyZoomText") as TextBlock;
             NotNull(optionalTopology);
+            NotNull(topologyZoomText);
             Equal(map, optionalTopology!.Map);
+            optionalTopology.ResetView();
+            Equal(100, optionalTopology.ZoomPercent);
+            Equal("100%", topologyZoomText!.Text);
+            optionalTopology.ZoomIn();
+            Equal(115, optionalTopology.ZoomPercent);
+            Equal("115%", topologyZoomText.Text);
 
             NetworkTopologyControl topology = new()
             {
@@ -3363,6 +3490,14 @@ List<(string Name, Func<Task> Run)> tests =
             topology.Arrange(new Rect(0, 0, 900, 500));
             topology.UpdateLayout();
             topology.FitToView();
+            topology.ResetView();
+            topology.ZoomIn();
+            int userZoom = topology.ZoomPercent;
+            topology.Arrange(new Rect(0, 0, 960, 540));
+            topology.UpdateLayout();
+            Equal(userZoom, topology.ZoomPercent);
+            topology.ZoomOut();
+            Equal(100, topology.ZoomPercent);
             Directory.CreateDirectory(directory);
             topology.ExportVisiblePng(path);
             True(new FileInfo(path).Length > 1_000, "O mapa WPF deveria produzir um PNG não vazio.");
@@ -3371,8 +3506,6 @@ List<(string Name, Func<Task> Run)> tests =
         {
             topologyWindow?.Close();
             window.Close();
-            window.DataContext = null;
-            window.ViewModel.Dispose();
             application.Shutdown();
             if (Directory.Exists(directory))
                 Directory.Delete(directory, recursive: true);

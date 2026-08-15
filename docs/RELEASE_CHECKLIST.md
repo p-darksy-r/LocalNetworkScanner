@@ -97,6 +97,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeI
 - [ ] O smoke test `LocalNetworkScanner.Cli.exe --help` termina com exit code `0` numa máquina da arquitetura publicada; o workflow confirma `OSArchitecture=Arm64` antes do smoke ARM64.
 - [ ] Os jobs de release instalaram, executaram e removeram os ZIPs e instaladores exatos em x64 e ARM64; o binário testado é o mesmo cujo hash será publicado.
 - [ ] O job `Require successful native Windows validation` terminou com sucesso e o artefacto `windows-validated` contém exatamente os dez ficheiros esperados, hashes coerentes e ambos os estados nativos como `Validated`.
+- [ ] O SBOM SPDX 2.2 foi gerado a partir desse payload exato e dos metadados restaurados para `win-x64` e `win-arm64`; a cobertura dos dois runtimes foi validada e guardada como evidência separada sem alterar o contrato dos dez ficheiros instaláveis.
 - [ ] A UI arranca, inicia e cancela um scan de laboratório e fecha sem processo residual.
 - [ ] O ZIP inclui UI, CLI, README, licença, changelog, limites técnicos, `docs/VENDOR_DATABASE.md` e `THIRD_PARTY_NOTICES.md`.
 - [ ] Exports JSON schema v5 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações, identidade, diagnósticos ou estado TLS documentados.
@@ -115,11 +116,11 @@ if ($actual -ne $expected) { throw 'SHA-256 invalido.' }
 
 ## 6. Assinatura e reputação
 
-- [ ] Artefactos privados de workflow sem assinatura indicam claramente `NotSigned` e não são publicados como GitHub Release.
+- [ ] Artefactos privados sem assinatura indicam claramente `Private QA` e `NotSigned`; se forem espelhados como prerelease no repositório privado, não são marcados como `Latest` nem descritos como produção.
 - [ ] Uma GitHub Release publicada contém apenas artefactos Authenticode `Signed`.
 - [ ] Checksums não são apresentados como substitutos de Authenticode nem como prova da identidade do publisher.
 - [ ] O artefacto foi testado com SmartScreen/Defender numa máquina sem histórico do produto.
-- [ ] O push da tag conclui QA privada; antes de pedir `publish_release=true`, o preflight não apresenta `LNS-REL-001` a `LNS-REL-009`.
+- [ ] O push da tag conclui QA privada; antes de pedir `publish_release=true`, o preflight não apresenta `LNS-REL-001` a `LNS-REL-010`.
 - [ ] A tag corresponde à versão e aponta exatamente para o HEAD atual de `main`.
 
 Para uma release publicada:

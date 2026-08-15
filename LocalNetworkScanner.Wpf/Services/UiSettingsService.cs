@@ -62,7 +62,11 @@ public sealed class UiSettings
     public string? LastInterfaceAddress { get; set; }
     public string? LastCidr { get; set; }
     public ScanProfile Profile { get; set; } = ScanProfile.Standard;
+    // Campo legado: nas versões anteriores controlava simultaneamente a expansão
+    // do painel e a aplicação das definições personalizadas.
     public bool IsAdvancedMode { get; set; }
+    public bool? UseCustomScanSettings { get; set; }
+    public bool? IsCustomScanSettingsExpanded { get; set; }
     public string CustomPorts { get; set; } = string.Empty;
     public int MaximumHosts { get; set; } = 4_096;
     public int MaximumHostConcurrency { get; set; } = 96;

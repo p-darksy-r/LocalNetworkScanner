@@ -4,7 +4,7 @@
 
 ## Versões suportadas
 
-A linha de código suportada é `1.3.x`; apenas a revisão mais recente dessa linha recebe correções de segurança. A `1.2.x` é histórica e não deve ser usada como build de produção. Builds locais, forks, tags de QA e artefactos que não tenham sido publicados em [GitHub Releases](https://github.com/p-darksy-r/LocalNetworkScanner/releases) não são considerados releases instaláveis oficiais.
+A linha de código suportada é `1.3.x`; apenas a revisão mais recente dessa linha recebe correções de segurança. A `1.2.x` é histórica e não deve ser usada como build de produção. Builds locais, forks e tags não são releases instaláveis oficiais. Uma prerelease existente apenas no repositório privado e marcada `Private QA (NotSigned)` continua a ser evidência de validação, não uma distribuição pública de produção.
 
 ## Comunicar uma vulnerabilidade
 
@@ -48,6 +48,7 @@ Uma release pública deve:
 - ter versão, ícone e identidade de publisher consistentes;
 - publicar o estado Authenticode e, quando existir assinatura, validar identidade, algoritmo e timestamp;
 - publicar um ficheiro SHA-256 separado;
+- gerar e validar um SBOM sem o apresentar como substituto de assinatura ou análise de vulnerabilidades;
 - ser testada numa instalação Windows limpa;
 - documentar claramente se é portátil ou instalada.
 
