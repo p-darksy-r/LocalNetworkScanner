@@ -261,7 +261,48 @@ try {
     }
     $passed++
 
-    Write-Host "$passed/8 synthetic release evidence tests passed." -ForegroundColor Green
+    $publishJob = [regex]::Match(
+        $releaseWorkflow,
+        '(?ms)^  publish:\r?\n(?<body>.*?)(?=^  [a-zA-Z0-9_-]+:)')
+    Assert-True `
+        -Condition $publishJob.Success `
+        -Message "the release workflow must contain the publish job"
+    $publishCondition = [regex]::Match(
+        $publishJob.Groups["body"].Value,
+        '(?ms)^    if: >-\r?\n(?<condition>.*?)(?=^    needs:)')
+    Assert-True `
+        -Condition ($publishCondition.Success -and
+            $publishCondition.Groups["condition"].Value -match '!cancelled\(\)' -and
+            $publishCondition.Groups["condition"].Value -match "needs\.preflight\.result == 'success'" -and
+            $publishCondition.Groups["condition"].Value -match "needs\.package\.result == 'success'" -and
+            $publishCondition.Groups["condition"].Value -match "needs\.validation-gate\.result == 'success'") `
+        -Message "publish must override implicit success and require every direct release gate"
+
+    $cleanupJob = [regex]::Match(
+        $releaseWorkflow,
+        '(?ms)^  cleanup-transport:\r?\n(?<body>.*?)(?=^  [a-zA-Z0-9_-]+:)')
+    Assert-True `
+        -Condition ($cleanupJob.Success -and
+            $cleanupJob.Groups["body"].Value -match "needs\.publish\.result != 'success'") `
+        -Message "draft cleanup must run only when publication did not succeed"
+
+    $resultJob = [regex]::Match(
+        $releaseWorkflow,
+        '(?ms)^  release-result:\r?\n(?<body>.*?)(?=^# Copyright|\z)')
+    Assert-True `
+        -Condition ($resultJob.Success -and
+            $resultJob.Groups["body"].Value -match '(?m)^    if: \$\{\{ !cancelled\(\) && needs\.preflight\.result == ''success'' && needs\.preflight\.outputs\.run_candidate == ''true'' \}\}\r?$' -and
+            $resultJob.Groups["body"].Value -match '(?m)^    needs: \[.*publish, cleanup-transport\]\r?$' -and
+            $resultJob.Groups["body"].Value -match '(?m)^          PUBLISH_RESULT: \$\{\{ needs\.publish\.result \}\}\r?$' -and
+            $resultJob.Groups["body"].Value -match 'publish = \$env:PUBLISH_RESULT' -and
+            $resultJob.Groups["body"].Value -match 'Where-Object \{ \$_\.Value -ne ''success'' \}' -and
+            $resultJob.Groups["body"].Value -match 'releases/tags/\$escapedTag' -and
+            $resultJob.Groups["body"].Value -match '\$assets\.Count -ne 12' -and
+            $resultJob.Groups["body"].Value -match 'Get-CanonicalRemoteDigest -Records \$records') `
+        -Message "a terminal status gate must reject incomplete publication and independently verify the release API"
+    $passed++
+
+    Write-Host "$passed/9 synthetic release evidence tests passed." -ForegroundColor Green
 }
 finally {
     $resolvedTestRoot = [IO.Path]::GetFullPath($testRoot)

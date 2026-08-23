@@ -4,6 +4,21 @@
 
 Todas as alterações relevantes deste projeto são registadas neste ficheiro. O formato segue os princípios de Keep a Changelog e o versionamento segue Semantic Versioning.
 
+## [1.3.6] - 2026-08-23
+
+Tag nova obrigatória; a `v1.3.5` permanece imutável como evidência da tentativa falhada e não é movida nem reutilizada. Embora os pacotes, a validação x64/ARM64 e o SBOM tenham passado, a publicação foi indevidamente ignorada e o cleanup eliminou a draft owned; nenhuma release `v1.3.5` foi publicada.
+
+### Fixed
+
+- a publicação declara agora `!cancelled()` e exige explicitamente sucesso no preflight, seleção do pacote e gate de validação, evitando que o `success()` implícito do GitHub propague o job público intencionalmente ignorado para o caminho privado;
+- um gate terminal independente exige que uma execução elegível tenha publicado efetivamente a release, tornando impossível repetir o estado falso-verde da `v1.3.5`;
+- o cleanup só é agendado quando a publicação não teve sucesso; versão do produto, manifesto Windows, template de erros e documentação atualizados para `v1.3.6`.
+
+### Security
+
+- uma publicação ignorada ou falhada continua a eliminar apenas a draft owned, mas passa também a falhar visivelmente o workflow; uma publicação verificada nunca agenda a remoção;
+- a tentativa `v1.3.5` confirmou novamente o comportamento fail-closed: não deixou release, draft, assets ou artefactos de Actions remanescentes e preservou a tag imutável.
+
 ## [1.3.5] - 2026-08-23
 
 Tag nova obrigatória; a `v1.3.4` permanece imutável como evidência da tentativa falhada e não é movida nem reutilizada. A draft owned dessa tentativa foi eliminada automaticamente e nenhuma release `v1.3.4` foi publicada.

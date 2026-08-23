@@ -199,6 +199,7 @@ Se for usado outro instalador, documentar a ferramenta e versão, privilégios p
 - [ ] Os hashes e assinaturas foram novamente verificados depois do upload.
 - [ ] O job de publicação recebeu exatamente 12 assets pela draft privada, verificou nomes, estado, tamanhos, SHA-256 e os digests canónicos do candidato Pending, payload Validated e release final; voltou a validar checksums e, numa release pública, timestamps e um único signer antes de retirar o estado draft.
 - [ ] O workflow não criou artefactos de Actions; `VALIDATION-ATTESTATION.json` e o SBOM SPDX permanecem como assets da release, e qualquer cleanup atuou apenas sobre uma draft owned ainda não publicada.
+- [ ] O gate terminal `Require an actually published release` terminou com sucesso e confirmou pela API `draft=false`, a tag, o modo de confiança, o marker e os 12 assets, recompondo também os digests canónicos do payload e da release; uma publicação elegível `skipped`, falhada ou cancelada não pode deixar o workflow verde.
 - [ ] `SIGNING-STATE.txt` e as notas da release publicada dizem explicitamente `Signed`; releases anteriores conhecidas como não assinadas permanecem documentadas como `NotSigned`.
 - [ ] A release explica arquitetura, versão mínima de Windows suportada e known issues.
 - [ ] Existe um canal privado para vulnerabilidades e um canal normal para suporte.

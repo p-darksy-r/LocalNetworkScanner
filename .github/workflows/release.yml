@@ -1171,9 +1171,12 @@ jobs:
   publish:
     name: Publish verified GitHub Release
     if: >-
+      ${{ !cancelled() &&
+      needs.preflight.result == 'success' &&
+      needs.package.result == 'success' &&
       needs.preflight.outputs.is_tag == 'true' &&
       needs.validation-gate.result == 'success' &&
-      (needs.preflight.outputs.public_release == 'true' || needs.preflight.outputs.private_release == 'true')
+      (needs.preflight.outputs.public_release == 'true' || needs.preflight.outputs.private_release == 'true') }}
     needs: [preflight, package, validation-gate]
     runs-on: windows-latest
     timeout-minutes: 20
@@ -1450,7 +1453,7 @@ jobs:
 
   cleanup-transport:
     name: Remove unpublished owned draft transport
-    if: ${{ always() && needs.package.result == 'success' && needs.package.outputs.already_published != 'true' }}
+    if: ${{ always() && needs.package.result == 'success' && needs.package.outputs.already_published != 'true' && needs.publish.result != 'success' }}
     needs: [preflight, package, validate-x64, validate-arm64, validation-gate, publish]
     runs-on: windows-latest
     timeout-minutes: 5
@@ -1487,5 +1490,176 @@ jobs:
             -WorkflowRunAttempt $env:GITHUB_RUN_ATTEMPT `
             -ReleaseId $env:TRANSPORT_RELEASE_ID `
             -CandidateDigest $env:CANDIDATE_DIGEST
+
+  release-result:
+    name: Require an actually published release
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.preflight.outputs.run_candidate == 'true' }}
+    needs: [preflight, package, validate-x64, validate-arm64, validation-gate, publish, cleanup-transport]
+    runs-on: windows-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - name: Reject incomplete or falsely green release graphs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          RUN_CANDIDATE: ${{ needs.preflight.outputs.run_candidate }}
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          PACKAGE_RESULT: ${{ needs.package.result }}
+          VALIDATE_X64_RESULT: ${{ needs.validate-x64.result }}
+          VALIDATE_ARM64_RESULT: ${{ needs.validate-arm64.result }}
+          VALIDATION_GATE_RESULT: ${{ needs.validation-gate.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+          CLEANUP_RESULT: ${{ needs.cleanup-transport.result }}
+        run: |
+          $requiredResults = [ordered]@{
+            preflight = $env:PREFLIGHT_RESULT
+            package = $env:PACKAGE_RESULT
+            validate_x64 = $env:VALIDATE_X64_RESULT
+            validate_arm64 = $env:VALIDATE_ARM64_RESULT
+            validation_gate = $env:VALIDATION_GATE_RESULT
+            publish = $env:PUBLISH_RESULT
+          }
+          $unexpectedResults = @(
+            $requiredResults.GetEnumerator() |
+              Where-Object { $_.Value -ne 'success' } |
+              ForEach-Object { "$($_.Key)=$($_.Value)" }
+          )
+          if ($env:RUN_CANDIDATE -ne 'true' -or $unexpectedResults.Count -ne 0) {
+            $detail = if ($unexpectedResults.Count -eq 0) {
+              "run_candidate=$env:RUN_CANDIDATE"
+            }
+            else {
+              $unexpectedResults -join ', '
+            }
+            throw "LNS-REL-008: an eligible release run did not publish successfully: $detail."
+          }
+          if ($env:CLEANUP_RESULT -notin @('success', 'skipped')) {
+            throw "LNS-REL-008: draft cleanup ended in the unexpected state '$env:CLEANUP_RESULT'."
+          }
+
+          $escapedTag = [Uri]::EscapeDataString($env:RELEASE_TAG)
+          $releaseResponse = @(
+            gh api --method GET "repos/$env:GITHUB_REPOSITORY/releases/tags/$escapedTag" 2>&1
+          )
+          if ($LASTEXITCODE -ne 0) {
+            throw "LNS-REL-008: the successful publish job did not leave a release addressable by tag: $($releaseResponse -join [Environment]::NewLine)"
+          }
+          try {
+            $release = $releaseResponse -join [Environment]::NewLine | ConvertFrom-Json
+          }
+          catch {
+            throw "LNS-REL-008: the final release API response is invalid JSON: $($_.Exception.Message)"
+          }
+
+          $isPublic = $env:PUBLIC_RELEASE -eq 'true'
+          $releaseMode = if ($isPublic) { 'PublicRelease' } else { 'PrivateQa' }
+          $expectedTitle = if ($isPublic) {
+            "Local Network Scanner $env:RELEASE_VERSION"
+          }
+          else {
+            "Local Network Scanner $env:RELEASE_VERSION - Private QA (NotSigned)"
+          }
+          $finalMarkerPrefix = "<!-- lns-final-release schema=2 repository_id=$env:REPOSITORY_ID commit=$env:GITHUB_SHA tag=$env:RELEASE_TAG mode=$releaseMode "
+          if ([bool]$release.draft -or
+              [string]$release.tag_name -cne $env:RELEASE_TAG -or
+              [string]$release.name -cne $expectedTitle -or
+              [bool]$release.prerelease -ne (-not $isPublic) -or
+              [string]::IsNullOrWhiteSpace([string]$release.published_at) -or
+              ([string]$release.body).IndexOf($finalMarkerPrefix, [StringComparison]::Ordinal) -lt 0) {
+            throw 'LNS-REL-008: final release metadata does not match the expected tag, trust mode or ownership marker.'
+          }
+
+          $binaryNames = @(
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-x64.zip",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-arm64.zip",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-x64-setup.exe",
+            "LocalNetworkScanner-$env:RELEASE_VERSION-win-arm64-setup.exe"
+          )
+          $expectedNames = @(
+            $binaryNames
+            $binaryNames | ForEach-Object { "$_.sha256" }
+            'SHA256SUMS.txt'
+            'SIGNING-STATE.txt'
+            'VALIDATION-ATTESTATION.json'
+            "LocalNetworkScanner-$env:RELEASE_VERSION-sbom.spdx.json"
+          ) | Sort-Object
+          $assets = @($release.assets)
+          $actualNames = @($assets | ForEach-Object { [string]$_.name } | Sort-Object)
+          $nameDifference = @(Compare-Object -ReferenceObject $expectedNames -DifferenceObject $actualNames)
+          if ($assets.Count -ne 12 -or $nameDifference.Count -ne 0) {
+            throw "LNS-REL-008: published release does not expose the exact 12-asset contract: $($nameDifference | Out-String)"
+          }
+          foreach ($asset in $assets) {
+            if ([string]$asset.state -cne 'uploaded' -or
+                [long]$asset.size -le 0 -or
+                [string]$asset.digest -notmatch '^sha256:[0-9a-f]{64}$') {
+              throw "LNS-REL-008: published asset '$($asset.name)' has incomplete state, size or SHA-256 metadata."
+            }
+          }
+
+          function Get-CanonicalRemoteDigest {
+            param([Parameter(Mandatory = $true)][object[]]$Records)
+
+            $lines = @($Records | Sort-Object name | ForEach-Object {
+              $hash = ([string]$_.digest).ToLowerInvariant().Replace('sha256:', '')
+              "$hash $([long]$_.size) $([string]$_.name)"
+            })
+            $bytes = [Text.Encoding]::UTF8.GetBytes(($lines -join "`n") + "`n")
+            $algorithm = [Security.Cryptography.SHA256]::Create()
+            try {
+              $hash = ([BitConverter]::ToString($algorithm.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+            }
+            finally {
+              $algorithm.Dispose()
+            }
+            "sha256:$hash"
+          }
+
+          $finalMarkerPattern = [regex]::Escape($finalMarkerPrefix) +
+            'candidate=(?<candidate>sha256:[0-9a-f]{64}) payload=(?<payload>sha256:[0-9a-f]{64}) release=(?<release>sha256:[0-9a-f]{64}) attestation=(?<attestation>sha256:[0-9a-f]{64}) sbom=(?<sbom>sha256:[0-9a-f]{64}) -->'
+          $finalMarker = [regex]::Match(
+            [string]$release.body,
+            $finalMarkerPattern,
+            [Text.RegularExpressions.RegexOptions]::CultureInvariant)
+          if (-not $finalMarker.Success) {
+            throw 'LNS-REL-008: published release ownership marker is incomplete or contradictory.'
+          }
+          $records = @($assets | ForEach-Object {
+            [pscustomobject]@{
+              name = [string]$_.name
+              size = [long]$_.size
+              digest = [string]$_.digest
+            }
+          })
+          $candidateNames = @(
+            $binaryNames
+            $binaryNames | ForEach-Object { "$_.sha256" }
+            'SHA256SUMS.txt'
+            'SIGNING-STATE.txt'
+          )
+          $payloadRecords = @($records | Where-Object { $_.name -in $candidateNames })
+          $attestationRecord = @($records | Where-Object { $_.name -ceq 'VALIDATION-ATTESTATION.json' })[0]
+          $sbomRecord = @($records | Where-Object { $_.name -ceq "LocalNetworkScanner-$env:RELEASE_VERSION-sbom.spdx.json" })[0]
+          if ((Get-CanonicalRemoteDigest -Records $payloadRecords) -cne $finalMarker.Groups['payload'].Value -or
+              (Get-CanonicalRemoteDigest -Records $records) -cne $finalMarker.Groups['release'].Value -or
+              [string]$attestationRecord.digest -cne $finalMarker.Groups['attestation'].Value -or
+              [string]$sbomRecord.digest -cne $finalMarker.Groups['sbom'].Value) {
+            throw 'LNS-REL-008: published asset metadata does not reproduce the payload, release, attestation or SBOM digests in the ownership marker.'
+          }
+
+          if (-not $isPublic) {
+            $visibilityResponse = @(gh api "repos/$env:GITHUB_REPOSITORY" --jq '.private' 2>&1)
+            if ($LASTEXITCODE -ne 0 -or ($visibilityResponse -join '').Trim().ToLowerInvariant() -ne 'true') {
+              throw 'LNS-REL-005: the repository is no longer private after publishing a NotSigned QA prerelease.'
+            }
+          }
+          Write-Host "Release result gate independently confirmed $($release.html_url), its exact 12 assets and canonical digests."
 
 # Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
