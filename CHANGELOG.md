@@ -4,6 +4,20 @@
 
 Todas as alterações relevantes deste projeto são registadas neste ficheiro. O formato segue os princípios de Keep a Changelog e o versionamento segue Semantic Versioning.
 
+## [1.3.5] - 2026-08-23
+
+Tag nova obrigatória; a `v1.3.4` permanece imutável como evidência da tentativa falhada e não é movida nem reutilizada. A draft owned dessa tentativa foi eliminada automaticamente e nenhuma release `v1.3.4` foi publicada.
+
+### Fixed
+
+- os jobs de validação x64 e ARM64 recuperam o `contents: write` mínimo exigido pela API do GitHub para consultar e descarregar assets de uma draft privada; com `contents: read`, `GET releases/{id}` devolvia HTTP 403 antes de qualquer instalação;
+- versão do produto, manifesto Windows, template de erros e documentação atualizados para `v1.3.5`.
+
+### Security
+
+- o checkout dos validadores continua com `persist-credentials: false`, a tag continua obrigada ao HEAD de `main` e esses jobs invocam exclusivamente `DownloadCandidate`; a permissão adicional satisfaz o requisito de push access da API sem introduzir um passo de mutação;
+- a falha `v1.3.4` confirmou o fail-closed: ARM64 e publicação foram bloqueados, e o cleanup removeu apenas a draft owned de dez assets, deixando a tag intacta.
+
 ## [1.3.4] - 2026-08-23
 
 Tag nova obrigatória; a `v1.3.3` não é movida nem reutilizada. Esta versão corrige o bloqueio de quota do armazenamento de GitHub Actions sem reduzir os gates de confiança da release.

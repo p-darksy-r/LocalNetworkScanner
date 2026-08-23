@@ -32,6 +32,8 @@ Criar ou fazer push de uma tag `vX.Y.Z` executa o caminho privado de QA e, se o 
 
 Este desenho evita qualquer cópia de aproximadamente 390 MB no armazenamento de Actions. O grupo de concorrência é global ao repositório e a draft é identificada por repository ID, run, tentativa, commit, tag, digest e nonce. Se a validação ou publicação falhar, o cleanup volta a obter a release por ID e só elimina uma draft com ownership exato; uma release publicada nunca é apagada. O atestado e o SBOM deixam de depender da retenção temporária de Actions e permanecem junto dos binários como assets verificáveis da release.
 
+O GitHub restringe a leitura de draft releases a tokens com push access. Assim, os jobs x64 e ARM64 precisam de `contents: write` apesar de apenas descarregarem assets; `contents: read` recebe HTTP 403 em `GET releases/{id}`. O risco é limitado mantendo a tag no HEAD validado de `main`, usando ações fixadas por SHA, desativando `persist-credentials` e chamando nesses jobs apenas a operação `DownloadCandidate`, que não contém mutações remotas.
+
 O suporte local por thumbprint nos scripts continua disponível para laboratórios, PKI privada ou um runner próprio ligado a token/HSM. O workflow público não usa PFX exportável: certificados Code Signing públicos novos exigem normalmente que a chave seja gerada, armazenada e usada num módulo criptográfico adequado.
 
 ## Pré-requisitos externos

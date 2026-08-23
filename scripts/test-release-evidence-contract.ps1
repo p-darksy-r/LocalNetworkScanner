@@ -239,7 +239,29 @@ try {
         -Message "failed evidence publication must clean its staging directory"
     $passed++
 
-    Write-Host "$passed/7 synthetic release evidence tests passed." -ForegroundColor Green
+    $releaseWorkflow = Get-Content -LiteralPath (Join-Path $repoRoot ".github\workflows\release.yml") -Raw
+    $validatorJobs = [regex]::Matches(
+        $releaseWorkflow,
+        '(?ms)^  validate-(?:x64|arm64):\r?\n(?<body>.*?)(?=^  [a-zA-Z0-9_-]+:)')
+    Assert-True `
+        -Condition ($validatorJobs.Count -eq 2) `
+        -Message "the release workflow must contain exactly the x64 and ARM64 validator jobs"
+    foreach ($validatorJob in $validatorJobs) {
+        $body = $validatorJob.Groups["body"].Value
+        $operations = @([regex]::Matches($body, '-Operation\s+(?<operation>[A-Za-z]+)'))
+        Assert-True `
+            -Condition ($body -match '(?m)^    permissions:\r?\n(?:      #.*\r?\n)*      contents: write\r?$') `
+            -Message "private draft validators require documented contents: write push access"
+        Assert-True `
+            -Condition ($body -match '(?m)^          persist-credentials: false\r?$') `
+            -Message "validator checkouts must never persist the write-capable token"
+        Assert-True `
+            -Condition ($operations.Count -eq 1 -and $operations[0].Groups["operation"].Value -ceq "DownloadCandidate") `
+            -Message "validators with draft push access may invoke only DownloadCandidate"
+    }
+    $passed++
+
+    Write-Host "$passed/8 synthetic release evidence tests passed." -ForegroundColor Green
 }
 finally {
     $resolvedTestRoot = [IO.Path]::GetFullPath($testRoot)

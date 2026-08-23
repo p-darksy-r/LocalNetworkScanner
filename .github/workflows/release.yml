@@ -697,7 +697,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 15
     permissions:
-      contents: read
+      # GitHub requires push access even for authenticated reads of draft releases.
+      contents: write
 
     steps:
       - name: Checkout validation scripts
@@ -752,7 +753,8 @@ jobs:
     runs-on: windows-11-arm
     timeout-minutes: 20
     permissions:
-      contents: read
+      # GitHub requires push access even for authenticated reads of draft releases.
+      contents: write
     outputs:
       attestation_b64: ${{ steps.evidence.outputs.attestation_b64 }}
       attestation_sha256: ${{ steps.evidence.outputs.attestation_sha256 }}

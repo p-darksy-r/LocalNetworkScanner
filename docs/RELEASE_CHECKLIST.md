@@ -140,7 +140,7 @@ Para uma release publicada:
 - [ ] `signtool verify /pa /tw` e `Get-AuthenticodeSignature` devolvem sucesso/`Valid` para todos os executáveis finais.
 - [ ] O certificado é RSA, tem EKU Code Signing, cadeia válida para uma CA confiável e não é self-signed.
 - [ ] A chave permanece num HSM/serviço ou token compatível; nunca é exportada para PFX no runner hospedado.
-- [ ] Jobs privados de QA não recebem token OIDC; `id-token: write` existe apenas no caminho público de assinatura e `contents: write` apenas no job de publicação.
+- [ ] Jobs privados de QA não recebem token OIDC; `id-token: write` existe apenas no caminho público de assinatura. `contents: write` fica limitado aos jobs que criam, leem, completam, publicam ou limpam a draft; nos validadores x64/ARM64 é necessário apenas porque a API exige push access até para `GET` de drafts, com `persist-credentials: false` e operação exclusiva `DownloadCandidate`.
 - [ ] O ruleset de `main` exige o check agregado `CI gate`, que depende de x64 e ARM64.
 
 Uma distribuição que alegue identidade de publisher verificada exige estado `Valid`.
