@@ -11,7 +11,7 @@ Local Network Scanner contains a normalized and compressed offline snapshot of t
 - MA-S: <https://standards-oui.ieee.org/oui36/oui36.csv>
 - historical IAB: <https://standards-oui.ieee.org/iab/iab.csv>
 
-The snapshot dated 2026-07-28 was built from 58,019 source rows: 39,829 MA-L, 6,503 MA-M, 7,112 MA-S and 4,575 IAB rows. After normalization of repeated legacy assignments, its manifest reports 58,016 unique prefixes. Postal addresses are intentionally omitted; the bundled resource retains only the registry, hexadecimal assignment and organization name required for lookup.
+The snapshot dated 2026-08-12 was built from 58,166 source rows: 39,923 MA-L, 6,540 MA-M, 7,128 MA-S and 4,575 IAB rows. After normalization of repeated legacy assignments, its manifest reports 58,163 unique prefixes. Postal addresses are intentionally omitted; the bundled resource retains only the registry, hexadecimal assignment and organization name required for lookup. The embedded manifest records the official source URLs, per-registry row counts and SHA-256 hashes used to reproduce and audit this snapshot.
 
 **IEEE. All rights reserved.**
 

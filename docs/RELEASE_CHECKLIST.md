@@ -26,7 +26,7 @@ Uma release só deve ser marcada como concluída quando todos os itens obrigató
 - [ ] A formatação foi validada com `dotnet format --verify-no-changes --no-restore`.
 - [ ] Dependências novas foram revistas quanto a licença, manutenção e vulnerabilidades.
 - [ ] A snapshot IEEE foi gerada apenas a partir das quatro URLs oficiais; o manifesto regista data, contagens e SHA-256 das fontes.
-- [ ] A snapshot de referência de 2026-07-28 documenta 58 019 linhas de origem e 58 016 prefixos únicos normalizados, ou a alteração é explicada e revista.
+- [ ] A snapshot de referência de 2026-08-12 documenta 58 166 linhas de origem e 58 163 prefixos únicos normalizados, ou a alteração é explicada e revista.
 - [ ] Não existem certificados, chaves, dumps, relatórios reais ou credenciais no repositório.
 
 Comando base:
@@ -96,11 +96,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeI
 - [ ] Cada pasta de publish contém os executáveis esperados e não contém PDBs, segredos ou ficheiros temporários.
 - [ ] O smoke test `LocalNetworkScanner.Cli.exe --help` termina com exit code `0` numa máquina da arquitetura publicada; o workflow confirma `OSArchitecture=Arm64` antes do smoke ARM64.
 - [ ] Os jobs de release instalaram, executaram e removeram os ZIPs e instaladores exatos em x64 e ARM64; o binário testado é o mesmo cujo hash será publicado.
-- [ ] O job `Require successful native Windows validation` terminou com sucesso e o artefacto `windows-validated` contém exatamente os dez ficheiros esperados, hashes coerentes e ambos os estados nativos como `Validated`.
+- [ ] O job `Require successful native Windows validation` terminou com sucesso; existe um único artefacto pesado `windows-candidate` com os dez ficheiros exatos e um artefacto pequeno `windows-validation-evidence` que liga os SHA-256 desse candidato ao commit/run e regista x64 e ARM64 como `Validated`; `SIGNING-STATE.txt` contém exatamente as sete linhas canónicas, sem marcadores duplicados ou contraditórios.
+- [ ] O payload final foi materializado substituindo apenas o `SIGNING-STATE.txt` pendente pela versão validada atestada; os quatro binários, quatro checksums e `SHA256SUMS.txt` são byte a byte os mesmos do candidato imutável.
+- [ ] O grupo de concorrência global de release impediu dois payloads grandes de serem produzidos em paralelo; uma tag reservada à produção executou apenas o preflight até ao pedido assinado explícito.
 - [ ] O SBOM SPDX 2.2 foi gerado a partir desse payload exato e dos metadados restaurados para `win-x64` e `win-arm64`; a cobertura dos dois runtimes foi validada e guardada como evidência separada sem alterar o contrato dos dez ficheiros instaláveis.
 - [ ] A UI arranca, inicia e cancela um scan de laboratório e fecha sem processo residual.
 - [ ] O ZIP inclui UI, CLI, README, licença, changelog, limites técnicos, `docs/VENDOR_DATABASE.md` e `THIRD_PARTY_NOTICES.md`.
-- [ ] Exports JSON schema v5 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações, identidade, diagnósticos ou estado TLS documentados.
+- [ ] Exports JSON schema v6 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações, identidade, serviços mDNS/DNS-SD, diagnósticos ou estado TLS documentados.
 - [ ] As opções CLI `--html` e `--graphml` foram verificadas com dados sintéticos ou de laboratório.
 - [ ] O SHA-256 publicado corresponde exatamente ao ZIP.
 
@@ -116,12 +118,14 @@ if ($actual -ne $expected) { throw 'SHA-256 invalido.' }
 
 ## 6. Assinatura e reputação
 
-- [ ] Artefactos privados sem assinatura indicam claramente `Private QA` e `NotSigned`; se forem espelhados como prerelease no repositório privado, não são marcados como `Latest` nem descritos como produção.
-- [ ] Uma GitHub Release publicada contém apenas artefactos Authenticode `Signed`.
+- [ ] Artefactos privados sem assinatura indicam claramente `Private QA` e `NotSigned`; numa tag nova são publicados automaticamente como prerelease apenas se o repositório continuar privado e os gates de produção ainda não estiverem completos, nunca como `Latest` ou produção.
+- [ ] Num repositório público, nenhum caminho do workflow gera ou carrega um candidato `NotSigned`; `workflow_dispatch` com `publish_release=false` falha no preflight, e a visibilidade live é consultada novamente pela API imediatamente antes do upload e antes/depois de publicar a prerelease.
+- [ ] Uma GitHub Release de produção contém apenas artefactos Authenticode `Signed`; a única exceção é uma prerelease `Private QA (NotSigned)` num repositório privado.
 - [ ] Checksums não são apresentados como substitutos de Authenticode nem como prova da identidade do publisher.
 - [ ] O artefacto foi testado com SmartScreen/Defender numa máquina sem histórico do produto.
-- [ ] O push da tag conclui QA privada; antes de pedir `publish_release=true`, o preflight não apresenta `LNS-REL-001` a `LNS-REL-010`.
-- [ ] A tag corresponde à versão e aponta exatamente para o HEAD atual de `main`.
+- [ ] Com gates incompletos, o push da tag conclui a QA privada; com gates completos, termina no preflight sem gerar payload `NotSigned` e a execução posterior com `publish_release=true` não apresenta `LNS-REL-001` a `LNS-REL-010`.
+- [ ] A tag corresponde à versão e aponta exatamente para o HEAD atual de `main`; o job de publicação volta a resolver pela API tags lightweight ou anotadas antes das mutações, imediatamente antes de publicar e após a publicação, exigindo sempre `GITHUB_SHA`.
+- [ ] Se a tag estiver reservada para publicação assinada, `ARTIFACT_SIGNING_ENABLED`, toda a configuração OIDC e `IEEE_REDISTRIBUTION_APPROVED` já estavam válidos antes do push; assim o workflow não cria primeiro uma prerelease `NotSigned` imutável na mesma tag.
 
 Para uma release publicada:
 
@@ -130,6 +134,7 @@ Para uma release publicada:
 - [ ] A credencial federada OIDC está limitada ao environment `release-signing`; não existe PFX/chave privada no GitHub.
 - [ ] O environment `release-signing` restringe deployments a tags autorizadas e exige reviewer apenas quando essa proteção está efetivamente disponível no plano/repositório; a ausência dessa capacidade tem um gate externo documentado.
 - [ ] UI, CLI, diagnóstico PowerShell e instaladores são assinados antes de calcular checksums e criar a release.
+- [ ] O bootstrap do Inno Setup 6.7.3 corresponde ao SHA-256 fixado no workflow, anuncia `ProductVersion` 6.7.3 e tem Authenticode válido do publisher esperado antes de ser executado.
 - [ ] O Inno Setup usa `SignedUninstaller=yes`; depois de uma instalação de QA, o `unins*.exe` extraído foi verificado com o mesmo signer.
 - [ ] A assinatura usa SHA-256 e timestamp de uma autoridade confiável.
 - [ ] `signtool verify /pa /tw` e `Get-AuthenticodeSignature` devolvem sucesso/`Valid` para todos os executáveis finais.
@@ -192,11 +197,12 @@ Se for usado outro instalador, documentar a ferramenta e versão, privilégios p
 - [ ] A autorização escrita aplicável à redistribuição IEEE foi arquivada com a evidência da release e os avisos exigidos estão presentes no pacote.
 - [ ] A variável do repositório `IEEE_REDISTRIBUTION_APPROVED` foi definida como `true` apenas depois de arquivar essa autorização.
 - [ ] Os hashes e assinaturas foram novamente verificados depois do upload.
-- [ ] O job de publicação recebeu exatamente 10 assets, voltou a validar `SHA256SUMS.txt`, checksums individuais, timestamps e um único signer, e só depois retirou o estado draft.
+- [ ] O job de publicação recebeu exatamente 10 assets, verificou no draft remoto nomes, estado, tamanhos e SHA-256, voltou a validar checksums e, numa release pública, timestamps e um único signer; só depois retirou o estado draft. Uma repetição aceitou uma release publicada apenas quando o contrato era exatamente igual; um draft divergente não foi alterado.
+- [ ] Depois de verificar novamente a release final remota, o workflow eliminou o único artefacto pesado `windows-candidate` dessa execução; o atestado compacto e o SBOM ficaram preservados como artefactos de Actions por 30 dias, sem serem apresentados como evidência permanente.
 - [ ] `SIGNING-STATE.txt` e as notas da release publicada dizem explicitamente `Signed`; releases anteriores conhecidas como não assinadas permanecem documentadas como `NotSigned`.
 - [ ] A release explica arquitetura, versão mínima de Windows suportada e known issues.
 - [ ] Existe um canal privado para vulnerabilidades e um canal normal para suporte.
-- [ ] Foi guardada uma cópia imutável dos artefactos e logs de build.
+- [ ] A GitHub Release verificada é a cópia imutável dos dez assets; logs, atestado compacto e SBOM do workflow foram preservados sem manter uma segunda cópia de aproximadamente 390 MB no armazenamento de Actions.
 - [ ] A GitHub Release pública ainda não existia; a tag imutável aponta para o commit validado e assets já publicados nunca são substituídos com `--clobber`.
 - [ ] Foi preparado um plano de rollback ou retirada da release.
 

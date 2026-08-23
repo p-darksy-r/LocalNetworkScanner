@@ -23,8 +23,11 @@ O instalador:
 - não instala drivers, serviços nem extensões de rede;
 - não altera o `PATH` do sistema;
 - inclui um desinstalador normal do Windows;
+- permite reparar a mesma versão ou atualizar para uma mais recente, mas recusa um instalador mais antigo quando encontra uma versão superior na localização predefinida;
 - termina sem iniciar automaticamente a aplicação; abra-a depois pelo menu Iniciar;
 - preserva snapshots e preferências em `%LOCALAPPDATA%\LocalNetworkScanner` quando é removido.
+
+O bloqueio de downgrade protege a compatibilidade das preferências e dados locais, incluindo quando a instalação existente usa um diretório personalizado registado pelo instalador. Para regressar deliberadamente a uma versão anterior, exporte primeiro o que necessita, desinstale a versão atual e avalie a compatibilidade dos dados; não apague nem substitua o executável instalado manualmente para contornar a validação.
 
 Para apagar também os dados locais depois da desinstalação, elimine manualmente `%LOCALAPPDATA%\LocalNetworkScanner`. Reveja primeiro os snapshots: podem constituir um inventário sensível da rede.
 
@@ -63,7 +66,7 @@ O checksum deteta alterações no ficheiro relativamente à release publicada, m
 
 O pipeline público assina UI, CLI, diagnóstico PowerShell, instalador e desinstalador através de Microsoft Artifact Signing por OIDC. A chave privada permanece no serviço/HSM e não é copiada para o GitHub. Se a identidade, o timestamp ou uma assinatura estiverem ausentes ou inválidos, o build falha em vez de publicar silenciosamente como assinado. Uma assinatura válida também não substitui uma regra de autorização da organização.
 
-A validação de release deixou de depender apenas do build: os ZIPs e instaladores exatos são instalados, executados e removidos em runners Windows x64 e ARM64 nativos antes da publicação. A configuração da identidade cloud/HSM, alternativas legítimas e códigos `LNS-REL-*` estão documentados em [Assinatura e prontidão de release](SIGNING.md).
+A validação de release deixou de depender apenas do build: os ZIPs e instaladores exatos são instalados, executados e removidos em runners Windows x64 e ARM64 nativos antes da publicação. Um único candidato pesado imutável é ligado ao commit/run por evidência compacta e pelos SHA-256 dos dez assets; a cópia pesada só é eliminada depois da release remota ser novamente verificada. A configuração da identidade cloud/HSM, alternativas legítimas e códigos `LNS-REL-*` estão documentados em [Assinatura e prontidão de release](SIGNING.md).
 
 ## Compilar o instalador localmente
 

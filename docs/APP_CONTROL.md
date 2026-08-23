@@ -81,7 +81,7 @@ O pipeline público usa Microsoft Artifact Signing por OIDC. A chave RSA permane
 - valida signer, timestamp, hashes e a mesma identidade em todos os ficheiros;
 - instala, executa e remove os ZIPs/instaladores exatos em Windows x64 e ARM64 nativos;
 - falha explicitamente se a assinatura for pedida mas a configuração estiver ausente ou inválida;
-- mantém o estado `NotSigned` nos artefactos privados de QA quando a assinatura não é pedida, sem os publicar nem simular sucesso.
+- mantém o estado `NotSigned` nos artefactos privados de QA quando a assinatura não é pedida; uma tag pode publicá-los apenas como prerelease no repositório privado, nunca como release pública de produção nem como `Latest`.
 
 Configuração principal no GitHub:
 

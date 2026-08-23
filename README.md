@@ -2,7 +2,7 @@
 
 # Local Network Scanner
 
-[![source v1.3.2](https://img.shields.io/badge/source-v1.3.2-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.3.2)
+[![source v1.3.3](https://img.shields.io/badge/source-v1.3.3-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.3.3)
 ![Windows](https://img.shields.io/badge/Windows-x64%20%7C%20ARM64-0078d4)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/LICENSE)
 
@@ -10,9 +10,9 @@
 
 Scanner de redes locais para Windows com uma UI WPF simples, uma CLI para automação, diagnósticos acionáveis e topologia opcional. O programa separa observações diretas, dados fornecidos pela infraestrutura e inferências, para que um resultado provável nunca seja apresentado como facto confirmado.
 
-> **Estado de distribuição:** a `v1.2.0` é histórica e não é recomendada para instalação porque foi publicada sem Authenticode. A `v1.3.2` identifica o candidato de código e QA mais recente; no repositório privado pode existir como prerelease `Private QA (NotSigned)`, mas não é uma distribuição pública de produção.
+> **Estado de distribuição:** a `v1.2.0` é histórica e não é recomendada para instalação porque foi publicada sem Authenticode. A `v1.3.3` identifica o candidato de código e QA mais recente; no repositório privado pode existir como prerelease `Private QA (NotSigned)`, mas não é uma distribuição pública de produção.
 >
-> O repositório é privado. Uma tag pode executar QA dos pacotes sem os publicar; a release pública só é autorizada depois dos gates de assinatura, validação x64/ARM64 nativa e redistribuição indicados abaixo. Consulte o [guia de assinatura](docs/SIGNING.md).
+> O repositório é privado. Uma tag nova executa a QA completa e, enquanto os gates de produção estiverem incompletos, pode criar automaticamente apenas uma prerelease privada `NotSigned`; a distribuição pública só é autorizada depois dos gates de assinatura, validação x64/ARM64 nativa e redistribuição indicados abaixo. Consulte o [guia de assinatura](docs/SIGNING.md).
 
 ![Janela principal com inventário de dispositivos demonstrativos](docs/images/main-window-current.png)
 
@@ -35,7 +35,7 @@ Os dois formatos incluem a UI, a CLI e o runtime .NET necessário. O instalador 
 
 | Alvo | Estado |
 | --- | --- |
-| Windows 11 x64 | código 1.3.2: build Release, testes determinísticos e smoke UI/CLI obrigatórios; o workflow da tag instala, executa e remove o pacote self-contained exato antes de o marcar como validado |
+| Windows 11 x64 | código 1.3.3: build Release, testes determinísticos e smoke UI/CLI obrigatórios; o workflow da tag instala, executa e remove o pacote self-contained exato antes de o marcar como validado |
 | Windows 11 ARM64 | CI e release exigem build, testes e smoke num runner Windows ARM64 nativo; o cross-build isolado deixou de contar como validação |
 | Windows 10 | o .NET 10 limita o suporte atual a edições LTSC/Enterprise compatíveis; consulte a [matriz oficial da Microsoft](https://learn.microsoft.com/dotnet/core/install/windows#supported-versions) |
 
@@ -60,8 +60,8 @@ Um checksum deteta alterações relativamente ao ficheiro publicado, mas não su
 
 1. Abra `LocalNetworkScanner.exe`.
 2. Escolha a interface IPv4 e confirme o intervalo CIDR.
-3. Use **Rápido** para uma primeira passagem ou **Normal** para o inventário recomendado.
-4. Analise a lista de dispositivos; abra **Topologia** apenas quando quiser explorar o mapa do mesmo scan.
+3. Use **Rápido** para uma primeira passagem ou **Normal** para o inventário recomendado e inicie com o ícone de reprodução (`Alt+I`).
+4. Analise a lista de dispositivos; abra **Topologia** apenas quando quiser explorar o mapa do mesmo scan. `F5` também inicia o scan, `Alt+C` cancela-o e `Esc` limpa a pesquisa focada ou cancela um scan ativo; na janela da topologia, `Esc` fecha apenas essa janela.
 
 Abrir **Parâmetros técnicos personalizados** apenas mostra os valores. Estes só substituem o perfil depois de ativar explicitamente **Usar definições personalizadas**; o contador indica quantas substituições estão efetivamente ativas.
 
@@ -70,17 +70,19 @@ Comece com um intervalo pequeno e use o perfil **Avançado** apenas quando preci
 ## O que o diferencia
 
 - **Resultados honestos:** cada relação de topologia preserva origem, confiança e evidência.
-- **UI adaptável:** a configuração recolhe durante o scan, o cancelamento permanece acessível e os painéis ajustam-se ao espaço disponível.
+- **UI acessível e adaptável:** comandos óbvios usam ícones compactos, mas preservam tooltip, nome de automação, navegação por teclado, alvos de 40 px e feedback para leitores de ecrã; a configuração recolhe durante o scan e os painéis ajustam-se ao espaço disponível.
 - **Lista primeiro:** o inventário continua a ser a vista principal depois do scan.
 - **Topologia a pedido:** o mapa abre numa janela separada sem repetir ou alterar o scan.
 - **Diagnósticos pesquisáveis:** códigos `LNS-*` distinguem entrada, rede, dispositivo e falhas internas.
 - **Degradação visível:** se o Windows não disponibilizar o baseline ARP, `LNS-NET-011` explica por que a confirmação ARP ficou desativada sem invalidar ICMP/TCP/multicast.
 - **Três profundidades:** Rápido, Normal e Avançado para utilizadores com necessidades diferentes.
 - **Personalização explícita:** consultar opções técnicas não altera o scan; ativação, contagem e reposição dos valores do perfil permanecem visíveis.
+- **Impacto antes de executar:** uma estimativa conservadora agrega endereços, tentativas TCP e probes de serviço, assinala o tráfego adicional do Nmap e reúne os consentimentos aplicáveis num único diálogo antes de uma carga alta ou extrema.
 - **Identidade por evidências:** fabricante, modelo, nome, firmware e serial são fundidos com origem e confiança, sem confundir anúncios com factos autenticados.
-- **Descoberta multicamada:** ICMP ligado à interface escolhida, TCP, ARP, mDNS/DNS-SD, SSDP/UPnP, WS-Discovery, NetBIOS, SNMP opcional e Nmap local opcional.
+- **Descoberta multicamada:** ICMP ligado à interface escolhida, TCP, ARP, mDNS/DNS-SD com endpoints SRV, SSDP/UPnP, WS-Discovery, NetBIOS, SNMP opcional e Nmap local opcional.
 - **Inventário útil:** IP, hostname, MAC, titular IEEE separado da marca identificada, modelo, latência, portas, serviços, protocolos observados e risco heurístico.
-- **Dados locais:** histórico, preferências e metadados permanecem no computador.
+- **Metadados protegidos:** alias, notas e favoritos só são editáveis num resultado que possa ser guardado, não são sobrescritos por uma atualização da mesma linha e iniciar outro scan, limpar resultados ou fechar pede confirmação se existirem alterações por guardar.
+- **Dados locais:** histórico, preferências, metadados e o registo técnico limitado de uma falha fatal permanecem no computador.
 - **Suporte com privacidade:** a CLI pode gerar um diagnóstico agregado sem identificadores da rede.
 - **UI e CLI:** utilização visual para o dia a dia e exportação automatizável para fluxos técnicos.
 
@@ -98,13 +100,13 @@ Comece com um intervalo pequeno e use o perfil **Avançado** apenas quando preci
 | Tolerância de timeout | menor | equilibrada | maior |
 | Utilização recomendada | primeira passagem | inventário habitual | diagnóstico autorizado e dirigido |
 
-As opções técnicas da UI só substituem partes do perfil quando **Usar definições personalizadas** está ativado. Abrir ou fechar o painel não muda o comportamento; **Repor valores do perfil** elimina as substituições técnicas. A identidade SNMP v2c e a topologia SNMP são independentes e permanecem desativadas até o utilizador fornecer explicitamente uma community. A UI pede confirmação antes de enviar essa community sem cifragem aos dispositivos. A integração Nmap só fica disponível no perfil Avançado, usa um `nmap.exe` instalado separadamente e nunca é descarregada ou incluída pelo projeto.
+As opções técnicas da UI só substituem partes do perfil quando **Usar definições personalizadas** está ativado. Abrir ou fechar o painel não muda o comportamento; **Repor valores do perfil** elimina as substituições técnicas. Antes de iniciar, a aplicação calcula uma estimativa de carga: não prevê duração, mas torna explícito o máximo de tentativas nativas por endereços/portas/probes e exige confirmação para níveis altos ou extremos. A identidade SNMP v2c e a topologia SNMP são independentes e permanecem desativadas até o utilizador fornecer explicitamente uma community. A integração Nmap só fica disponível no perfil Avançado, usa um `nmap.exe` instalado separadamente, executa tráfego adicional no seu próprio orçamento e nunca é descarregada ou incluída pelo projeto. Os avisos de carga, SNMP sem cifragem e Nmap são reunidos num único pedido de consentimento.
 
 ## Funcionalidades
 
 | Área | Informação apresentada | Origem ou limite principal |
 | --- | --- | --- |
-| Identidade | IP, hostname, NetBIOS, MAC, titular IEEE, fabricante, modelo, nome anunciado, firmware, serial, fonte e confiança | UPnP, DNS-SD, SNMP e Nmap são evidências não autenticadas ou dependentes da configuração; campos podem ficar desconhecidos ou conflituosos |
+| Identidade | IP, hostname, NetBIOS, MAC, titular IEEE, fabricante, modelo, nome anunciado, firmware, serial, serviços/endpoints DNS-SD, fonte e confiança | UPnP, DNS-SD, SNMP e Nmap são evidências não autenticadas ou dependentes da configuração; campos podem ficar desconhecidos ou conflituosos |
 | Disponibilidade | latência e métodos de descoberta | ICMP, TCP ou ARP fresco (`Reachable`/resposta direta) confirmam o alvo naquele instante; a cache existente antes do scan só enriquece um alvo já confirmado |
 | Portas e serviços | portas TCP abertas, nome provável, resposta leve e estado TLS verificado | uma porta convencional não prova cifragem; não existe autenticação, exploração ou inspeção profunda |
 | Protocolos | ICMP, ARP, TCP e protocolos associados às respostas observadas | não é uma captura nem uma contagem de pacotes |
@@ -114,11 +116,11 @@ As opções técnicas da UI só substituem partes do perfil quando **Usar defini
 | Camada 2 | alcance direto quando existe evidência ARP ativa | uma entrada passiva em cache não basta e o resultado não confirma o switch físico |
 | Histórico | novo, alterado, visto anteriormente, favorito, alias e notas | snapshots locais; MACs aleatórios podem mudar a identidade |
 | Ações | copiar dados, abrir endpoints e Wake-on-LAN | execute apenas ações autorizadas e confirme o alvo |
-| Exportações | JSON schema v5, CSV UTF-8, HTML, GraphML e relatório de suporte agregado | os relatórios de inventário incluem evidência/serial quando disponíveis e são sensíveis; o relatório de suporte exclui identificadores |
+| Exportações | JSON schema v6, CSV UTF-8, HTML, GraphML e relatório de suporte agregado | os relatórios de inventário incluem evidência/serial e endpoints mDNS/DNS-SD quando disponíveis e são sensíveis; o relatório de suporte exclui identificadores |
 
 ### Base IEEE incorporada e offline
 
-A aplicação inclui uma snapshot comprimida de MA-L, MA-M, MA-S e IAB: **58 019 linhas oficiais na snapshot de 2026-07-28 e 58 016 prefixos únicos depois da normalização**. A identificação funciona sem Internet e usa correspondência pelo prefixo mais específico, na ordem `/36 → /28 → /24`. O registo CID não é usado como fabricante de MACs globais.
+A aplicação inclui uma snapshot comprimida de MA-L, MA-M, MA-S e IAB: **58 166 linhas oficiais na snapshot de 2026-08-12 e 58 163 prefixos únicos depois da normalização**. A identificação funciona sem Internet e usa correspondência pelo prefixo mais específico, na ordem `/36 → /28 → /24`. O registo CID não é usado como fabricante de MACs globais.
 
 A atualização pela IEEE é opcional e só começa quando o utilizador escolhe **Verificar atualização IEEE**. Não existe telemetria nem envio do inventário durante essa operação. A aplicação apresenta o titular registado do prefixo, não garante o fabricante físico: atribuições `Private`, MACs locais/aleatórios, virtualização, componentes OEM e blocos partilhados podem permanecer desconhecidos ou identificar apenas a interface.
 
@@ -126,7 +128,7 @@ Consulte [Base de entidades MAC](https://github.com/p-darksy-r/LocalNetworkScann
 
 ## Topologia opcional
 
-O scan termina sempre na lista de dispositivos. Quando existe um mapa, o botão com ícone **Abrir topologia** abre uma janela própria com:
+O scan termina sempre na lista de dispositivos. Quando existe um mapa, o botão com ícone **Abrir topologia** abre uma janela própria; os comandos por ícone mantêm nomes acessíveis e tooltips, e `Esc` fecha a janela sem alterar o inventário. A topologia inclui:
 
 - zoom com botões e percentagem visíveis, pan, enquadramento automático e vista a 100%;
 - seleção sincronizada com o inventário;
@@ -163,6 +165,8 @@ LocalNetworkScanner.Cli.exe scan --cidr 192.168.1.0/24 --support .\support.json
 
 Esse relatório omite IPs, MACs, nomes de interface/host/switch, SSIDs, aliases, notas, alvos e contexto bruto dos diagnósticos. Inclui apenas versão/ambiente, contagens, capacidades e códigos agregados. Reveja ainda assim o ficheiro antes de o partilhar; relatórios JSON/CSV/HTML/GraphML normais continuam a conter o inventário completo.
 
+Uma falha fatal da UI cria, quando possível, um registo técnico local em `%LOCALAPPDATA%\LocalNetworkScanner\logs\app.log`. O ficheiro é limitado a 512 KiB, roda para `app.previous.log` e exclui mensagens da exceção, argumentos, alvo/contexto do diagnóstico, credenciais e identificadores de rede. Partilhe-o apenas depois de o rever; o encerramento fatal não tenta voltar a guardar preferências num estado potencialmente inconsistente.
+
 ## Privacidade e utilização responsável
 
 O projeto não envia o inventário nem telemetria para um serviço do Local Network Scanner. Um scan comunica diretamente com a rede escolhida; a atualização opcional das listagens IEEE e os links externos são ações explícitas. A atualização não envia MACs, IPs, inventário, SSID ou topologia.
@@ -173,7 +177,7 @@ O histórico é guardado em:
 %LOCALAPPDATA%\LocalNetworkScanner\snapshots
 ```
 
-Preferências, metadados e uma atualização opcional da base IEEE também ficam sob `%LOCALAPPDATA%\LocalNetworkScanner`. A versão portátil usa a mesma localização: “portátil” descreve a distribuição sem instalador, não um modo sem dados locais.
+Preferências, metadados, o registo técnico rotativo de uma falha fatal e uma atualização opcional da base IEEE também ficam sob `%LOCALAPPDATA%\LocalNetworkScanner`. A versão portátil usa a mesma localização: “portátil” descreve a distribuição sem instalador, não um modo sem dados locais.
 
 JSON, CSV, HTML, GraphML e snapshots podem revelar IPs, MACs, hostnames, fabricante/modelo, firmware, serial, portas, serviços, SSIDs e topologia. Guarde-os com controlo de acesso e não os anexe diretamente a uma issue pública.
 
@@ -189,7 +193,7 @@ O enriquecimento Nmap é explicitamente opt-in, limitado a IPv4 privado e TCP Co
 - A VLAN pode vir do adaptador local ou de dados inequívocos do switch; não é descoberta universal por dispositivo.
 - Só uma observação ARP posterior ao baseline e ainda marcada `Reachable`, ou uma resposta ARP direta sem entrada prévia, sustenta a inferência de segmento L2; uma entrada anterior na cache não torna um host online, não é eliminada e não identifica o switch físico.
 - O titular IEEE do prefixo, o fabricante físico, o tipo de equipamento, o sistema operativo e o risco não são identificações garantidas.
-- Multicast pode ser bloqueado por firewall, isolamento Wi-Fi, VLANs ou políticas da rede. Respostas têm limites globais; um endereço apenas anunciado dentro de mDNS não cria um dispositivo online sem evidência direta do remetente.
+- Multicast pode ser bloqueado por firewall, isolamento Wi-Fi, VLANs ou políticas da rede. SSDP, WS-Discovery e mDNS repetem transmissões iniciais dentro de um orçamento comum e limitado, mas não garantem resposta; um endereço apenas anunciado dentro de mDNS não cria um dispositivo online sem evidência direta do remetente.
 - SSDP/UPnP, mDNS/DNS-SD, WS-Discovery, SNMP e os banners Nmap são declarações do equipamento e podem ser incompletos, antigos ou forjados; a UI preserva origem, confiança e conflitos.
 - Nenhuma combinação de protocolos garante marca/modelo para todos os dispositivos: muitos não publicam metadados, usam MAC local, bloqueiam gestão ou ficam atrás de routers/APs.
 - Os resultados são um retrato temporal, não monitorização contínua.
@@ -260,7 +264,7 @@ Validação completa:
 powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1 -Configuration Release -VerifyFormat
 ```
 
-O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.3.2`, a suite contém 83 testes. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
+O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.3.3`, a suite contém 89 testes. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
 
 O workflow CodeQL analisa C# com consultas `security-extended` quando o repositório é público ou quando `CODEQL_ENABLED=true` e o plano privado permite code scanning. A release restaura metadados de dependências para `win-x64` e `win-arm64`, exige ambos os runtimes e gera/valida um SBOM SPDX 2.2 como evidência separada, sem o confundir com os dez ficheiros instaláveis validados.
 
@@ -293,9 +297,9 @@ Instalador Inno Setup:
 powershell -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -RuntimeIdentifier win-x64
 ```
 
-Uma tag `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia QA privada dos pacotes. A publicação de produção só é pedida através de `workflow_dispatch` explícito, selecionando essa tag e `publish_release=true`. Antes do build, um preflight confirma que a tag aponta para o HEAD atual de `main` e apresenta códigos `LNS-REL-*` para configuração ou autorizações ausentes. A assinatura pública usa Microsoft Artifact Signing por OIDC: a chave permanece num HSM/serviço e não existe PFX no GitHub. Depois do empacotamento, os ZIPs e instaladores exatos são instalados, executados e removidos em runners Windows x64 e ARM64 nativos. Um gate terminal volta a descarregar o artefacto `windows-validated`, exige o contrato exato de dez ficheiros, confirma os hashes, gera/valida o SBOM SPDX separado e recusa estados nativos incompletos. Os resultados privados podem ser espelhados no repositório privado apenas como prerelease claramente marcada `Private QA (NotSigned)`; uma **release pública de produção só é criada** quando todos os ficheiros executáveis e o diagnóstico PowerShell têm Authenticode confiável, os dois testes nativos passaram e a autorização de redistribuição IEEE está registada.
+Uma tag `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia QA privada dos pacotes. A publicação de produção só é pedida através de `workflow_dispatch` explícito, selecionando essa tag e `publish_release=true`. Antes do build, um preflight confirma que a tag aponta para o HEAD atual de `main` e apresenta códigos `LNS-REL-*` para configuração ou autorizações ausentes. Um pedido manual `publish_release=false` só pode gerar/carregar o candidato `NotSigned` enquanto o repositório estiver privado; a visibilidade live é confirmada imediatamente antes do upload. A assinatura pública usa Microsoft Artifact Signing por OIDC: a chave permanece num HSM/serviço e não existe PFX no GitHub. Depois do empacotamento, os ZIPs e instaladores exatos são instalados, executados e removidos em runners Windows x64 e ARM64 nativos. Existe apenas um payload pesado imutável, `windows-candidate`; após as duas validações nativas, uma evidência compacta liga o digest desse candidato ao commit/run e aos SHA-256 dos dez ficheiros. O gate terminal materializa o `SIGNING-STATE.txt` validado, exige o contrato exato de dez assets, confirma conteúdo e hashes e gera/valida o SBOM SPDX separado. Os resultados privados podem ser publicados automaticamente apenas como prerelease claramente marcada `Private QA (NotSigned)`, depois de confirmar novamente que o repositório continua privado; uma **release pública de produção só é criada** quando todos os ficheiros executáveis e o diagnóstico PowerShell têm Authenticode confiável, os dois testes nativos passaram e a autorização de redistribuição IEEE está registada.
 
-A publicação corre num job separado com permissão de escrita mínima, exige o conjunto exato de assets, volta a verificar hashes, timestamps e o mesmo signer e prepara tudo como draft antes de tornar a release visível. Uma tag que já tenha uma GitHub Release não é alterada nem recebe assets substituídos: publique uma versão nova em vez de modificar binários já distribuídos. Consulte [Windows App Control e erro 4551](docs/APP_CONTROL.md).
+A publicação corre num job separado com permissão de escrita mínima, resolve novamente tags lightweight ou anotadas para o commit exato do workflow antes das mutações, exige o conjunto exato de dez assets, volta a verificar nome, estado, tamanho, SHA-256, timestamps e o mesmo signer e prepara tudo como draft antes de tornar a release visível. Uma repetição reconhece uma release já publicada apenas se o contrato remoto for exatamente igual; nunca substitui assets divergentes. O candidato pesado só é eliminado do armazenamento de Actions depois da release remota ser novamente verificada. O atestado compacto e o SBOM ficam disponíveis como artefactos de Actions durante **30 dias**; não são evidência permanente nem fazem parte dos dez assets da release. Consulte [Windows App Control e erro 4551](docs/APP_CONTROL.md).
 
 A [checklist de release](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/RELEASE_CHECKLIST.md) exige validação num Windows limpo, estado de assinatura explícito, verificação pós-upload e teste nativo por arquitetura antes de considerar o suporte totalmente validado. O [guia de assinatura](docs/SIGNING.md) explica exatamente o que o projeto automatiza e o que exige uma identidade externa do publisher.
 

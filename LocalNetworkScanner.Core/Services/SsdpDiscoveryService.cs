@@ -30,12 +30,21 @@ public sealed class SsdpDiscoveryService
         IPAddress? localAddress,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (timeoutMs <= 0 ||
+            (localAddress is not null && localAddress.AddressFamily != AddressFamily.InterNetwork))
+        {
+            return [];
+        }
+
         List<DiscoveryObservation> announcements = [];
         HashSet<IPAddress> observedAddresses = [];
         MulticastReceiveBudget receiveBudget = new(
             MaximumReceivedDatagrams,
             MaximumReceivedBytes,
             MaximumParsedAnnouncements);
+        MulticastSendBudget sendBudget = new(
+            MulticastProbeTransmitter.DefaultMaximumTransmissions);
 
         try
         {
@@ -57,63 +66,87 @@ public sealed class SsdpDiscoveryService
                 "MX: 1\r\n" +
                 "ST: ssdp:all\r\n\r\n";
             byte[] payload = Encoding.ASCII.GetBytes(request);
-            await client.SendAsync(payload, MulticastEndpoint, cancellationToken);
 
             using CancellationTokenSource timeout =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(timeoutMs);
+            _ = await MulticastProbeTransmitter.SendAsync(
+                client,
+                payload,
+                MulticastEndpoint,
+                sendBudget,
+                timeout.Token);
+            Task retransmissionTask = MulticastProbeTransmitter.RetransmitAsync(
+                client,
+                payload,
+                MulticastEndpoint,
+                timeoutMs,
+                sendBudget,
+                timeout.Token);
 
-            while (!timeout.IsCancellationRequested)
+            try
             {
-                try
+                while (!timeout.IsCancellationRequested)
                 {
-                    UdpReceiveResult response = await client.ReceiveAsync(timeout.Token);
-                    if (!receiveBudget.TryConsumeDatagram(response.Buffer.Length))
-                        break;
-                    Dictionary<string, string> headers = ParseHeaders(
-                        Encoding.UTF8.GetString(response.Buffer));
-                    if (headers.Count == 0)
-                        continue;
-                    if (!receiveBudget.TryConsumeItems(1))
-                        break;
-                    if (!observedAddresses.Contains(response.RemoteEndPoint.Address) &&
-                        observedAddresses.Count >= MaximumObservedAddresses)
+                    try
                     {
-                        continue;
-                    }
-                    observedAddresses.Add(response.RemoteEndPoint.Address);
-                    headers.TryGetValue("server", out string? server);
-                    headers.TryGetValue("location", out string? location);
-                    headers.TryGetValue("st", out string? serviceType);
-                    headers.TryGetValue("usn", out string? uniqueServiceName);
+                        UdpReceiveResult response = await client.ReceiveAsync(timeout.Token);
+                        if (!receiveBudget.TryConsumeDatagram(response.Buffer.Length))
+                            break;
+                        Dictionary<string, string> headers = ParseHeaders(
+                            Encoding.UTF8.GetString(response.Buffer));
+                        if (headers.Count == 0)
+                            continue;
+                        if (!receiveBudget.TryConsumeItems(1))
+                            break;
+                        if (!observedAddresses.Contains(response.RemoteEndPoint.Address) &&
+                            observedAddresses.Count >= MaximumObservedAddresses)
+                        {
+                            continue;
+                        }
+                        observedAddresses.Add(response.RemoteEndPoint.Address);
+                        headers.TryGetValue("server", out string? server);
+                        headers.TryGetValue("location", out string? location);
+                        headers.TryGetValue("st", out string? serviceType);
+                        headers.TryGetValue("usn", out string? uniqueServiceName);
 
-                    DiscoveryObservation candidate = new()
+                        DiscoveryObservation candidate = new()
+                        {
+                            IpAddress = response.RemoteEndPoint.Address,
+                            Method = DiscoveryMethod.Ssdp,
+                            Server = server,
+                            Location = location,
+                            ServiceType = serviceType,
+                            UniqueServiceName = uniqueServiceName,
+                            HasDirectAddressEvidence = true,
+                            EvidenceSource = "Anúncio SSDP",
+                            Confidence = ConfidenceLevel.Low
+                        };
+                        announcements.Add(candidate);
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                     {
-                        IpAddress = response.RemoteEndPoint.Address,
-                        Method = DiscoveryMethod.Ssdp,
-                        Server = server,
-                        Location = location,
-                        ServiceType = serviceType,
-                        UniqueServiceName = uniqueServiceName,
-                        HasDirectAddressEvidence = true,
-                        EvidenceSource = "Anúncio SSDP",
-                        Confidence = ConfidenceLevel.Low
-                    };
-                    announcements.Add(candidate);
+                        break;
+                    }
                 }
-                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
+            }
+            finally
+            {
+                timeout.Cancel();
+                await retransmissionTask;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
+        catch (OperationCanceledException)
+        {
+            // O prazo interno terminou durante o envio inicial; preserva respostas parciais.
+        }
         catch (Exception exception) when (exception is SocketException or InvalidOperationException)
         {
-            return [];
+            // A interface pode desaparecer durante a escuta. Mantém anúncios válidos.
         }
 
         return ConsolidateAnnouncements(announcements);
@@ -184,6 +217,8 @@ public sealed class SsdpDiscoveryService
             Server = existing.Server ?? candidate.Server,
             Location = existing.Location ?? candidate.Location,
             ServiceType = JoinDistinct(existing.ServiceType, candidate.ServiceType),
+            ServicePort = existing.ServicePort ?? candidate.ServicePort,
+            ServiceTransport = existing.ServiceTransport ?? candidate.ServiceTransport,
             UniqueServiceName = JoinDistinct(
                 existing.UniqueServiceName,
                 candidate.UniqueServiceName),

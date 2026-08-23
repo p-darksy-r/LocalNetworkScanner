@@ -89,7 +89,12 @@ function Invoke-WpfSmokeTest {
     )
 
     Write-Host "> Published WPF smoke test (window lifecycle)" -ForegroundColor DarkGray
-    $process = Start-Process -FilePath $Executable -PassThru
+    try {
+        $process = Start-Process -FilePath $Executable -PassThru
+    }
+    catch {
+        throw (New-NativeLaunchDiagnostic $Executable $_.Exception)
+    }
     try {
         $deadline = [DateTime]::UtcNow.AddSeconds(20)
         do {
@@ -124,6 +129,46 @@ function Invoke-WpfSmokeTest {
         }
         $process.Dispose()
     }
+}
+
+function Get-NativeErrorCode {
+    param(
+        [Parameter(Mandatory = $true)]
+        [Exception]$Exception
+    )
+
+    $current = $Exception
+    while ($null -ne $current) {
+        if ($current -is [ComponentModel.Win32Exception]) {
+            return $current.NativeErrorCode
+        }
+        $current = $current.InnerException
+    }
+
+    return $null
+}
+
+function New-NativeLaunchDiagnostic {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Target,
+
+        [Parameter(Mandatory = $true)]
+        [Exception]$Exception
+    )
+
+    $nativeErrorCode = Get-NativeErrorCode $Exception
+    if ($nativeErrorCode -eq 4551) {
+        return "LNS-REL-007: Windows App Control blocked '$Target' before it could start (CreateProcess 4551 / ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION). Use a release signed by a trusted Authenticode publisher or ask the device administrator to authorize it; do not disable the policy."
+    }
+
+    $codeSuffix = if ($null -eq $nativeErrorCode) {
+        ""
+    }
+    else {
+        " (native error $nativeErrorCode)"
+    }
+    return "LNS-REL-007: unable to start '$Target'$codeSuffix."
 }
 
 function Resolve-SignTool {
@@ -466,9 +511,14 @@ try {
 
     if ($canRunPublishedCli) {
         Write-Host "> Published CLI smoke test (--help)" -ForegroundColor DarkGray
-        & $cliExe --help | Out-Host
+        try {
+            & $cliExe --help | Out-Host
+        }
+        catch {
+            throw (New-NativeLaunchDiagnostic $cliExe $_.Exception)
+        }
         if ($LASTEXITCODE -ne 0) {
-            throw "Published CLI smoke test failed with code $LASTEXITCODE."
+            throw "LNS-REL-007: published CLI smoke test failed with exit code $LASTEXITCODE."
         }
 
         if (-not $SkipWpfSmoke) {

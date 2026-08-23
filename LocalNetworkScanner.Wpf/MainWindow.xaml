@@ -117,28 +117,35 @@
                         Grid.Column="2"
                         Margin="12,0,0,0"
                         Command="{Binding RefreshInterfacesCommand}"
-                        Content="Atualizar"
-                        ToolTip="Voltar a detetar interfaces de rede"
-                        AutomationProperties.Name="Atualizar interfaces de rede" />
+                        Style="{StaticResource IconButtonStyle}"
+                        ToolTip="Atualizar interfaces de rede"
+                        ToolTipService.ShowOnDisabled="True"
+                        AutomationProperties.Name="Atualizar interfaces de rede"
+                        AutomationProperties.HelpText="Volta a detetar as interfaces de rede disponíveis.">
+                    <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE72C;" />
+                </Button>
                 <Button Grid.Row="1"
                         Grid.Column="3"
                         Margin="12,0,0,0"
-                        MinWidth="116"
-                        Style="{StaticResource PrimaryButtonStyle}"
+                        Style="{StaticResource PrimaryIconButtonStyle}"
                         Command="{Binding ScanCommand}"
-                        Content="_Iniciar scan"
+                        ToolTip="Iniciar scan (F5 ou Alt+I)"
+                        ToolTipService.ShowOnDisabled="True"
                         AutomationProperties.Name="Iniciar scan"
-                        AutomationProperties.HelpText="Inicia o scan da rede selecionada. Atalho F5." />
+                        AutomationProperties.HelpText="Inicia o scan da rede selecionada. Atalhos F5 e Alt+I.">
+                    <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE768;" />
+                </Button>
                 <Button Grid.Row="1"
                         Grid.Column="4"
                         Margin="8,0,0,0"
-                        MinWidth="100"
-                        Style="{StaticResource DangerButtonStyle}"
+                        Style="{StaticResource DangerIconButtonStyle}"
                         Command="{Binding CancelCommand}"
-                        Content="_Cancelar"
                         Visibility="{Binding IsScanning, Converter={StaticResource BooleanToVisibilityConverter}}"
+                        ToolTip="Cancelar scan (Escape ou Alt+C)"
                         AutomationProperties.Name="Cancelar scan"
-                        AutomationProperties.HelpText="Cancela o scan em curso. Atalho Escape." />
+                        AutomationProperties.HelpText="Cancela o scan em curso. Atalhos Escape e Alt+C.">
+                    <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE711;" />
+                </Button>
 
                 <Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="5" Margin="0,9,0,0">
                     <Grid.ColumnDefinitions>
@@ -700,7 +707,7 @@
                             <Grid>
                                 <TextBox x:Name="SearchTextBox"
                                          Width="290"
-                                         Padding="30,6,34,6"
+                                         Padding="30,6,44,6"
                                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                          AutomationProperties.Name="Pesquisar dispositivos"
                                          AutomationProperties.HelpText="Filtra por nome, IP, MAC, entidade IEEE, tipo, porta ou protocolo." />
@@ -710,17 +717,17 @@
                                            Foreground="{DynamicResource TextSecondaryBrush}"
                                            IsHitTestVisible="False"
                                            Text="&#xE721;" />
-                                <Button Width="28"
-                                        Height="28"
-                                        Margin="0,0,4,0"
-                                        Padding="0"
+                                <Button Margin="0,0,2,0"
                                         HorizontalAlignment="Right"
                                         VerticalAlignment="Center"
-                                        Style="{StaticResource CompactButtonStyle}"
+                                        Style="{StaticResource IconButtonStyle}"
                                         Command="{Binding ClearSearchCommand}"
-                                        Content="×"
                                         ToolTip="Limpar pesquisa"
-                                        AutomationProperties.Name="Limpar pesquisa" />
+                                        ToolTipService.ShowOnDisabled="True"
+                                        AutomationProperties.Name="Limpar pesquisa"
+                                        AutomationProperties.HelpText="Remove o texto usado para filtrar os dispositivos.">
+                                    <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE711;" />
+                                </Button>
                             </Grid>
                             <ComboBox Width="165"
                                       Margin="8,0,0,0"
@@ -736,22 +743,14 @@
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
                             <Button x:Name="OpenTopologyButton"
                                     Margin="4,0,12,0"
-                                    Padding="10,5"
-                                    Style="{StaticResource CompactButtonStyle}"
+                                    Style="{StaticResource IconButtonStyle}"
                                     Click="OnOpenTopologyClick"
                                     IsEnabled="{Binding HasTopologyMap}"
                                     ToolTip="Abre o mapa deste scan numa janela independente. Disponível após existirem resultados."
                                     ToolTipService.ShowOnDisabled="True"
                                     AutomationProperties.Name="Abrir topologia do scan"
                                     AutomationProperties.HelpText="Abre opcionalmente a topologia do scan atual numa janela separada. O botão fica disponível depois do scan.">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Margin="0,0,7,0"
-                                               VerticalAlignment="Center"
-                                               FontFamily="Segoe MDL2 Assets"
-                                               FontSize="14"
-                                               Text="&#xE968;" />
-                                    <TextBlock VerticalAlignment="Center" Text="Abrir topologia" />
-                                </StackPanel>
+                                <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE968;" />
                             </Button>
                             <Button Margin="4,0"
                                     Style="{StaticResource CompactButtonStyle}"
@@ -780,10 +779,14 @@
                         </StackPanel>
                         <Button Grid.Column="2"
                                 Margin="8,0,0,0"
-                                Style="{StaticResource CompactButtonStyle}"
+                                Style="{StaticResource IconButtonStyle}"
                                 Command="{Binding ClearResultsCommand}"
-                                Content="Limpar"
-                                AutomationProperties.Name="Limpar resultados" />
+                                ToolTip="Limpar resultados"
+                                ToolTipService.ShowOnDisabled="True"
+                                AutomationProperties.Name="Limpar resultados"
+                                AutomationProperties.HelpText="Pede confirmação antes de remover os resultados do scan atual.">
+                            <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE74D;" />
+                        </Button>
                     </Grid>
                     </ScrollViewer>
 
@@ -816,13 +819,14 @@
                         <Button x:Name="ProgressCancelButton"
                                 Grid.Column="3"
                                 Margin="12,0,0,0"
-                                Padding="10,4"
-                                Style="{StaticResource DangerButtonStyle}"
+                                Style="{StaticResource DangerIconButtonStyle}"
                                 Command="{Binding CancelCommand}"
-                                Content="Cancelar"
                                 Visibility="{Binding IsScanning, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                ToolTip="Cancelar scan (Escape ou Alt+C)"
                                 AutomationProperties.Name="Cancelar scan em curso"
-                                AutomationProperties.HelpText="Cancela o scan e preserva os resultados parciais já encontrados." />
+                                AutomationProperties.HelpText="Cancela o scan e preserva os resultados parciais já encontrados. Atalhos Escape e Alt+C.">
+                            <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE711;" />
+                        </Button>
                     </Grid>
 
                     <Grid Grid.Row="2">
@@ -1219,26 +1223,41 @@
                                                    Text="As ações só são ativadas quando o serviço correspondente foi detetado." />
                                         <Separator Margin="0,14" />
                                         <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Text="PREFERÊNCIAS DO DISPOSITIVO" />
-                                        <CheckBox Margin="0,9,0,5"
-                                                  IsChecked="{Binding SelectedDevice.IsFavorite}"
+                                         <CheckBox x:Name="DeviceFavoriteCheckBox"
+                                                   Margin="0,9,0,5"
+                                                   IsEnabled="{Binding CanEditSelectedDeviceMetadata}"
+                                                   IsChecked="{Binding SelectedDevice.IsFavorite}"
                                                   Content="Marcar como favorito"
                                                   AutomationProperties.Name="Marcar dispositivo como favorito" />
                                         <Label Content="Nome personalizado" />
-                                        <TextBox Text="{Binding SelectedDevice.Alias, UpdateSourceTrigger=PropertyChanged}"
+                                         <TextBox x:Name="DeviceAliasTextBox"
+                                                  IsEnabled="{Binding CanEditSelectedDeviceMetadata}"
+                                                  Text="{Binding SelectedDevice.Alias, UpdateSourceTrigger=PropertyChanged}"
                                                  AutomationProperties.Name="Nome personalizado do dispositivo" />
                                         <Label Margin="0,9,0,0" Content="Notas" />
-                                        <TextBox MinHeight="68"
-                                                 AcceptsReturn="True"
+                                         <TextBox x:Name="DeviceNotesTextBox"
+                                                  MinHeight="68"
+                                                  AcceptsReturn="True"
+                                                  IsEnabled="{Binding CanEditSelectedDeviceMetadata}"
                                                  TextWrapping="Wrap"
                                                  VerticalContentAlignment="Top"
                                                  Text="{Binding SelectedDevice.Notes, UpdateSourceTrigger=PropertyChanged}"
                                                  AutomationProperties.Name="Notas do dispositivo" />
-                                        <Button Margin="0,9,0,0"
-                                                HorizontalAlignment="Left"
-                                                Style="{StaticResource CompactButtonStyle}"
-                                                Command="{Binding SaveDeviceMetadataCommand}"
-                                                Content="Guardar preferências"
-                                                AutomationProperties.Name="Guardar preferências do dispositivo" />
+                                        <WrapPanel Margin="0,9,0,0">
+                                            <Button HorizontalAlignment="Left"
+                                                    Style="{StaticResource CompactButtonStyle}"
+                                                    Command="{Binding SaveDeviceMetadataCommand}"
+                                                    Content="Guardar preferências"
+                                                    AutomationProperties.Name="Guardar preferências do dispositivo" />
+                                            <TextBlock Margin="10,0,0,0"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource WarningBrush}"
+                                                       Text="Alterações por guardar"
+                                                       Visibility="{Binding SelectedDevice.IsMetadataDirty, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                       AutomationProperties.Name="Existem alterações de dispositivo por guardar" />
+                                        </WrapPanel>
                                     </StackPanel>
                                 </ScrollViewer>
                             </TabItem>
@@ -1310,17 +1329,20 @@
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
                                             </Grid.RowDefinitions>
-                                            <TextBlock Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SSDP ST" />
-                                            <TextBlock Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.SsdpServiceType}" TextWrapping="Wrap" />
-                                            <TextBlock Grid.Row="1" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SSDP USN" />
-                                            <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.SsdpUniqueServiceName}" TextWrapping="Wrap" />
-                                            <TextBlock Grid.Row="2" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SSDP / UPnP" />
-                                            <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.SsdpEndpoint}" TextWrapping="Wrap" />
-                                            <TextBlock Grid.Row="3" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SNMP" />
-                                            <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.SnmpIdentity}" TextWrapping="Wrap" />
-                                            <TextBlock Grid.Row="4" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Nmap" />
-                                            <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.NmapIdentity}" TextWrapping="Wrap" />
+                                            <TextBlock Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="mDNS / DNS-SD" />
+                                            <TextBlock Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.MdnsServiceSummary}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="1" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SSDP ST" />
+                                            <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.SsdpServiceType}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="2" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SSDP USN" />
+                                            <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.SsdpUniqueServiceName}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="3" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SSDP / UPnP" />
+                                            <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.SsdpEndpoint}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="4" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SNMP" />
+                                            <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.SnmpIdentity}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="5" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Nmap" />
+                                            <TextBlock Grid.Row="5" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.NmapIdentity}" TextWrapping="Wrap" />
                                         </Grid>
 
                                         <Separator Margin="0,14" />
@@ -1555,8 +1577,7 @@
         <Border Grid.Row="5"
                 Margin="2,10,2,0"
                 Padding="2,0"
-                Background="Transparent"
-                AutomationProperties.LiveSetting="Polite">
+                Background="Transparent">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -1564,7 +1585,13 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal">
                     <Ellipse Width="7" Height="7" Margin="0,0,8,0" VerticalAlignment="Center" Fill="{DynamicResource AccentBrush}" />
-                    <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="StatusLiveRegion"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Text="{Binding StatusMessage}"
+                               TextTrimming="CharacterEllipsis"
+                               AutomationProperties.LiveSetting="Polite"
+                               AutomationProperties.Name="{Binding StatusMessage}" />
                 </StackPanel>
                 <TextBlock Grid.Column="1"
                            Margin="12,0,0,0"

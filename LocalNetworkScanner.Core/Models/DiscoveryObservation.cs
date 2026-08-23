@@ -19,6 +19,8 @@ public sealed class DiscoveryObservation
     public string? DeviceType { get; init; }
     public string? OperatingSystem { get; init; }
     public string? ServiceType { get; init; }
+    public int? ServicePort { get; init; }
+    public string? ServiceTransport { get; init; }
     public string? UniqueServiceName { get; init; }
     public bool HasDirectAddressEvidence { get; init; }
     public string EvidenceSource { get; init; } = "Descoberta de rede";

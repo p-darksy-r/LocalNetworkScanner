@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Formats.Asn1;
@@ -16,6 +17,8 @@ using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using LocalNetworkScanner.Core.Models;
@@ -68,6 +71,96 @@ List<(string Name, Func<Task> Run)> tests =
     {
         Equal("22,80,81,82,443", string.Join(',', ServiceCatalog.ParsePortSpecification("443,80-82,22")));
         Throws<FormatException>(() => ServiceCatalog.ParsePortSpecification("0,70000"));
+    })),
+    ("Scan workload classifies attempts and deduplicates ports", () => Sync(() =>
+    {
+        ScanWorkloadEstimate normal = ScanWorkloadEstimator.Estimate(
+            4,
+            new ScanOptions
+            {
+                DiscoveryPorts = [80, 80, 443],
+                Ports = [22, 22, 80]
+            });
+        Equal(4, normal.AddressCount);
+        Equal(2, normal.DiscoveryPortCount);
+        Equal(2, normal.FullPortCount);
+        Equal(8L, normal.MaximumDiscoveryTcpAttempts);
+        Equal(8L, normal.MaximumFullTcpAttempts);
+        Equal(8L, normal.MaximumServiceProbeAttempts);
+        Equal(NetworkScannerService.MaximumUpnpEnrichmentAttempts,
+            normal.MaximumUpnpDescriptionAttempts);
+        Equal(56L, normal.MaximumBuiltInTcpAttempts);
+        Equal(false, normal.HasAdditionalNmapTraffic);
+        Equal(ScanWorkloadLevel.Normal, normal.Level);
+        Equal(false, normal.RequiresExplicitConfirmation);
+
+        ScanWorkloadEstimate high = ScanWorkloadEstimator.Estimate(
+            1_000,
+            new ScanOptions
+            {
+                EnableTcpDiscovery = false,
+                EnableServiceProbes = false,
+                Ports = Enumerable.Range(1, 1_000).ToArray()
+            });
+        Equal(0, high.DiscoveryPortCount);
+        Equal(1_000_032L, high.MaximumBuiltInTcpAttempts);
+        Equal(ScanWorkloadLevel.High, high.Level);
+        Equal(true, high.RequiresExplicitConfirmation);
+
+        ScanWorkloadEstimate extreme = ScanWorkloadEstimator.Estimate(
+            1_000,
+            new ScanOptions
+            {
+                EnableTcpDiscovery = false,
+                EnableServiceProbes = false,
+                Ports = Enumerable.Range(1, 10_000).ToArray()
+            });
+        Equal(10_000_032L, extreme.MaximumBuiltInTcpAttempts);
+        Equal(ScanWorkloadLevel.Extreme, extreme.Level);
+
+        ScanWorkloadEstimate extremeByPortCount = ScanWorkloadEstimator.Estimate(
+            1,
+            new ScanOptions
+            {
+                EnableTcpDiscovery = false,
+                Ports = Enumerable.Range(1, 16_384).ToArray()
+            });
+        Equal(16_384, extremeByPortCount.FullPortCount);
+        Equal(ScanWorkloadLevel.Extreme, extremeByPortCount.Level);
+
+        ScanWorkloadEstimate icmpOnly = ScanWorkloadEstimator.Estimate(
+            65_536,
+            new ScanOptions
+            {
+                EnableIcmp = true,
+                EnableTcpDiscovery = false,
+                EnableMulticastDiscovery = false,
+                EnableNmapDiscovery = true,
+                DiscoveryPorts = [80, 443],
+                Ports = []
+            });
+        Equal(0L, icmpOnly.MaximumBuiltInTcpAttempts);
+        Equal(true, icmpOnly.HasAdditionalNmapTraffic);
+        Equal(ScanWorkloadLevel.Normal, icmpOnly.Level);
+        Equal(false, icmpOnly.RequiresExplicitConfirmation);
+
+        ScanWorkloadEstimate upnpOnly = ScanWorkloadEstimator.Estimate(
+            1,
+            new ScanOptions
+            {
+                EnableTcpDiscovery = false,
+                EnableServiceProbes = false,
+                EnableMulticastDiscovery = true,
+                EnableUpnpDescription = true,
+                Ports = []
+            });
+        Equal(NetworkScannerService.MaximumUpnpEnrichmentAttempts,
+            upnpOnly.MaximumUpnpDescriptionAttempts);
+        Equal((long)NetworkScannerService.MaximumUpnpEnrichmentAttempts,
+            upnpOnly.MaximumBuiltInTcpAttempts);
+
+        Throws<ArgumentOutOfRangeException>(() =>
+            ScanWorkloadEstimator.Estimate(-1, new ScanOptions()));
     })),
     ("ICMP source binding rejects invalid routes without fallback", async () =>
     {
@@ -172,6 +265,278 @@ List<(string Name, Func<Task> Run)> tests =
             "https://<redacted>:<redacted>@example.invalid/path?api_key=<redacted>",
             redacted.Context["endpoint"]);
         True(!redacted.Context.ContainsKey("api_key"), "Uma API key não pode aparecer no contexto.");
+    })),
+    ("Local diagnostic log excludes private network details", () => Sync(() =>
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            "LocalNetworkScanner.Tests",
+            Guid.NewGuid().ToString("N"));
+        const string exceptionMessage = "exception-message-secret-c57978";
+        const string diagnosticMessage = "diagnostic-message-secret-40e219";
+        const string target = "target-secret-cfa552";
+        const string ipAddress = "198.51.100.243";
+        const string macAddress = "02:AA:BB:CC:DD:91";
+        const string community = "community-private-780b65";
+        const string hostname = "edge-private-40f6.example.invalid";
+        string networkEvidence = $"{ipAddress}|{macAddress}|{community}|{hostname}";
+
+        try
+        {
+            ScanDiagnostic diagnostic = new(
+                "LNS-APP-097",
+                DiagnosticCategory.Application,
+                DiagnosticSeverity.Critical,
+                diagnosticMessage,
+                "recommended-action-secret-bab87a",
+                target,
+                new Dictionary<string, string>
+                {
+                    ["networkEvidence"] = networkEvidence,
+                    ["community"] = community
+                });
+            Equal(target, diagnostic.Target);
+            Equal(networkEvidence, diagnostic.Context["networkEvidence"]);
+
+            LocalDiagnosticLogService service = new(directory);
+            Exception exception = CaptureException(exceptionMessage);
+            service.TryWriteUnhandled(
+                DiagnosticLogSource.WpfDispatcher,
+                exception,
+                diagnostic,
+                processTerminating: true);
+            service.TryWriteUnhandled(
+                DiagnosticLogSource.TaskScheduler,
+                exception,
+                diagnostic,
+                processTerminating: false);
+
+            string log = File.ReadAllText(service.LogPath);
+            string[] entries = log.Split(
+                "--- Local Network Scanner unhandled diagnostic ---",
+                StringSplitOptions.RemoveEmptyEntries);
+            Equal(2, entries.Length);
+            True(entries[0].Contains("Source: WpfDispatcher", StringComparison.Ordinal),
+                "A primeira entrada deve identificar a origem WPF Dispatcher.");
+            True(entries[0].Contains("ProcessTerminating: true", StringComparison.Ordinal),
+                "A primeira entrada deve preservar o indicador de terminação.");
+            True(entries[1].Contains("Source: TaskScheduler", StringComparison.Ordinal),
+                "A segunda entrada deve identificar a origem TaskScheduler.");
+            True(entries[1].Contains("ProcessTerminating: false", StringComparison.Ordinal),
+                "A segunda entrada deve preservar o indicador não terminante.");
+
+            foreach (string privateValue in new[]
+                     {
+                         exceptionMessage,
+                         diagnosticMessage,
+                         target,
+                         networkEvidence,
+                         ipAddress,
+                         macAddress,
+                         community,
+                         hostname
+                     })
+            {
+                True(!log.Contains(privateValue, StringComparison.Ordinal),
+                    $"O log técnico não pode incluir o valor privado '{privateValue}'.");
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    })),
+    ("Local diagnostic log rotates within its bounded contract", () => Sync(() =>
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            "LocalNetworkScanner.Tests",
+            Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            LocalDiagnosticLogService service = new(directory);
+            FieldInfo? maximumLogBytesField = typeof(LocalDiagnosticLogService).GetField(
+                "MaximumLogBytes",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            NotNull(maximumLogBytesField);
+            long maximumLogBytes = (long)maximumLogBytesField!.GetRawConstantValue()!;
+            byte[] existingLog = new byte[checked((int)maximumLogBytes - 1)];
+            byte[] sentinel = Encoding.ASCII.GetBytes("existing-log-before-rotation");
+            sentinel.CopyTo(existingLog, 0);
+            File.WriteAllBytes(service.LogPath, existingLog);
+
+            ScanDiagnostic diagnostic = new(
+                "LNS-APP-096",
+                DiagnosticCategory.Application,
+                DiagnosticSeverity.Error,
+                "Falha técnica controlada.",
+                "Reinicia a aplicação.");
+            service.TryWriteUnhandled(
+                DiagnosticLogSource.AppDomain,
+                CaptureException("rotation-trigger"),
+                diagnostic,
+                processTerminating: true);
+
+            string previousPath = Path.Combine(directory, "app.previous.log");
+            True(File.Exists(previousPath), "O log anterior deve existir depois da rotação.");
+            Equal(maximumLogBytes - 1, new FileInfo(previousPath).Length);
+            True(new FileInfo(service.LogPath).Length <= maximumLogBytes,
+                "O log atual não pode ultrapassar o limite configurado.");
+            True(new FileInfo(previousPath).Length <= maximumLogBytes,
+                "O log anterior não pode ultrapassar o limite configurado.");
+            Equal(2, Directory.GetFiles(directory, "app*.log").Length);
+
+            byte[] previousPrefix = File.ReadAllBytes(previousPath)[..sentinel.Length];
+            True(previousPrefix.AsSpan().SequenceEqual(sentinel),
+                "A rotação deve mover o conteúdo anterior sem o substituir.");
+            True(File.ReadAllText(service.LogPath).Contains("Source: AppDomain", StringComparison.Ordinal),
+                "A nova entrada deve ser escrita no log atual depois da rotação.");
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    })),
+    ("Fatal shutdown bypasses prompts and settings persistence", () => Sync(() =>
+    {
+        MethodInfo? prepareMethod = typeof(MainWindow).GetMethod(
+            "PrepareForFatalShutdown",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        NotNull(prepareMethod);
+        Equal(typeof(void), prepareMethod!.ReturnType);
+        Equal(0, prepareMethod.GetParameters().Length);
+
+        FieldInfo? fatalFlag = typeof(MainWindow).GetField(
+            "_isFatalShutdown",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        NotNull(fatalFlag);
+        Equal(typeof(bool), fatalFlag!.FieldType);
+
+        string source = File.ReadAllText(FindRepositoryFile(
+            "LocalNetworkScanner.Wpf",
+            "MainWindow.xaml.cs"));
+        string compact = string.Concat(source.Where(character => !char.IsWhiteSpace(character)));
+        string viewModelSource = File.ReadAllText(FindRepositoryFile(
+            "LocalNetworkScanner.Wpf",
+            "ViewModels",
+            "MainViewModel.cs"));
+        string compactViewModel = string.Concat(
+            viewModelSource.Where(character => !char.IsWhiteSpace(character)));
+        int onClosing = compact.IndexOf("privatevoidOnClosing(", StringComparison.Ordinal);
+        int savingGuard = compact.IndexOf(
+            "if(!_isFatalShutdown&&ViewModel.IsSavingDeviceMetadata)",
+            onClosing,
+            StringComparison.Ordinal);
+        int savingCancel = compact.IndexOf("e.Cancel=true;return;", savingGuard, StringComparison.Ordinal);
+        int fatalGuard = compact.IndexOf(
+            "if(!_isFatalShutdown&&(ViewModel.IsScanning||ViewModel.HasUnsavedDeviceMetadata))",
+            onClosing,
+            StringComparison.Ordinal);
+        int closePrompt = compact.IndexOf("MessageBox.Show(", fatalGuard, StringComparison.Ordinal);
+        int completeShutdown = compact.IndexOf(
+            "CompleteShutdown(saveSettings:!_isFatalShutdown);",
+            closePrompt,
+            StringComparison.Ordinal);
+        int prepare = compact.IndexOf("internalvoidPrepareForFatalShutdown()", StringComparison.Ordinal);
+        int setFatalFlag = compact.IndexOf("_isFatalShutdown=true;", prepare, StringComparison.Ordinal);
+        int requestCancellation = compact.IndexOf(
+            "ViewModel.RequestCancellation();",
+            setFatalFlag,
+            StringComparison.Ordinal);
+        int completeMethod = compact.IndexOf("privatevoidCompleteShutdown(boolsaveSettings)", StringComparison.Ordinal);
+        int guardedSave = compact.IndexOf(
+            "if(saveSettings)ViewModel.SaveSettings();",
+            completeMethod,
+            StringComparison.Ordinal);
+
+        True(onClosing >= 0 && savingGuard > onClosing && savingCancel > savingGuard &&
+             fatalGuard > savingCancel && closePrompt > fatalGuard,
+            "OnClosing deve esperar pela gravação de metadados antes de avaliar o fecho normal.");
+        True(fatalGuard > onClosing && closePrompt > fatalGuard,
+            "OnClosing deve proteger scan e metadados por guardar com o estado de falha fatal.");
+        True(completeShutdown > closePrompt && completeShutdown < prepare,
+            "OnClosing deve desativar a persistência quando a terminação é fatal.");
+        True(prepare >= 0 && setFatalFlag > prepare && requestCancellation > setFatalFlag &&
+             requestCancellation < completeMethod,
+            "PrepareForFatalShutdown deve marcar a terminação antes de cancelar o scan.");
+        True(completeMethod >= 0 && guardedSave > completeMethod,
+            "CompleteShutdown só deve persistir definições quando explicitamente autorizado.");
+        True(compactViewModel.Contains(
+                "privateboolCanStartScan()=>!IsScanning&&!IsSavingDeviceMetadata&&",
+                StringComparison.Ordinal),
+            "Um novo scan deve ficar bloqueado enquanto os metadados são gravados.");
+        True(compactViewModel.Contains(
+                "()=>!IsScanning&&!IsSavingDeviceMetadata&&Devices.Count>0",
+                StringComparison.Ordinal),
+            "Limpar resultados deve ficar bloqueado enquanto os metadados são gravados.");
+    })),
+    ("Installer downgrade guard follows custom local install directories", () => Sync(() =>
+    {
+        string source = File.ReadAllText(FindRepositoryFile(
+            "installer",
+            "LocalNetworkScanner.iss"));
+        string compact = string.Concat(source.Where(character => !char.IsWhiteSpace(character)));
+
+        int registryResolver = compact.IndexOf(
+            "procedureConsiderRegisteredInstallLocation(",
+            StringComparison.Ordinal);
+        int installLocationRead = compact.IndexOf(
+            "RegQueryStringValue(",
+            registryResolver,
+            StringComparison.Ordinal);
+        int localPathValidation = compact.IndexOf(
+            "TryNormalizeLocalInstallDirectory(RegisteredDirectory,LocalDirectory)",
+            registryResolver,
+            StringComparison.Ordinal);
+        int registeredExecutableCheck = compact.IndexOf(
+            "ConsiderInstalledExecutable(AddBackslash(LocalDirectory)+",
+            localPathValidation,
+            StringComparison.Ordinal);
+        int initialize = compact.IndexOf(
+            "functionInitializeSetup():Boolean;",
+            StringComparison.Ordinal);
+        int hkcu64 = compact.IndexOf(
+            "ConsiderRegisteredInstallLocation(HKCU64,",
+            initialize,
+            StringComparison.Ordinal);
+        int hkcu32 = compact.IndexOf(
+            "ConsiderRegisteredInstallLocation(HKCU32,",
+            hkcu64,
+            StringComparison.Ordinal);
+        int hkcu = compact.IndexOf(
+            "ConsiderRegisteredInstallLocation(HKCU,",
+            hkcu32,
+            StringComparison.Ordinal);
+        int defaultFallback = compact.IndexOf(
+            "AddBackslash(ExpandConstant('{#AppInstallDirectory}'))+",
+            hkcu,
+            StringComparison.Ordinal);
+
+        True(compact.Contains(
+                "#defineAppUninstallRegistryKey\"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{4CA46B3E-3522-4E1B-99B7-CBE0A34B5981}_is1\"",
+                StringComparison.Ordinal),
+            "O guard deve usar o AppId estável para localizar o InstallLocation anterior.");
+        True(registryResolver >= 0 && installLocationRead > registryResolver &&
+             compact.IndexOf("'InstallLocation'", installLocationRead, StringComparison.Ordinal) > installLocationRead &&
+             localPathValidation > installLocationRead && registeredExecutableCheck > localPathValidation,
+            "O InstallLocation registado deve ser validado antes de consultar a versão do executável.");
+        True(hkcu64 > initialize && hkcu32 > hkcu64 && hkcu > hkcu32 &&
+             defaultFallback > hkcu,
+            "O guard deve consultar as vistas HKCU 64/32 e manter o diretório predefinido como fallback.");
+        True(compact.Contains("(Trimmed[2]<>':')", StringComparison.Ordinal) &&
+             compact.Contains("(Trimmed[3]<>'\\')", StringComparison.Ordinal) &&
+             compact.Contains("GetDriveTypeW(Copy(Trimmed,1,3))", StringComparison.Ordinal) &&
+             compact.Contains("DriveType<>DriveFixed", StringComparison.Ordinal) &&
+             compact.Contains("DriveType<>DriveRemovable", StringComparison.Ordinal),
+            "O caminho registado deve ser absoluto e pertencer a uma unidade local aceite.");
+        True(compact.Contains(
+                "ifHasInstalledVersionand(ComparePackedVersion(InstalledVersion,{#AppVersionPacked})>0)then",
+                StringComparison.Ordinal),
+            "A versão mais recente encontrada deve bloquear apenas um setup mais antigo.");
     })),
     ("Diagnostic mapper preserves origin", () => Sync(() =>
     {
@@ -385,6 +750,71 @@ List<(string Name, Func<Task> Run)> tests =
         True(budget.TryConsumeItems(3), "Os itens dentro do limite devem ser aceites.");
         True(!budget.TryConsumeItems(1), "O limite total de itens deve ser aplicado.");
     })),
+    ("Multicast retransmissions obey budget and cancellation", async () =>
+    {
+        using UdpClient receiver = new(
+            new IPEndPoint(IPAddress.Loopback, 0));
+        using UdpClient sender = new(AddressFamily.InterNetwork);
+        IPEndPoint destination = (IPEndPoint)receiver.Client.LocalEndPoint!;
+        byte[] payload = [0x4C, 0x4E, 0x53];
+        MulticastSendBudget budget = new(
+            MulticastProbeTransmitter.DefaultMaximumTransmissions);
+
+        True(
+            await MulticastProbeTransmitter.SendAsync(
+                sender,
+                payload,
+                destination,
+                budget,
+                CancellationToken.None),
+            "A sonda inicial deveria consumir o primeiro envio.");
+        await MulticastProbeTransmitter.RetransmitAsync(
+            sender,
+            payload,
+            destination,
+            timeoutMs: 1,
+            budget,
+            CancellationToken.None);
+
+        Equal(3, budget.DatagramsConsumed);
+        True(
+            !await MulticastProbeTransmitter.SendAsync(
+                sender,
+                payload,
+                destination,
+                budget,
+                CancellationToken.None),
+            "O quarto envio deve ser recusado pelo orçamento.");
+        Equal(3, budget.DatagramsConsumed);
+
+        using CancellationTokenSource receiveTimeout = new(TimeSpan.FromSeconds(1));
+        for (int index = 0; index < 3; index++)
+        {
+            UdpReceiveResult datagram = await receiver.ReceiveAsync(receiveTimeout.Token);
+            Equal("LNS", Encoding.ASCII.GetString(datagram.Buffer));
+        }
+
+        MulticastSendBudget cancelledBudget = new(
+            MulticastProbeTransmitter.DefaultMaximumTransmissions);
+        True(
+            await MulticastProbeTransmitter.SendAsync(
+                sender,
+                payload,
+                destination,
+                cancelledBudget,
+                CancellationToken.None),
+            "A sonda anterior ao cancelamento deveria ser enviada.");
+        using CancellationTokenSource cancelled = new();
+        cancelled.Cancel();
+        await MulticastProbeTransmitter.RetransmitAsync(
+            sender,
+            payload,
+            destination,
+            timeoutMs: 1,
+            cancelledBudget,
+            cancelled.Token);
+        Equal(1, cancelledBudget.DatagramsConsumed);
+    }),
     ("Device identity evidence merges by confidence without duplicates", () => Sync(() =>
     {
         NetworkDevice device = new() { IpAddress = IPAddress.Parse("192.168.1.20") };
@@ -1878,7 +2308,7 @@ List<(string Name, Func<Task> Run)> tests =
         string resourceHash = Convert.ToHexString(
             SHA256.HashData(compressed.ToArray())).ToLowerInvariant();
         Equal(
-            "26ec00a8b4d3a965e79d031780d064263452ed319fad917b80ce305905605003",
+            "5149df53f544226cf917275233734aa8ad9ae362a9cf1ec1aa3e9753a518927f",
             resourceHash);
 
         compressed.Position = 0;
@@ -1927,16 +2357,48 @@ List<(string Name, Func<Task> Run)> tests =
                 prefixOccurrences.GetValueOrDefault(columns[1]) + 1;
         }
 
-        Equal(58_019, entries);
-        Equal(58_016, prefixOccurrences.Count);
-        Equal(39_829, registryCounts["MA-L"]);
-        Equal(6_503, registryCounts["MA-M"]);
-        Equal(7_112, registryCounts["MA-S"]);
+        Equal(58_166, entries);
+        Equal(58_163, prefixOccurrences.Count);
+        Equal(39_923, registryCounts["MA-L"]);
+        Equal(6_540, registryCounts["MA-M"]);
+        Equal(7_128, registryCounts["MA-S"]);
         Equal(4_575, registryCounts["IAB"]);
         Equal("LocalNetworkScanner.IEEE-MAC-Vendors/v1", metadata["format"]);
-        Equal("2026-07-28", metadata["snapshotDate"]);
-        Equal("58019", metadata["entries"]);
-        Equal("58016", metadata["uniquePrefixes"]);
+        Equal("2026-08-12", metadata["snapshotDate"]);
+        Equal("58166", metadata["entries"]);
+        Equal("58163", metadata["uniquePrefixes"]);
+        Equal("IEEE. All rights reserved.", metadata["sourceCopyright"]);
+        Equal(
+            "Bundled for offline lookup; no IEEE endorsement implied.",
+            metadata["notice"]);
+        Equal("39923", metadata["count.MA-L"]);
+        Equal("6540", metadata["count.MA-M"]);
+        Equal("7128", metadata["count.MA-S"]);
+        Equal("4575", metadata["count.IAB"]);
+        Equal(
+            "https://standards-oui.ieee.org/oui/oui.csv",
+            metadata["source.MA-L"]);
+        Equal(
+            "https://standards-oui.ieee.org/oui28/mam.csv",
+            metadata["source.MA-M"]);
+        Equal(
+            "https://standards-oui.ieee.org/oui36/oui36.csv",
+            metadata["source.MA-S"]);
+        Equal(
+            "https://standards-oui.ieee.org/iab/iab.csv",
+            metadata["source.IAB"]);
+        Equal(
+            "f4c224a540adc45c0c48233335c6241a420f1b85f3754bc379022c343c3d3e9d",
+            metadata["sha256.MA-L"]);
+        Equal(
+            "29ec2874d7664610e3622aa157e6b81da53ed6e54912dd6de5e51c70b6b5a32c",
+            metadata["sha256.MA-M"]);
+        Equal(
+            "7b2927f8857c62cf0638a0e4501076c4ad56df4c29b7ad1092d7dfa6ed7940b5",
+            metadata["sha256.MA-S"]);
+        Equal(
+            "6e71aa3d47f00f19d09cb3b31ce1038de1834703420f0ce4ce111da586f1a533",
+            metadata["sha256.IAB"]);
         Equal(2, prefixOccurrences["0001C8"]);
         Equal(3, prefixOccurrences["080030"]);
         Equal(
@@ -1955,12 +2417,12 @@ List<(string Name, Func<Task> Run)> tests =
         Equal(false, service.HasExternalDatabase);
         Equal(false, service.DatabaseInfo.IsDegraded);
         Equal("Incorporada", service.DatabaseInfo.Source);
-        Equal(new DateOnly(2026, 7, 28), service.DatabaseInfo.SnapshotDate);
-        Equal(58_019, service.DatabaseInfo.EntryCount);
-        Equal(58_016, service.DatabaseInfo.UniquePrefixCount);
-        Equal(39_829, service.DatabaseInfo.RegistryCounts["MA-L"]);
-        Equal(6_503, service.DatabaseInfo.RegistryCounts["MA-M"]);
-        Equal(7_112, service.DatabaseInfo.RegistryCounts["MA-S"]);
+        Equal(new DateOnly(2026, 8, 12), service.DatabaseInfo.SnapshotDate);
+        Equal(58_166, service.DatabaseInfo.EntryCount);
+        Equal(58_163, service.DatabaseInfo.UniquePrefixCount);
+        Equal(39_923, service.DatabaseInfo.RegistryCounts["MA-L"]);
+        Equal(6_540, service.DatabaseInfo.RegistryCounts["MA-M"]);
+        Equal(7_128, service.DatabaseInfo.RegistryCounts["MA-S"]);
         Equal(4_575, service.DatabaseInfo.RegistryCounts["IAB"]);
 
         MacVendorMatch? large = service.LookupDetailed("00:0C:29:12:34:56");
@@ -2522,6 +2984,12 @@ List<(string Name, Func<Task> Run)> tests =
         Equal("Laser", observations[1].Model);
         Equal("Office Printer", observations[1].FriendlyName);
         Equal("Impressora", observations[1].DeviceType);
+        Equal(631, observations[1].ServicePort);
+        Equal("TCP", observations[1].ServiceTransport);
+        Equal("printer.local:631/tcp", observations[1].Location);
+        True(
+            observations[1].EvidenceSource.Contains("TCP/631", StringComparison.Ordinal),
+            "A evidência DNS-SD deve manter transporte e porta SRV.");
         Equal<string?>(null, observations[1].Manufacturer);
         string typedValues = string.Join('|',
             typeof(DiscoveryObservation).GetProperties()
@@ -2576,6 +3044,9 @@ List<(string Name, Func<Task> Run)> tests =
             observation.UniqueServiceName == identityInstance);
         Equal("Acme Printing", identityObservation.Manufacturer);
         Equal("Laser 9000", identityObservation.Model);
+        Equal(631, identityObservation.ServicePort);
+        Equal("TCP", identityObservation.ServiceTransport);
+        Equal("lab-printer.local:631/tcp", identityObservation.Location);
         string identityValues = string.Join('|',
             typeof(DiscoveryObservation).GetProperties()
                 .Where(property => property.PropertyType == typeof(string))
@@ -2592,6 +3063,22 @@ List<(string Name, Func<Task> Run)> tests =
             1,
             120,
             Address: IPAddress.Parse("192.168.1.80"));
+        DiscoveryObservation isolatedAnnouncement = MdnsDiscoveryService.CorrelateRecords(
+            [addressEvidence],
+            IPAddress.Parse("192.168.1.81")).Single();
+        Equal(false, isolatedAnnouncement.HasDirectAddressEvidence);
+        True(
+            !NetworkScannerService.CanPromoteMulticastObservation(isolatedAnnouncement),
+            "Um A/AAAA anunciado por outro remetente não pode promover um host.");
+
+        DiscoveryObservation directAnnouncement = MdnsDiscoveryService.CorrelateRecords(
+            [addressEvidence],
+            addressEvidence.Address).Single();
+        Equal(true, directAnnouncement.HasDirectAddressEvidence);
+        True(
+            NetworkScannerService.CanPromoteMulticastObservation(directAnnouncement),
+            "O remetente que confirma o próprio A/AAAA pode promover o host.");
+
         MdnsDiscoveryService.MdnsResourceRecord serviceEvidence = new(
             "Front Door._rtsp._tcp.local",
             33,
@@ -3182,23 +3669,43 @@ List<(string Name, Func<Task> Run)> tests =
                     TlsProtocol = "TLS 1.3"
                 }
             ];
+            result.Devices[0].MdnsServices =
+            [
+                new MdnsServiceObservation
+                {
+                    InstanceName = "Office Printer._ipp._tcp.local",
+                    ServiceType = "_ipp._tcp.local",
+                    Port = 631,
+                    Transport = "TCP",
+                    Endpoint = "printer.local:631/tcp",
+                    EvidenceSource = "mDNS/DNS-SD (PTR/SRV/A; TCP/631)"
+                }
+            ];
             await new ExportService().ExportJsonAsync(result, path);
 
             await using FileStream stream = File.OpenRead(path);
             using JsonDocument document = await JsonDocument.ParseAsync(stream);
             JsonElement root = document.RootElement;
-            Equal(5, root.GetProperty("schemaVersion").GetInt32());
+            Equal(6, root.GetProperty("schemaVersion").GetInt32());
             JsonElement diagnostics = root.GetProperty("scan").GetProperty("diagnostics");
             Equal(1, diagnostics.GetArrayLength());
             Equal(DiagnosticCatalog.InvalidMacAddressCode,
                 diagnostics[0].GetProperty("code").GetString());
             True(diagnostics[0].GetProperty("recommendedAction").GetString()?.Length > 0,
                 "O JSON deve incluir a ação recomendada.");
-            JsonElement ports = root.GetProperty("devices")[0].GetProperty("ports");
+            JsonElement device = root.GetProperty("devices")[0];
+            JsonElement ports = device.GetProperty("ports");
             Equal("NotProbed", ports[0].GetProperty("TlsStatus").GetString());
             Equal(JsonValueKind.Null, ports[0].GetProperty("IsEncrypted").ValueKind);
             Equal("HandshakeSucceeded", ports[1].GetProperty("TlsStatus").GetString());
             Equal(true, ports[1].GetProperty("IsEncrypted").GetBoolean());
+            JsonElement mdnsService = device.GetProperty("mdnsServices")[0];
+            Equal("Office Printer._ipp._tcp.local",
+                mdnsService.GetProperty("InstanceName").GetString());
+            Equal("_ipp._tcp.local", mdnsService.GetProperty("ServiceType").GetString());
+            Equal(631, mdnsService.GetProperty("Port").GetInt32());
+            Equal("TCP", mdnsService.GetProperty("Transport").GetString());
+            Equal("printer.local:631/tcp", mdnsService.GetProperty("Endpoint").GetString());
             JsonElement map = root.GetProperty("topologyMap");
             True(map.GetProperty("nodes").GetArrayLength() >= 3,
                 "O JSON deveria conter os nós do mapa de topologia.");
@@ -3321,6 +3828,40 @@ List<(string Name, Func<Task> Run)> tests =
         try
         {
             NetworkScanResult result = CreateTopologyExportResult();
+            result.Devices[0].MdnsNames = ["office-printer.local"];
+            result.Devices[0].MdnsServices =
+            [
+                new MdnsServiceObservation
+                {
+                    InstanceName = "Office Printer._ipp._tcp.local",
+                    ServiceType = "_ipp._tcp.local",
+                    Port = 631,
+                    Transport = "TCP",
+                    Endpoint = "office-printer.local:631/tcp",
+                    EvidenceSource = "mDNS/DNS-SD (PTR/SRV/A; TCP/631)"
+                }
+            ];
+            for (int serviceIndex = 2; serviceIndex <= 8; serviceIndex++)
+            {
+                result.Devices[0].MdnsServices.Add(new MdnsServiceObservation
+                {
+                    InstanceName = $"Serviço {serviceIndex}._http._tcp.local",
+                    ServiceType = "_http._tcp.local",
+                    Port = 8_000 + serviceIndex,
+                    Transport = "TCP",
+                    Endpoint = $"service-{serviceIndex}.local:{8_000 + serviceIndex}/tcp",
+                    EvidenceSource = "mDNS/DNS-SD (PTR/SRV/A; TCP)"
+                });
+            }
+            result.Devices[0].MdnsServices.Add(new MdnsServiceObservation
+            {
+                InstanceName = "Serviço oculto._scanner._tcp.local",
+                ServiceType = "_scanner._tcp.local",
+                Port = 9_999,
+                Transport = "TCP",
+                Endpoint = "ninth-service-only.local:9999/tcp",
+                EvidenceSource = "mDNS/DNS-SD (PTR/SRV/A; TCP/9999)"
+            });
             DeviceRowViewModel row = new(result.Devices[0]);
             window.ViewModel.Devices.Add(row);
             window.ViewModel.SelectedDevice = row;
@@ -3348,6 +3889,14 @@ List<(string Name, Func<Task> Run)> tests =
                 window.FindName("ProgressCancelButton") as Button;
             TextBlock? emptyStateTitle =
                 window.FindName("EmptyStateTitleText") as TextBlock;
+            TextBlock? statusLiveRegion =
+                window.FindName("StatusLiveRegion") as TextBlock;
+            CheckBox? deviceFavoriteCheckBox =
+                window.FindName("DeviceFavoriteCheckBox") as CheckBox;
+            TextBox? deviceAliasTextBox =
+                window.FindName("DeviceAliasTextBox") as TextBox;
+            TextBox? deviceNotesTextBox =
+                window.FindName("DeviceNotesTextBox") as TextBox;
             NotNull(configurationToggle);
             NotNull(configurationPanel);
             NotNull(customSettingsExpander);
@@ -3357,11 +3906,69 @@ List<(string Name, Func<Task> Run)> tests =
             NotNull(snmpCommunityPasswordBox);
             NotNull(progressCancelButton);
             NotNull(emptyStateTitle);
+            NotNull(statusLiveRegion);
+            NotNull(deviceFavoriteCheckBox);
+            NotNull(deviceAliasTextBox);
+            NotNull(deviceNotesTextBox);
+            AutomationPeer? statusPeer = UIElementAutomationPeer.CreatePeerForElement(statusLiveRegion!);
+            NotNull(statusPeer);
+            Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(statusLiveRegion));
             Equal(true, window.ViewModel.IsScanConfigurationExpanded);
             Equal("Ocultar configuração", configurationToggle!.Content?.ToString());
             Equal(Visibility.Visible, configurationPanel!.Visibility);
             Equal(Visibility.Collapsed, progressCancelButton!.Visibility);
             Equal("Ainda não existem resultados", emptyStateTitle!.Text);
+            Equal(false, window.ViewModel.CanEditSelectedDeviceMetadata);
+            Equal(false, deviceFavoriteCheckBox!.IsEnabled);
+            Equal(false, deviceAliasTextBox!.IsEnabled);
+            Equal(false, deviceNotesTextBox!.IsEnabled);
+
+            FieldInfo lastResultField = typeof(MainViewModel)
+                .GetField("_lastResult", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            lastResultField.SetValue(window.ViewModel, result);
+            window.ViewModel.SelectedDevice = null;
+            window.ViewModel.SelectedDevice = row;
+            deviceFavoriteCheckBox.GetBindingExpression(UIElement.IsEnabledProperty)?.UpdateTarget();
+            deviceAliasTextBox.GetBindingExpression(UIElement.IsEnabledProperty)?.UpdateTarget();
+            deviceNotesTextBox.GetBindingExpression(UIElement.IsEnabledProperty)?.UpdateTarget();
+            Equal(true, window.ViewModel.CanEditSelectedDeviceMetadata);
+            Equal(true, deviceFavoriteCheckBox.IsEnabled);
+            Equal(true, deviceAliasTextBox.IsEnabled);
+            Equal(true, deviceNotesTextBox.IsEnabled);
+            window.ViewModel.NetworkInterfaces.Add(result.NetworkInterface);
+            window.ViewModel.SelectedNetworkInterface = result.NetworkInterface;
+            window.ViewModel.NetworkCidr = result.NetworkInterface.NetworkCidr;
+            True(window.ViewModel.ClearResultsCommand.CanExecute(null),
+                "Limpar deve estar disponível antes de começar a guardar metadados.");
+            PropertyInfo isSavingMetadataProperty = typeof(MainViewModel)
+                .GetProperty(nameof(MainViewModel.IsSavingDeviceMetadata))!;
+            isSavingMetadataProperty.SetValue(window.ViewModel, true);
+            deviceFavoriteCheckBox.GetBindingExpression(UIElement.IsEnabledProperty)?.UpdateTarget();
+            deviceAliasTextBox.GetBindingExpression(UIElement.IsEnabledProperty)?.UpdateTarget();
+            deviceNotesTextBox.GetBindingExpression(UIElement.IsEnabledProperty)?.UpdateTarget();
+            Equal(false, window.ViewModel.CanEditSelectedDeviceMetadata);
+            Equal(false, deviceFavoriteCheckBox.IsEnabled);
+            Equal(false, deviceAliasTextBox.IsEnabled);
+            Equal(false, deviceNotesTextBox.IsEnabled);
+            Equal(false, window.ViewModel.ClearResultsCommand.CanExecute(null));
+            isSavingMetadataProperty.SetValue(window.ViewModel, false);
+            deviceFavoriteCheckBox.GetBindingExpression(UIElement.IsEnabledProperty)?.UpdateTarget();
+            deviceAliasTextBox.GetBindingExpression(UIElement.IsEnabledProperty)?.UpdateTarget();
+            deviceNotesTextBox.GetBindingExpression(UIElement.IsEnabledProperty)?.UpdateTarget();
+            row.Alias = "Nome por guardar";
+            Equal(true, window.ViewModel.HasUnsavedDeviceMetadata);
+            row.MarkMetadataSaved();
+            Equal(false, window.ViewModel.HasUnsavedDeviceMetadata);
+
+            window.ViewModel.SearchText = "_ipp._tcp.local";
+            Equal(1, window.ViewModel.DevicesView.Cast<object>().Count());
+            window.ViewModel.SearchText = "office-printer.local";
+            Equal(1, window.ViewModel.DevicesView.Cast<object>().Count());
+            True(!row.MdnsServiceSummary.Contains("ninth-service-only", StringComparison.Ordinal),
+                "O resumo visual deve manter o limite de oito serviços.");
+            window.ViewModel.SearchText = "ninth-service-only.local";
+            Equal(1, window.ViewModel.DevicesView.Cast<object>().Count());
+            window.ViewModel.SearchText = string.Empty;
 
             window.ViewModel.IsScanConfigurationExpanded = false;
             configurationToggle.GetBindingExpression(ContentControl.ContentProperty)?.UpdateTarget();
@@ -3878,6 +4485,38 @@ static HttpResponseMessage CsvResponse(string body) => new(HttpStatusCode.OK)
         new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
         "text/csv")
 };
+
+static Exception CaptureException(string message)
+{
+    try
+    {
+        throw new InvalidOperationException(message);
+    }
+    catch (InvalidOperationException exception)
+    {
+        return exception;
+    }
+}
+
+static string FindRepositoryFile(params string[] relativeSegments)
+{
+    foreach (string root in new[] { Environment.CurrentDirectory, AppContext.BaseDirectory })
+    {
+        DirectoryInfo? directory = new(Path.GetFullPath(root));
+        while (directory is not null)
+        {
+            string candidate = Path.Combine(
+                [directory.FullName, .. relativeSegments]);
+            if (File.Exists(candidate))
+                return candidate;
+
+            directory = directory.Parent;
+        }
+    }
+
+    throw new FileNotFoundException(
+        $"Não foi possível localizar o ficheiro do repositório '{Path.Combine(relativeSegments)}'.");
+}
 
 static void Equal<T>(T expected, T actual)
 {

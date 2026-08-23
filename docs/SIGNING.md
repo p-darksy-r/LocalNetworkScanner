@@ -18,14 +18,19 @@ O workflow usa **Microsoft Artifact Signing com OIDC**, sem PFX ou chave privada
 2. o caminho privado de QA corre num job sem permissão `id-token`, enquanto só o job público entra no GitHub Environment `release-signing` e pode obter um token OIDC temporário;
 3. a chave e o certificado permanecem no serviço de assinatura; o runner nunca recebe a chave privada;
 4. UI, CLI e `diagnose-app-control.ps1` são assinados e timestamped antes dos ZIPs;
-5. o Inno Setup chama o mesmo signer para o instalador e para o desinstalador embebido;
+5. o runner só executa o Inno Setup 6.7.3 depois de confirmar SHA-256 fixo, `ProductVersion`, Authenticode e publisher; o Inno chama depois o mesmo signer para o instalador e para o desinstalador embebido;
 6. hashes e assinaturas são validados de novo depois do empacotamento;
 7. o ZIP e instalador **exatos** são instalados, executados e removidos primeiro em Windows x64 e depois num runner Windows ARM64 nativo;
-8. só o mesmo conjunto de ficheiros aprovado pelos dois jobs pode chegar ao job de publicação.
+8. o payload grande é carregado uma única vez como artefacto imutável `windows-candidate`; depois do ARM64 é criado apenas um atestado compacto com commit, run, digest do artefacto, SHA-256 dos dez ficheiros e o `SIGNING-STATE.txt` validado;
+9. os gates seguintes materializam o contrato final substituindo apenas esse ficheiro de estado, confirmam que os restantes nove ficheiros continuam byte a byte iguais e só esse conjunto pode chegar à publicação;
+10. o target remoto da tag, incluindo tags anotadas, é resolvido novamente para o commit do workflow antes de criar, carregar ou publicar o draft e depois da publicação;
+11. a release começa como draft identificado pelo run, os dez assets remotos são comparados por nome, estado, tamanho e SHA-256, e o candidato pesado só é eliminado do armazenamento de Actions depois de a release final voltar a ser verificada. Uma repetição aceita uma release já publicada apenas quando todo esse contrato continua exato; um draft divergente nunca é substituído.
 
-Artefactos privados de QA permanecem `NotSigned` e nunca são promovidos automaticamente a GitHub Release. O campo `SIGNING-STATE.txt` distingue `PrivateQa`, validação pendente e validação nativa concluída. O responsável pode espelhar manualmente o payload validado como prerelease no próprio repositório privado, desde que o título e as notas indiquem claramente `Private QA (NotSigned)` e não o apresentem como produção ou `Latest`.
+Artefactos privados de QA permanecem `NotSigned`. Enquanto os gates de produção ainda não estão todos configurados, uma tag nova promove-os automaticamente para uma **prerelease privada**, mas só depois de ambos os testes nativos. Num repositório público, `workflow_dispatch` com `publish_release=false` falha no preflight e nenhum candidato `NotSigned` é gerado ou carregado. Além do snapshot do evento, o job consulta a visibilidade atual pela API imediatamente antes do upload do candidato, antes de criar/publicar o draft e depois da publicação. Estas verificações reduzem a janela de mudança, mas a visibilidade do repositório e a publicação da release não formam uma transação atómica; mantenha o repositório privado durante toda a execução e não altere a visibilidade enquanto existir uma prerelease `NotSigned`. O título, notas e `SIGNING-STATE.txt` indicam claramente `Private QA (NotSigned)`; a prerelease não é produção nem `Latest`.
 
-Criar ou fazer push de uma tag `vX.Y.Z` executa deliberadamente o caminho privado de QA e **não** tenta publicar. A publicação assinada só é pedida por `workflow_dispatch`, selecionando essa mesma tag e definindo explicitamente `publish_release=true`. Assim, uma tag de versão pode existir no repositório privado sem gerar uma falha inevitável enquanto a identidade Public Trust e os restantes gates externos ainda não estiverem disponíveis.
+Criar ou fazer push de uma tag `vX.Y.Z` executa o caminho privado de QA e, se o repositório for privado e a configuração de produção ainda estiver incompleta, cria a prerelease `NotSigned` depois da validação completa. Quando Artifact Signing/OIDC e a autorização IEEE já estão integralmente configurados antes do push, a criação automática e o build pesado sem assinatura são suprimidos: o preflight reserva essa tag nova à execução assinada por `workflow_dispatch` com `publish_release=true`. Assets publicados divergentes nunca são substituídos; uma release já publicada com o contrato exatamente igual é reconhecida de forma idempotente e a execução avança apenas para a verificação final e limpeza. A passagem de uma prerelease QA já criada para produção exige uma versão/tag nova.
+
+Este desenho evita a segunda cópia integral de aproximadamente 390 MB que era mantida depois da validação. O grupo de concorrência é global ao repositório, pelo que duas execuções de release não produzem payloads grandes em paralelo. Execuções sem publicação conservam o único `windows-candidate` por apenas um dia para diagnóstico; execuções que publicam apagam-no após a verificação remota. O atestado compacto e o SBOM são artefactos de Actions separados com retenção de **30 dias**, não evidência permanente nem assets da GitHub Release. Uma falha de validação, upload ou verificação nunca provoca a limpeza antecipada do único candidato.
 
 O suporte local por thumbprint nos scripts continua disponível para laboratórios, PKI privada ou um runner próprio ligado a token/HSM. O workflow público não usa PFX exportável: certificados Code Signing públicos novos exigem normalmente que a chave seja gerada, armazenada e usada num módulo criptográfico adequado.
 
@@ -106,13 +111,13 @@ Definir a variável sem possuir a autorização não cria direitos de redistribu
 ## Sequência segura
 
 1. Execute CI no `main` e confirme **CI gate**, incluindo o job ARM64 nativo.
-2. Execute manualmente `Release` com `publish_release=false`; o resultado é um artefacto privado `NotSigned` de QA.
+2. Apenas enquanto o repositório estiver privado, execute manualmente `Release` com `publish_release=false`; sem tag, o resultado é um candidato `NotSigned` de QA com retenção de um dia e evidência/SBOM por 30 dias. Num repositório público, este pedido falha antes do build.
 3. Teste UI, CLI, scan, topologia, instalação, atualização e remoção num Windows limpo.
 4. Configure e proteja `release-signing`, OIDC e o perfil Artifact Signing.
 5. Registe a autorização IEEE.
 6. Atualize versão/changelog e confirme novamente que o HEAD local e `origin/main` são o mesmo commit.
-7. Crie uma tag nova `vX.Y.Z` nesse commit. O push da tag corre apenas QA privada; não reutilize `v1.2.0` nem substitua assets existentes.
-8. Quando todos os gates externos estiverem prontos, execute manualmente `Release` a partir dessa tag com `publish_release=true`.
+7. Para QA sem assinatura, crie uma tag nova `vX.Y.Z` nesse commit enquanto os gates de produção ainda estão incompletos. Num repositório privado, o push cria automaticamente a prerelease `Private QA (NotSigned)` depois de x64 e ARM64 passarem; não reutilize tags nem substitua assets existentes.
+8. Para produção, configure primeiro todos os gates externos e só depois crie uma nova versão/tag. A execução automática faz apenas o preflight e reserva essa tag sem carregar um candidato `NotSigned`; execute então `Release` a partir dela com `publish_release=true`. O workflow recusa drafts/releases divergentes, mas uma repetição aceita uma release já publicada quando título, modo e os dez assets continuam exatamente iguais.
 9. Confirme no workflow que os assets exatos passaram instalação/smoke/uninstall em x64 e ARM64.
 10. Depois do upload, descarregue os ficheiros e volte a validar SHA-256, signer e timestamp num Windows sem histórico do produto.
 

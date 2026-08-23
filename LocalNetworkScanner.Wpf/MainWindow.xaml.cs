@@ -2,8 +2,11 @@
 
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
+using LocalNetworkScanner.Wpf.Infrastructure;
 using LocalNetworkScanner.Wpf.Services;
 using LocalNetworkScanner.Wpf.ViewModels;
 
@@ -14,6 +17,9 @@ public partial class MainWindow : Window
     private bool _hasLoaded;
     private TopologyWindow? _topologyWindow;
     private int _inputValidationErrorCount;
+    private bool _statusLiveRegionUpdatePending;
+    private bool _isFatalShutdown;
+    private bool _shutdownCleanupCompleted;
 
     public MainWindow()
         : this(new UiSettingsService())
@@ -60,12 +66,46 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
-        if (ViewModel.IsScanning)
+        if (!_isFatalShutdown && ViewModel.IsSavingDeviceMetadata)
         {
+            MessageBox.Show(
+                this,
+                "As preferências do dispositivo ainda estão a ser guardadas. Aguarda um momento e volta a fechar a aplicação.",
+                "A guardar preferências",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            e.Cancel = true;
+            return;
+        }
+
+        if (!_isFatalShutdown && (ViewModel.IsScanning || ViewModel.HasUnsavedDeviceMetadata))
+        {
+            string title;
+            string message;
+            if (ViewModel.IsScanning && ViewModel.HasUnsavedDeviceMetadata)
+            {
+                title = "Scan e alterações em curso";
+                message =
+                    "Existe um scan em curso e há alterações por guardar em nomes, notas ou favoritos. " +
+                    "Queres cancelar o scan, perder essas alterações e fechar a aplicação?";
+            }
+            else if (ViewModel.IsScanning)
+            {
+                title = "Scan em curso";
+                message = "Existe um scan em curso. Queres cancelá-lo e fechar a aplicação?";
+            }
+            else
+            {
+                title = "Alterações por guardar";
+                message =
+                    "Existem alterações por guardar em nomes personalizados, notas ou favoritos. " +
+                    "Queres perdê-las e fechar a aplicação?";
+            }
+
             MessageBoxResult result = MessageBox.Show(
                 this,
-                "Existe um scan em curso. Queres cancelá-lo e fechar a aplicação?",
-                "Scan em curso",
+                message,
+                title,
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question,
                 MessageBoxResult.No);
@@ -75,11 +115,28 @@ public partial class MainWindow : Window
                 return;
             }
 
-            ViewModel.RequestCancellation();
+            if (ViewModel.IsScanning)
+                ViewModel.RequestCancellation();
         }
 
+        CompleteShutdown(saveSettings: !_isFatalShutdown);
+    }
+
+    internal void PrepareForFatalShutdown()
+    {
+        _isFatalShutdown = true;
+        ViewModel.RequestCancellation();
+    }
+
+    private void CompleteShutdown(bool saveSettings)
+    {
+        if (_shutdownCleanupCompleted)
+            return;
+
+        _shutdownCleanupCompleted = true;
         _topologyWindow?.Close();
-        ViewModel.SaveSettings();
+        if (saveSettings)
+            ViewModel.SaveSettings();
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         ViewModel.Dispose();
     }
@@ -92,12 +149,16 @@ public partial class MainWindow : Window
         {
             SnmpCommunityPasswordBox.Clear();
         }
+
+        if (e.PropertyName is nameof(MainViewModel.StatusMessage) or nameof(MainViewModel.ProgressPhase))
+            QueueStatusLiveRegionUpdate();
     }
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         ModifierKeys modifiers = Keyboard.Modifiers;
-        if (modifiers == ModifierKeys.Control && e.Key == Key.F)
+        Key key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (modifiers == ModifierKeys.Control && key == Key.F)
         {
             SearchTextBox.Focus();
             SearchTextBox.SelectAll();
@@ -105,25 +166,71 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (modifiers == ModifierKeys.Control && e.Key == Key.E && ViewModel.ExportCsvCommand.CanExecute(null))
+        if (modifiers == ModifierKeys.Control && key == Key.E && ViewModel.ExportCsvCommand.CanExecute(null))
         {
             ViewModel.ExportCsvCommand.Execute(null);
             e.Handled = true;
             return;
         }
 
-        if (modifiers == ModifierKeys.None && e.Key == Key.F5 && ViewModel.ScanCommand.CanExecute(null))
+        if (modifiers == ModifierKeys.Alt && key == Key.I && ViewModel.ScanCommand.CanExecute(null))
         {
             ViewModel.ScanCommand.Execute(null);
             e.Handled = true;
             return;
         }
 
-        if (modifiers == ModifierKeys.None && e.Key == Key.Escape && ViewModel.CancelCommand.CanExecute(null))
+        if (modifiers == ModifierKeys.Alt && key == Key.C && ViewModel.CancelCommand.CanExecute(null))
+        {
+            ViewModel.CancelCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
+        if (modifiers == ModifierKeys.None && key == Key.F5 && ViewModel.ScanCommand.CanExecute(null))
+        {
+            ViewModel.ScanCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
+        if (modifiers != ModifierKeys.None || key != Key.Escape)
+            return;
+
+        if (SearchTextBox.IsKeyboardFocusWithin)
+        {
+            if (ViewModel.ClearSearchCommand.CanExecute(null))
+                ViewModel.ClearSearchCommand.Execute(null);
+
+            e.Handled = true;
+            return;
+        }
+
+        if (KeyboardInteractionGuard.ShouldDeferEscape(e))
+            return;
+
+        if (ViewModel.CancelCommand.CanExecute(null))
         {
             ViewModel.CancelCommand.Execute(null);
             e.Handled = true;
         }
+    }
+
+    private void QueueStatusLiveRegionUpdate()
+    {
+        if (_statusLiveRegionUpdatePending || !IsLoaded)
+            return;
+
+        _statusLiveRegionUpdatePending = true;
+        _ = Dispatcher.BeginInvoke(
+            DispatcherPriority.ContextIdle,
+            new Action(() =>
+            {
+                _statusLiveRegionUpdatePending = false;
+                AutomationPeer? peer = UIElementAutomationPeer.FromElement(StatusLiveRegion) ??
+                    UIElementAutomationPeer.CreatePeerForElement(StatusLiveRegion);
+                peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+            }));
     }
 
     private void OnSnmpCommunityPasswordChanged(object sender, RoutedEventArgs e)

@@ -20,11 +20,15 @@ Os perfis alteram timeouts, concorrência e profundidade, mas não eliminam as l
 
 Uma opção manual pode substituir um valor do perfil. Assim, dois scans com o mesmo nome de perfil não são necessariamente equivalentes se as opções avançadas forem diferentes. Cancelamento mantém os resultados parciais já confirmados, mas estes não devem ser confundidos com cobertura completa.
 
+Antes de iniciar, a UI calcula uma estimativa conservadora a partir do número de endereços, portas de descoberta, portas completas e probes de serviço. A estimativa assume que todas as portas inventariadas podem exigir um probe adicional e, por isso, serve para classificar a carga como normal, alta ou extrema, não para prever a duração nem o número real de pacotes. Nmap executa tráfego adicional no seu próprio orçamento e é assinalado separadamente. Quando se aplicam vários avisos — carga alta/extrema, SNMP v2c sem cifragem ou Nmap — a UI reúne-os num único diálogo antes de transmitir.
+
 ## Diagnósticos e responsabilidade provável
 
 Os códigos `LNS-USR-*`, `LNS-NET-*`, `LNS-DEV-*` e `LNS-APP-*` classificam a origem provável e apresentam uma ação recomendada. A categoria ajuda a resolver o problema; não é prova absoluta de culpa. Por exemplo, um timeout pode resultar do dispositivo, firewall, Wi-Fi ou congestionamento, e um fabricante desconhecido pode ser normal num MAC privado/aleatório.
 
 Diagnósticos não fatais preservam o inventário que foi possível obter. Um código relativo a um dispositivo afeta normalmente apenas esse alvo; um erro fatal de configuração ou aplicação pode impedir o scan. Consulte [Códigos de erro e diagnóstico](ERROR_CODES.md).
+
+Uma exceção não tratada na UI inicia um encerramento controlado: pede o cancelamento do trabalho pendente, evita voltar a guardar preferências num estado potencialmente corrompido e tenta escrever `%LOCALAPPDATA%\LocalNetworkScanner\logs\app.log`. Este registo não é telemetria nem um dump. É limitado a 512 KiB, roda apenas para `app.previous.log` e conserva versão/ambiente, origem controlada, tipo/HResult, severidade/código e stack sanitizada; omite mensagens e argumentos da exceção, alvo/contexto do diagnóstico, credenciais, IPs, MACs, hostnames e o caminho do perfil do utilizador.
 
 ## IP e disponibilidade
 
@@ -50,7 +54,7 @@ As descrições UPnP só são obtidas do URL `HTTP(S)` cujo host literal é exat
 
 O MAC é normalmente obtido através da vizinhança ARP. ARP opera no domínio de camada 2; para um destino roteado, o computador vê normalmente o MAC do gateway e não o MAC do dispositivo final. Por isso, um MAC remoto pode estar indisponível. Antes de iniciar ICMP/TCP, a aplicação captura um baseline da vizinhança. Uma entrada que já estava nesse baseline pode preencher o MAC de um host confirmado por outro meio, mas não o torna online, não acrescenta evidência ARP/topologia e nunca é eliminada pelo scan. Se o baseline não puder ser lido, a descoberta ARP degrada de forma fechada e emite `LNS-NET-011`, sem invalidar os alvos confirmados por outros protocolos. Para um IP ausente do baseline, apenas uma linha nativa em estado `Reachable`, sem a flag `IsUnreachable`, ou uma resposta a um pedido ARP quando ainda não existe linha conta como observação fresca; estados `Incomplete`, `Stale`, `Probe`, `Delay`, `Permanent` e `Unreachable` não promovem o alvo.
 
-A aplicação inclui uma snapshot offline das listagens IEEE MA-L, MA-M, MA-S e IAB. A snapshot de 2026-07-28 contém 58 019 linhas de origem e 58 016 prefixos únicos depois da normalização. Não é necessário um download inicial. A resolução usa o prefixo mais longo disponível, na ordem `/36 → /28 → /24`, para que MA-S/IAB e MA-M não sejam escondidos por uma correspondência MA-L menos específica.
+A aplicação inclui uma snapshot offline das listagens IEEE MA-L, MA-M, MA-S e IAB. A snapshot de 2026-08-12 contém 58 166 linhas de origem e 58 163 prefixos únicos depois da normalização. Não é necessário um download inicial. A resolução usa o prefixo mais longo disponível, na ordem `/36 → /28 → /24`, para que MA-S/IAB e MA-M não sejam escondidos por uma correspondência MA-L menos específica.
 
 O resultado é o **titular registado do prefixo IEEE**. Não confirma o fabricante físico, a marca ou o modelo:
 
@@ -139,7 +143,7 @@ A lista de dispositivos é a vista principal do resultado. O grafo só é criado
 
 A exportação GraphML transporta estes atributos para ferramentas externas. Uma ferramenta que ignore os atributos ou aplique o seu próprio layout pode fazer relações fracas parecerem tão fortes como relações confirmadas. Ao analisar ou partilhar o ficheiro, mantenha visíveis a origem e a confiança e consulte a evidência textual.
 
-O JSON schema v5 inclui a topologia, os diagnósticos estruturados, o estado TLS triestado e evidências de identidade além do inventário. Consumidores automáticos devem verificar `schemaVersion` e não assumir compatibilidade estrutural com exports de versões anteriores. HTML e GraphML podem incluir diagnósticos relevantes, mas não substituem o contexto completo do JSON.
+O JSON schema v6 inclui a topologia, os diagnósticos estruturados, o estado TLS triestado, evidências de identidade e endpoints de serviços mDNS/DNS-SD além do inventário. Consumidores automáticos devem verificar `schemaVersion` e não assumir compatibilidade estrutural com exports de versões anteriores. HTML e GraphML podem incluir diagnósticos relevantes, mas não substituem o contexto completo do JSON.
 
 LLDP descreve aquilo que um equipamento participante anuncia e o switch autorizado expõe. Pode revelar vizinhos de infraestrutura e portas, mas não garante um caminho completo de extremo a extremo: dispositivos finais frequentemente não anunciam LLDP, tabelas podem estar incompletas e equipamentos intermédios não consultados continuam desconhecidos.
 
@@ -153,7 +157,9 @@ mDNS, SSDP/UPnP e WS-Discovery dependem de multicast ou broadcast local. Os resu
 - snooping ou filtragem multicast;
 - serviços desativados no dispositivo.
 
-O browse DNS-SD começa pela enumeração PTR e faz consultas dirigidas e limitadas aos tipos, instâncias, registos SRV/TXT e endereços A/AAAA anunciados. Só acumula datagramas com cabeçalho e origem mDNS compatíveis; nomes comprimidos, referências inválidas, pacotes truncados e respostas excessivas são rejeitados ou limitados para que uma resposta multicast não possa criar trabalho ilimitado. Um registo “goodbye” com TTL zero retira a evidência correspondente já observada durante o scan.
+O browse DNS-SD começa pela enumeração PTR e faz consultas dirigidas e limitadas aos tipos, instâncias, registos SRV/TXT e endereços A/AAAA anunciados. Um SRV válido pode acrescentar serviço, porta, transporte, endpoint e evidência ao dispositivo já confirmado; não transforma sozinho um endereço indireto anunciado em dispositivo online. Só acumula datagramas com cabeçalho e origem mDNS compatíveis; nomes comprimidos, referências inválidas, pacotes truncados e respostas excessivas são rejeitados ou limitados para que uma resposta multicast não possa criar trabalho ilimitado. Um registo “goodbye” com TTL zero retira a evidência correspondente já observada durante o scan.
+
+As transmissões iniciais de SSDP, WS-Discovery e mDNS/DNS-SD podem ser repetidas até três vezes, com jitter, cancelamento imediato e um orçamento global comum. Em mDNS, as repetições também contam para o limite total de datagramas. Isto reduz perdas transitórias; não atravessa VLANs, isolamento Wi-Fi ou firewalls e não autoriza uma tempestade de retries.
 
 Uma resposta pode revelar apenas um nome, metadados declarados pelo dispositivo ou endpoint e não garante que todos os serviços do equipamento foram identificados. TXT é informação anunciada e não é tratada como identidade autenticada. O parser só promove uma allowlist curta de chaves de fabricante/modelo e limita tamanho/quantidade; restantes valores continuam fora da identidade.
 
@@ -165,13 +171,13 @@ O tipo de equipamento e o sistema operativo provável são calculados a partir d
 
 ## Histórico e tempo
 
-O histórico compara snapshots. Um dispositivo pode parecer novo quando muda de MAC, usa endereços aleatórios ou deixa de ter um MAC observável. Portas podem abrir ou fechar entre scans sem representar uma alteração permanente.
+O histórico compara snapshots. Um dispositivo pode parecer novo quando muda de MAC, usa endereços aleatórios ou deixa de ter um MAC observável. Portas podem abrir ou fechar entre scans sem representar uma alteração permanente. Alias, notas e favoritos editados enquanto chegam resultados incrementais são preservados; iniciar outro scan ou limpar a lista exige confirmação quando existem alterações locais ainda não guardadas.
 
 Os resultados são um retrato temporal, não monitorização contínua.
 
 ## Escala e impacto
 
-Redes e intervalos grandes multiplicam pings, tentativas TCP, resolução de nomes e probes. Os perfis limitam concorrência e timeouts, mas um scan Avançado pode demorar e gerar muitos eventos nos equipamentos de segurança.
+Redes e intervalos grandes multiplicam pings, tentativas TCP, resolução de nomes e probes. Os perfis limitam concorrência e timeouts, mas um scan Avançado pode demorar e gerar muitos eventos nos equipamentos de segurança. A estimativa apresentada antes do início é um limite operacional aproximado; não inclui uma previsão temporal e identifica o Nmap como atividade adicional, porque essa ferramenta gere a sua própria execução.
 
 Comece pelo perfil Rápido, confirme o intervalo e avance para Normal ou Avançado apenas quando necessário. Cancele o scan se a rede apresentar degradação.
 

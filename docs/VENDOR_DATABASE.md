@@ -8,14 +8,14 @@ O valor apresentado corresponde ao **titular registado do prefixo IEEE**, não a
 
 ## Cobertura
 
-| Registo | Prefixo | Linhas na snapshot de 2026-07-28 | Fonte oficial |
-| --- | ---: | ---: | --- |
-| MA-L, anteriormente OUI | 24 bits / 6 hexadecimais | 39 829 | [IEEE MA-L](https://standards-oui.ieee.org/oui/oui.csv) |
-| MA-M | 28 bits / 7 hexadecimais | 6 503 | [IEEE MA-M](https://standards-oui.ieee.org/oui28/mam.csv) |
-| MA-S, anteriormente OUI-36 | 36 bits / 9 hexadecimais | 7 112 | [IEEE MA-S](https://standards-oui.ieee.org/oui36/oui36.csv) |
-| IAB histórico | 36 bits / 9 hexadecimais | 4 575 | [IEEE IAB](https://standards-oui.ieee.org/iab/iab.csv) |
+| Registo | Prefixo | Linhas na snapshot de 2026-08-12 | SHA-256 da fonte | Fonte oficial |
+| --- | ---: | ---: | --- | --- |
+| MA-L, anteriormente OUI | 24 bits / 6 hexadecimais | 39 923 | `f4c224a540adc45c0c48233335c6241a420f1b85f3754bc379022c343c3d3e9d` | [IEEE MA-L](https://standards-oui.ieee.org/oui/oui.csv) |
+| MA-M | 28 bits / 7 hexadecimais | 6 540 | `29ec2874d7664610e3622aa157e6b81da53ed6e54912dd6de5e51c70b6b5a32c` | [IEEE MA-M](https://standards-oui.ieee.org/oui28/mam.csv) |
+| MA-S, anteriormente OUI-36 | 36 bits / 9 hexadecimais | 7 128 | `7b2927f8857c62cf0638a0e4501076c4ad56df4c29b7ad1092d7dfa6ed7940b5` | [IEEE MA-S](https://standards-oui.ieee.org/oui36/oui36.csv) |
+| IAB histórico | 36 bits / 9 hexadecimais | 4 575 | `6e71aa3d47f00f19d09cb3b31ce1038de1834703420f0ce4ce111da586f1a533` | [IEEE IAB](https://standards-oui.ieee.org/iab/iab.csv) |
 
-As fontes somam **58 019 linhas**. Depois de normalizar atribuições históricas repetidas, o manifesto interno da snapshot indica **58 016 prefixos únicos**. O cabeçalho interno também regista a data, URLs, contagens e SHA-256 das quatro fontes usadas naquela build.
+As fontes somam **58 166 linhas**. Depois de normalizar atribuições históricas repetidas, o manifesto interno da snapshot indica **58 163 prefixos únicos**. O cabeçalho interno também regista a data, URLs, contagens e SHA-256 das quatro fontes usadas naquela build; o SHA-256 do recurso comprimido incorporado é `5149df53f544226cf917275233734aa8ad9ae362a9cf1ec1aa3e9753a518927f`.
 
 ## Resolução por prefixo
 

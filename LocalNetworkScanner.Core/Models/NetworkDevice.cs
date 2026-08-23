@@ -62,6 +62,8 @@ public sealed class NetworkDevice
 
     public List<string> MdnsNames { get; set; } = [];
 
+    public List<MdnsServiceObservation> MdnsServices { get; set; } = [];
+
     public string? SsdpServer { get; set; }
 
     public string? SsdpLocation { get; set; }

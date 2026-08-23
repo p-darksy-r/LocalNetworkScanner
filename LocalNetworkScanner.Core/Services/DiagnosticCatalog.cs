@@ -267,7 +267,8 @@ public static class DiagnosticCatalog
         DiagnosticCategory.Application,
         DiagnosticSeverity.Critical,
         "Ocorreu uma falha interna inesperada na aplicação.",
-        "Repete a operação; se persistir, reporta o código e a versão da aplicação.",
+        "Reabre a aplicação e repete a operação. Se persistir, reporta o código e a versão. " +
+        "Depois de um encerramento inesperado, revê %LOCALAPPDATA%\\LocalNetworkScanner\\logs\\app.log antes de o partilhar.",
         target,
         Context(("exceptionType", exceptionType)));
 

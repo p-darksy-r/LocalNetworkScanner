@@ -322,12 +322,12 @@ try {
     Remove-Item -LiteralPath $installerPath, $checksumPath -Force -ErrorAction SilentlyContinue
 
     $compilerArguments = @(
-        "/DSourceRoot=$stagingRoot",
-        "/DOutputDirectory=$releaseRoot",
-        "/DAppVersion=$version",
-        "/DRuntimeIdentifier=$RuntimeIdentifier",
-        "/DOutputBaseFilename=$outputBaseName",
-        "/DSetupIconFile=$setupIcon"
+        "-dSourceRoot=$stagingRoot",
+        "-dOutputDirectory=$releaseRoot",
+        "-dAppVersion=$version",
+        "-dRuntimeIdentifier=$RuntimeIdentifier",
+        "-dOutputBaseFilename=$outputBaseName",
+        "-dSetupIconFile=$setupIcon"
     )
     if ($certificateSigningEnabled) {
         $signToolName = "LocalNetworkScannerAuthenticode"
@@ -343,7 +343,7 @@ try {
             $normalizedSigningThumbprint + ' /fd SHA256 /tr $q' +
             $escapedTimestampServer + '$q /td SHA256 /v $f'
         $compilerArguments += @(
-            "/DSignToolName=$signToolName",
+            "-dSignToolName=$signToolName",
             "/S$signToolName=$signCommand"
         )
     }
@@ -354,7 +354,7 @@ try {
         $signCommand = '$q' + $escapedHost + '$q -NoLogo -NoProfile -NonInteractive ' +
             '-ExecutionPolicy Bypass -File $q' + $escapedScript + '$q -FilePath $f'
         $compilerArguments += @(
-            "/DSignToolName=$signToolName",
+            "-dSignToolName=$signToolName",
             "/S$signToolName=$signCommand"
         )
     }

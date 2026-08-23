@@ -26,11 +26,20 @@ public sealed class WsDiscoveryService
         IPAddress? localAddress,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (timeoutMs <= 0 ||
+            (localAddress is not null && localAddress.AddressFamily != AddressFamily.InterNetwork))
+        {
+            return [];
+        }
+
         Dictionary<IPAddress, DiscoveryObservation> observations = [];
         MulticastReceiveBudget receiveBudget = new(
             MaximumReceivedDatagrams,
             MaximumReceivedBytes,
             MaximumAccumulatedMatches);
+        MulticastSendBudget sendBudget = new(
+            MulticastProbeTransmitter.DefaultMaximumTransmissions);
 
         try
         {
@@ -46,62 +55,86 @@ public sealed class WsDiscoveryService
 
             string messageId = $"urn:uuid:{Guid.NewGuid():D}";
             byte[] payload = Encoding.UTF8.GetBytes(BuildProbeMessage(messageId));
-            await client.SendAsync(payload, MulticastEndpoint, cancellationToken);
 
             using CancellationTokenSource timeout =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(timeoutMs);
+            _ = await MulticastProbeTransmitter.SendAsync(
+                client,
+                payload,
+                MulticastEndpoint,
+                sendBudget,
+                timeout.Token);
+            Task retransmissionTask = MulticastProbeTransmitter.RetransmitAsync(
+                client,
+                payload,
+                MulticastEndpoint,
+                timeoutMs,
+                sendBudget,
+                timeout.Token);
 
-            while (!timeout.IsCancellationRequested)
+            try
             {
-                try
+                while (!timeout.IsCancellationRequested)
                 {
-                    UdpReceiveResult response = await client.ReceiveAsync(timeout.Token);
-                    if (!receiveBudget.TryConsumeDatagram(response.Buffer.Length))
-                        break;
-                    IReadOnlyList<WsDiscoveryMatch> matches = ParseResponse(
-                        response.Buffer,
-                        messageId,
-                        response.RemoteEndPoint.Address);
-                    if (!receiveBudget.TryConsumeItems(matches.Count))
-                        break;
-                    foreach (WsDiscoveryMatch match in matches)
+                    try
                     {
-                        if (!observations.ContainsKey(match.Address) &&
-                            observations.Count >= MaximumObservedAddresses)
+                        UdpReceiveResult response = await client.ReceiveAsync(timeout.Token);
+                        if (!receiveBudget.TryConsumeDatagram(response.Buffer.Length))
+                            break;
+                        IReadOnlyList<WsDiscoveryMatch> matches = ParseResponse(
+                            response.Buffer,
+                            messageId,
+                            response.RemoteEndPoint.Address);
+                        if (!receiveBudget.TryConsumeItems(matches.Count))
+                            break;
+                        foreach (WsDiscoveryMatch match in matches)
                         {
-                            continue;
-                        }
+                            if (!observations.ContainsKey(match.Address) &&
+                                observations.Count >= MaximumObservedAddresses)
+                            {
+                                continue;
+                            }
 
-                        DiscoveryObservation candidate = new()
-                        {
-                            IpAddress = match.Address,
-                            Method = DiscoveryMethod.WsDiscovery,
-                            Server = match.Types,
-                            Location = match.XAddresses,
-                            HasDirectAddressEvidence = true,
-                            EvidenceSource = "Resposta WS-Discovery",
-                            Confidence = ConfidenceLevel.Low
-                        };
-                        observations[match.Address] = Merge(
-                            observations.GetValueOrDefault(match.Address),
-                            candidate);
+                            DiscoveryObservation candidate = new()
+                            {
+                                IpAddress = match.Address,
+                                Method = DiscoveryMethod.WsDiscovery,
+                                Server = match.Types,
+                                Location = match.XAddresses,
+                                HasDirectAddressEvidence = true,
+                                EvidenceSource = "Resposta WS-Discovery",
+                                Confidence = ConfidenceLevel.Low
+                            };
+                            observations[match.Address] = Merge(
+                                observations.GetValueOrDefault(match.Address),
+                                candidate);
+                        }
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        break;
                     }
                 }
-                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
+            }
+            finally
+            {
+                timeout.Cancel();
+                await retransmissionTask;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
+        catch (OperationCanceledException)
+        {
+            // O prazo interno terminou durante o envio inicial; preserva respostas parciais.
+        }
         catch (Exception exception) when (
             exception is SocketException or InvalidOperationException or FormatException)
         {
-            return [];
+            // A interface pode desaparecer durante a escuta. Mantém respostas válidas.
         }
 
         return observations.Values.ToList();
@@ -220,6 +253,8 @@ public sealed class WsDiscoveryService
             Method = DiscoveryMethod.WsDiscovery,
             Server = JoinDistinct(existing.Server, candidate.Server),
             Location = JoinDistinct(existing.Location, candidate.Location),
+            ServicePort = existing.ServicePort ?? candidate.ServicePort,
+            ServiceTransport = existing.ServiceTransport ?? candidate.ServiceTransport,
             HasDirectAddressEvidence = true,
             EvidenceSource = "Respostas WS-Discovery",
             Confidence = ConfidenceLevel.Low

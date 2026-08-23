@@ -20,6 +20,7 @@ $coreProject = Join-Path $repoRoot "LocalNetworkScanner.Core\LocalNetworkScanner
 $cliProject = Join-Path $repoRoot "LocalNetworkScanner.Cli\LocalNetworkScanner.Cli.csproj"
 $wpfProject = Join-Path $repoRoot "LocalNetworkScanner.Wpf\LocalNetworkScanner.Wpf.csproj"
 $copyrightCheckScript = Join-Path $repoRoot "scripts\check-copyright.ps1"
+$releaseEvidenceTestScript = Join-Path $repoRoot "scripts\test-release-evidence-contract.ps1"
 $testResults = Join-Path $repoRoot "artifacts\TestResults"
 
 function Invoke-DotNet {
@@ -40,6 +41,9 @@ if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
 }
 if (-not (Test-Path -LiteralPath $copyrightCheckScript -PathType Leaf)) {
     throw "The copyright validation script was not found: $copyrightCheckScript"
+}
+if (-not (Test-Path -LiteralPath $releaseEvidenceTestScript -PathType Leaf)) {
+    throw "The synthetic release evidence test script was not found: $releaseEvidenceTestScript"
 }
 
 $projects = @($coreProject, $cliProject)
@@ -90,6 +94,9 @@ try {
         }
     }
     Write-Host "PowerShell syntax validation passed for $($scriptFiles.Count) script(s)."
+
+    Write-Host "> synthetic release evidence contract tests" -ForegroundColor DarkGray
+    & $releaseEvidenceTestScript
 
     foreach ($project in $projects) {
         Invoke-DotNet @("restore", $project)

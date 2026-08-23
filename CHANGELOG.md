@@ -4,6 +4,46 @@
 
 Todas as alterações relevantes deste projeto são registadas neste ficheiro. O formato segue os princípios de Keep a Changelog e o versionamento segue Semantic Versioning.
 
+## [1.3.3] - 2026-08-23
+
+Tag de código e QA privado. Sem uma identidade Authenticode Public Trust e autorização escrita para redistribuir a snapshot IEEE, os pacotes só podem ser publicados no repositório privado como prerelease `Private QA (NotSigned)` e não constituem uma distribuição pública de produção.
+
+### Added
+
+- barra de comandos com ícones simples para atualizar interfaces, iniciar/cancelar o scan, limpar a pesquisa, abrir a topologia e remover resultados, mantendo nomes acessíveis, tooltips, alvos de 40 px e atalhos de teclado (`Alt+I`, `Alt+C`, `F5` e `Esc`);
+- anúncios de estado e zoom para tecnologias de assistência, paleta dinâmica de alto contraste e alternativa tabular acessível na topologia;
+- estimativa conservadora da carga antes do scan, baseada em endereços, portas e probes de serviço, com confirmação única para cargas altas/extremas, SNMP v2c sem cifragem e tráfego adicional do Nmap;
+- endpoints DNS-SD obtidos por registos mDNS SRV, preservando serviço, porta, transporte, endpoint e evidência no inventário e no export JSON;
+- registo local limitado e rotativo para falhas fatais em `%LOCALAPPDATA%\LocalNetworkScanner\logs\app.log`, sem inventário, mensagens da exceção, alvo ou contexto do diagnóstico;
+- testes de acessibilidade estrutural, atalhos, preservação de metadados, estimativa de carga, retries multicast, serviços SRV, promoção mDNS segura, registo fatal, rotação e proteção de downgrade em diretórios personalizados, elevando a suite para 89 testes.
+
+### Changed
+
+- snapshot IEEE incorporada atualizada para 2026-08-12 a partir das listagens MA-L, MA-M e MA-S fornecidas pelo autor e da listagem IAB oficial preservada: 58 166 registos, 58 163 prefixos únicos e hashes SHA-256 das quatro fontes no manifesto interno;
+- SSDP, WS-Discovery e a enumeração mDNS/DNS-SD repetem transmissões iniciais dentro de um orçamento comum e limitado, com jitter e cancelamento imediato, sem transformar anúncios indiretos em dispositivos online;
+- o instalador por utilizador aceita atualização para a mesma versão ou uma mais recente, mas recusa de forma explícita um downgrade para evitar substituir uma instalação atual por binários mais antigos;
+- a versão do produto, identidade do manifesto Windows, documentação de instalação, template de erros e página principal acompanham a `v1.3.3`.
+
+### Fixed
+
+- aliases, notas e favoritos já editados deixam de ser sobrescritos por atualizações do mesmo dispositivo; iniciar outro scan ou limpar resultados pede confirmação quando existem metadados por guardar;
+- fechar a aplicação também confirma metadados por guardar; enquanto a gravação decorre, os campos, novo scan, limpeza e fecho ficam temporariamente bloqueados, evitando resultados órfãos ou alterações perdidas durante a escrita;
+- o live region de estado passa a expor um `AutomationPeer` real, e a pesquisa encontra nomes mDNS, tipos DNS-SD e endpoints SRV apresentados nos detalhes;
+- o export JSON sobe para schema v6 ao acrescentar `devices[].mdnsServices`, e a estimativa de carga inclui o orçamento máximo de descrições HTTP(S) UPnP;
+- a geração do instalador usa as opções corretas do preprocessor Inno Setup e o script de código Pascal mantém um comentário de copyright válido depois da secção `[Code]`;
+- exceções não tratadas na UI entram num encerramento controlado, cancelam trabalho pendente e não voltam a guardar preferências durante um estado potencialmente corrompido;
+- o fluxo de release deixa de duplicar o payload pesado numa segunda cópia integral “validada”: um único `windows-candidate` imutável é ligado ao commit/run por evidência compacta e o contrato final continua limitado aos dez assets esperados;
+- testes de integridade fixam o hash do recurso IEEE comprimido, metadados, contagens por registo e hashes das fontes, mantendo cobertura explícita do lookup pelo prefixo mais longo `/36 → /28 → /24`.
+
+### Security
+
+- o registo de falha fatal guarda apenas versão/ambiente, origem controlada, tipo/HResult, severidade/código e stack sanitizada; roda para `app.previous.log`, tem limite de 512 KiB e omite argumentos, credenciais, IPs, MACs, hostnames e caminhos do perfil do utilizador;
+- uma tag com gates de produção incompletos só pode criar automaticamente uma prerelease `Private QA (NotSigned)` se a visibilidade atual confirmada pela API continuar privada; num repositório público o workflow também recusa gerar ou carregar um candidato manual `NotSigned`;
+- a validação x64 e ARM64 produz um atestado compacto com digest do candidato e SHA-256 dos dez ficheiros, exige o contrato ordenado exato de `SIGNING-STATE.txt`, materializa esse estado de forma repetível e confirma nome, estado, tamanho e hash de todos os assets remotos;
+- o Inno Setup 6.7.3 descarregado pelo workflow é validado por SHA-256 fixo, `ProductVersion`, Authenticode e publisher antes de ser executado;
+- a publicação volta a resolver tags lightweight ou anotadas para o commit do workflow antes das mutações e no final, recupera com segurança drafts pertencentes ao mesmo run e trata uma release publicada exatamente igual como sucesso idempotente;
+- o único candidato pesado só é removido do armazenamento de Actions depois da release final ser novamente validada; o atestado e o SBOM permanecem como evidência pequena durante 30 dias.
+
 ## [1.3.2] - 2026-08-16
 
 Tag de código e QA privado. Os pacotes permanecem `NotSigned` até existir uma identidade Authenticode Public Trust e continuam sujeitos à autorização de redistribuição da snapshot IEEE antes de qualquer publicação de produção.
@@ -69,7 +109,7 @@ Tag de código e QA privado preparada em 2026-08-08. A existência da tag não t
 ### Added
 
 - relatório de suporte JSON agregado e sem identificadores de rede, disponível na UI e através de `--support`;
-- snapshot offline comprimida das listagens IEEE MA-L, MA-M, MA-S e IAB, com 58 019 linhas de origem em 2026-07-28 e 58 016 prefixos únicos depois da normalização;
+- snapshot offline comprimida inicial das listagens IEEE MA-L, MA-M, MA-S e IAB, com manifesto de proveniência e normalização determinística;
 - lookup de titular IEEE pelo prefixo mais específico (`/36 → /28 → /24`) e atualização opcional das quatro listagens oficiais, sem exigir download no primeiro arranque;
 - controlo de privacidade para desativar a leitura/escrita do histórico e ação explícita para apagar snapshots locais;
 - código `LNS-APP-005` para bloqueios do Windows Application Control, incluindo `CreateProcess` 4551;

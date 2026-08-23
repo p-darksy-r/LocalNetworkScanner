@@ -235,6 +235,8 @@ public sealed class NetworkScannerService
                 if (!device.MdnsNames.Contains(observation.Hostname, StringComparer.OrdinalIgnoreCase))
                     device.MdnsNames.Add(observation.Hostname);
                 device.Hostname ??= observation.Hostname;
+
+                AddMdnsServiceObservation(device, observation);
             }
 
             if (observation.Method == DiscoveryMethod.Ssdp)
@@ -553,6 +555,48 @@ public sealed class NetworkScannerService
         ArgumentNullException.ThrowIfNull(observation);
         return observation.Method != DiscoveryMethod.Mdns ||
                observation.HasDirectAddressEvidence;
+    }
+
+    private static void AddMdnsServiceObservation(
+        NetworkDevice device,
+        DiscoveryObservation observation)
+    {
+        if (string.IsNullOrWhiteSpace(observation.UniqueServiceName) ||
+            (string.IsNullOrWhiteSpace(observation.ServiceType) &&
+             !observation.ServicePort.HasValue))
+        {
+            return;
+        }
+
+        bool alreadyPresent = device.MdnsServices.Any(service =>
+            service.InstanceName.Equals(
+                observation.UniqueServiceName,
+                StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(
+                service.ServiceType,
+                observation.ServiceType,
+                StringComparison.OrdinalIgnoreCase) &&
+            service.Port == observation.ServicePort &&
+            string.Equals(
+                service.Transport,
+                observation.ServiceTransport,
+                StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(
+                service.Endpoint,
+                observation.Location,
+                StringComparison.OrdinalIgnoreCase));
+        if (alreadyPresent || device.MdnsServices.Count >= 64)
+            return;
+
+        device.MdnsServices.Add(new MdnsServiceObservation
+        {
+            InstanceName = observation.UniqueServiceName,
+            ServiceType = observation.ServiceType,
+            Port = observation.ServicePort,
+            Transport = observation.ServiceTransport,
+            Endpoint = observation.Location,
+            EvidenceSource = observation.EvidenceSource
+        });
     }
 
     private async Task<IReadOnlyList<DiscoveryObservation>> EnrichUpnpObservationsAsync(

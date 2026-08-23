@@ -4,10 +4,12 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Windows;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Input;
 using LocalNetworkScanner.Core.Models;
 using LocalNetworkScanner.Wpf.Controls;
+using LocalNetworkScanner.Wpf.Infrastructure;
 using Microsoft.Win32;
 using LocalNetworkScanner.Wpf.ViewModels;
 
@@ -63,7 +65,9 @@ public partial class TopologyWindow : Window
             TopologyNodesTable.Focus();
             e.Handled = true;
         }
-        else if (e.Key == Key.Escape && Keyboard.Modifiers == ModifierKeys.None)
+        else if (e.Key == Key.Escape &&
+                 Keyboard.Modifiers == ModifierKeys.None &&
+                 !KeyboardInteractionGuard.ShouldDeferEscape(e))
         {
             Close();
             e.Handled = true;
@@ -90,8 +94,17 @@ public partial class TopologyWindow : Window
         TopologyGraph.Focus();
     }
 
-    private void OnTopologyViewportChanged(object? sender, EventArgs e) =>
-        TopologyZoomText.Text = $"{TopologyGraph.ZoomPercent}%";
+    private void OnTopologyViewportChanged(object? sender, EventArgs e)
+    {
+        string zoomText = $"{TopologyGraph.ZoomPercent}%";
+        if (string.Equals(TopologyZoomText.Text, zoomText, StringComparison.Ordinal))
+            return;
+
+        TopologyZoomText.Text = zoomText;
+        AutomationPeer? peer = UIElementAutomationPeer.FromElement(TopologyZoomText) ??
+            UIElementAutomationPeer.CreatePeerForElement(TopologyZoomText);
+        peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+    }
 
     private void OnResetTopologyClick(object sender, RoutedEventArgs e)
     {

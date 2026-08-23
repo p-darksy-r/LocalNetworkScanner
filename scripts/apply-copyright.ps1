@@ -57,7 +57,7 @@ function Get-CommentStyle {
         '.py'         { return @{ Prefix = '#'; Suffix = '' } }
         '.sh'         { return @{ Prefix = '#'; Suffix = '' } }
         '.toml'       { return @{ Prefix = '#'; Suffix = '' } }
-        '.iss'        { return @{ Prefix = ';'; Suffix = '' } }
+        '.iss'        { return @{ Prefix = ';'; Suffix = ''; FooterPrefix = '//'; FooterSuffix = '' } }
         default {
             if ($File.Name -in @('.gitignore', '.gitattributes', '.editorconfig', 'CODEOWNERS')) {
                 return @{ Prefix = '#'; Suffix = '' }
@@ -144,14 +144,28 @@ function Read-SourceFile {
 function Format-Comment {
     param(
         [Parameter(Mandatory)][hashtable]$Style,
-        [Parameter(Mandatory)][string]$Text
+        [Parameter(Mandatory)][string]$Text,
+        [switch]$Footer
     )
 
-    if ([string]::IsNullOrEmpty($Style.Suffix)) {
-        return "$($Style.Prefix) $Text"
+    $prefix = if ($Footer -and $Style.ContainsKey('FooterPrefix')) {
+        $Style.FooterPrefix
+    }
+    else {
+        $Style.Prefix
+    }
+    $suffix = if ($Footer -and $Style.ContainsKey('FooterSuffix')) {
+        $Style.FooterSuffix
+    }
+    else {
+        $Style.Suffix
     }
 
-    return "$($Style.Prefix) $Text $($Style.Suffix)"
+    if ([string]::IsNullOrEmpty($suffix)) {
+        return "$prefix $Text"
+    }
+
+    return "$prefix $Text $suffix"
 }
 
 $changedFiles = [Collections.Generic.List[string]]::new()
@@ -159,7 +173,7 @@ $changedFiles = [Collections.Generic.List[string]]::new()
 foreach ($file in (Get-TargetFiles | Sort-Object FullName)) {
     $style = Get-CommentStyle $file
     $header = Format-Comment $style $copyrightText
-    $footer = Format-Comment $style $footerText
+    $footer = Format-Comment $style $footerText -Footer
     $source = Read-SourceFile $file.FullName
     $newline = if ($source.Content.Contains("`r`n")) { "`r`n" } else { "`n" }
     $lines = [Collections.Generic.List[string]]::new()

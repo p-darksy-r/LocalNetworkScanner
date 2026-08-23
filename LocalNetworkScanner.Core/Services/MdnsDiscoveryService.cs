@@ -24,6 +24,8 @@ public sealed class MdnsDiscoveryService
     private const int MaximumNameWireLength = 255;
     private const int MaximumPointerHops = 32;
     private const int MaximumQueries = 320;
+    private const int MaximumUniqueQueries =
+        MaximumQueries - (MulticastProbeTransmitter.DefaultMaximumTransmissions - 1);
     private const int MaximumServiceTypes = 32;
     private const int MaximumInstances = 64;
     private const int MaximumHosts = 64;
@@ -66,6 +68,7 @@ public sealed class MdnsDiscoveryService
             MaximumReceivedDatagrams,
             MaximumReceivedBytes,
             MaximumAccumulatedRecords);
+        MulticastSendBudget sendBudget = new(MaximumQueries);
 
         try
         {
@@ -73,56 +76,83 @@ public sealed class MdnsDiscoveryService
 
             using CancellationTokenSource timeout =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(Math.Min(timeoutMs, MaximumDiscoveryTimeMs));
+            int effectiveTimeoutMs = Math.Min(timeoutMs, MaximumDiscoveryTimeMs);
+            timeout.CancelAfter(effectiveTimeoutMs);
 
-            await SendOnceAsync(
+            MdnsQuestion enumerationQuestion = new(ServiceEnumerationName, PointerType);
+            _ = await SendOnceAsync(
                 client,
-                new MdnsQuestion(ServiceEnumerationName, PointerType),
+                enumerationQuestion,
                 sentQuestions,
+                sendBudget,
+                timeout.Token);
+            byte[] enumerationPayload = BuildQuery(
+                enumerationQuestion.Name,
+                enumerationQuestion.Type);
+            Task retransmissionTask = MulticastProbeTransmitter.RetransmitAsync(
+                client,
+                enumerationPayload,
+                MulticastEndpoint,
+                effectiveTimeoutMs,
+                sendBudget,
                 timeout.Token);
 
-            while (!timeout.IsCancellationRequested)
+            try
             {
-                UdpReceiveResult response;
-                try
+                while (!timeout.IsCancellationRequested)
                 {
-                    response = await client.ReceiveAsync(timeout.Token);
-                }
-                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
-                catch (SocketException)
-                {
-                    break;
-                }
+                    UdpReceiveResult response;
+                    try
+                    {
+                        response = await client.ReceiveAsync(timeout.Token);
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (SocketException)
+                    {
+                        break;
+                    }
 
-                if (!receiveBudget.TryConsumeDatagram(response.Buffer.Length))
-                    break;
-
-                if (!IsValidResponse(response))
-                    continue;
-
-                MdnsMessage message = ParseMessage(response.Buffer);
-                if (message.Records.Count == 0)
-                    continue;
-                if (!receiveBudget.TryConsumeItems(message.Records.Count))
-                    break;
-
-                evidence.Add(message.Records, response.RemoteEndPoint.Address);
-                IReadOnlyList<MdnsQuestion> followUpQuestions = FindFollowUpQuestions(
-                    message.Records,
-                    serviceTypes,
-                    instances,
-                    hosts);
-
-                foreach (MdnsQuestion question in followUpQuestions)
-                {
-                    if (sentQuestions.Count >= MaximumQueries)
+                    if (!receiveBudget.TryConsumeDatagram(response.Buffer.Length))
                         break;
 
-                    await SendOnceAsync(client, question, sentQuestions, timeout.Token);
+                    if (!IsValidResponse(response))
+                        continue;
+
+                    MdnsMessage message = ParseMessage(response.Buffer);
+                    if (message.Records.Count == 0)
+                        continue;
+                    if (!receiveBudget.TryConsumeItems(message.Records.Count))
+                        break;
+
+                    evidence.Add(message.Records, response.RemoteEndPoint.Address);
+                    IReadOnlyList<MdnsQuestion> followUpQuestions = FindFollowUpQuestions(
+                        message.Records,
+                        serviceTypes,
+                        instances,
+                        hosts);
+
+                    foreach (MdnsQuestion question in followUpQuestions)
+                    {
+                        if (sentQuestions.Count >= MaximumUniqueQueries ||
+                            !await SendOnceAsync(
+                                client,
+                                question,
+                                sentQuestions,
+                                sendBudget,
+                                timeout.Token))
+                        {
+                            break;
+                        }
+                    }
                 }
+            }
+            finally
+            {
+                timeout.Cancel();
+                await retransmissionTask;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -518,17 +548,23 @@ public sealed class MdnsDiscoveryService
         questions.Add(new MdnsQuestion(host, AddressV6Type));
     }
 
-    private static async Task SendOnceAsync(
+    private static async Task<bool> SendOnceAsync(
         UdpClient client,
         MdnsQuestion question,
         HashSet<MdnsQuestion> sentQuestions,
+        MulticastSendBudget sendBudget,
         CancellationToken cancellationToken)
     {
-        if (sentQuestions.Count >= MaximumQueries || !sentQuestions.Add(question))
-            return;
+        if (sentQuestions.Count >= MaximumUniqueQueries || !sentQuestions.Add(question))
+            return false;
 
         byte[] query = BuildQuery(question.Name, question.Type);
-        _ = await client.SendAsync(query, MulticastEndpoint, cancellationToken);
+        return await MulticastProbeTransmitter.SendAsync(
+            client,
+            query,
+            MulticastEndpoint,
+            sendBudget,
+            cancellationToken);
     }
 
     private static UdpClient CreateDiscoveryClient(IPAddress? localAddress)
@@ -720,6 +756,12 @@ public sealed class MdnsDiscoveryService
 
     private sealed record MdnsQuestion(string Name, ushort Type);
 
+    private sealed record MdnsServiceEndpoint(
+        string Target,
+        int Port,
+        ushort Priority,
+        ushort Weight);
+
     private sealed class MdnsEvidenceAccumulator
     {
         private readonly Dictionary<string, HashSet<IPAddress>> _addressesByHost =
@@ -729,6 +771,8 @@ public sealed class MdnsDiscoveryService
         private readonly Dictionary<string, HashSet<string>> _instancesByHost =
             new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, HashSet<string>> _pointerServiceTypesByInstance =
+            new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, MdnsServiceEndpoint> _serviceEndpointsByInstance =
             new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Dictionary<string, string>> _txtFieldsByInstance =
             new(StringComparer.OrdinalIgnoreCase);
@@ -780,6 +824,7 @@ public sealed class MdnsDiscoveryService
                     if (record.TimeToLive == 0)
                     {
                         RemoveValue(_instancesByHost, record.DomainName!, record.Owner);
+                        _serviceEndpointsByInstance.Remove(record.Owner);
                         continue;
                     }
 
@@ -787,6 +832,24 @@ public sealed class MdnsDiscoveryService
                         instances.Count < MaximumInstancesPerHost)
                     {
                         instances.Add(record.Owner);
+                    }
+
+                    if (record.Port.HasValue &&
+                        (_serviceEndpointsByInstance.ContainsKey(record.Owner) ||
+                         _serviceEndpointsByInstance.Count < MaximumEvidenceHosts))
+                    {
+                        MdnsServiceEndpoint candidate = new(
+                            record.DomainName!,
+                            record.Port.Value,
+                            record.Priority ?? 0,
+                            record.Weight ?? 0);
+                        if (!_serviceEndpointsByInstance.TryGetValue(
+                                record.Owner,
+                                out MdnsServiceEndpoint? existing) ||
+                            IsPreferredServiceEndpoint(candidate, existing))
+                        {
+                            _serviceEndpointsByInstance[record.Owner] = candidate;
+                        }
                     }
                 }
                 else if (record.Type == PointerType &&
@@ -897,6 +960,10 @@ public sealed class MdnsDiscoveryService
             bool hasDirectAddressEvidence)
         {
             string? serviceType = SelectServiceType(instance);
+            string? serviceTransport = SelectServiceTransport(serviceType);
+            _serviceEndpointsByInstance.TryGetValue(
+                instance,
+                out MdnsServiceEndpoint? serviceEndpoint);
             _txtFieldsByInstance.TryGetValue(
                 instance,
                 out Dictionary<string, string>? textFields);
@@ -924,6 +991,12 @@ public sealed class MdnsDiscoveryService
                 : hasPointer
                     ? "mDNS/DNS-SD (PTR/SRV/A/AAAA)"
                     : "mDNS/DNS-SD (SRV/A/AAAA)";
+            if (serviceEndpoint is not null)
+            {
+                evidenceSource += serviceTransport is null
+                    ? $"; porta {serviceEndpoint.Port}"
+                    : $"; {serviceTransport}/{serviceEndpoint.Port}";
+            }
 
             return new DiscoveryObservation
             {
@@ -937,7 +1010,10 @@ public sealed class MdnsDiscoveryService
                 FriendlyName = friendlyName,
                 DeviceType = MapServiceDeviceType(serviceType),
                 ServiceType = serviceType,
+                ServicePort = serviceEndpoint?.Port,
+                ServiceTransport = serviceTransport,
                 UniqueServiceName = NullIfEmpty(instance),
+                Location = BuildServiceEndpoint(serviceEndpoint, serviceTransport),
                 HasDirectAddressEvidence = hasDirectAddressEvidence,
                 EvidenceSource = evidenceSource,
                 Confidence = ConfidenceLevel.Medium
@@ -961,6 +1037,56 @@ public sealed class MdnsDiscoveryService
             return TryGetServiceTypeFromInstance(instance, out string parsed)
                 ? LimitIdentityValue(parsed)
                 : null;
+        }
+
+        private static string? SelectServiceTransport(string? serviceType)
+        {
+            if (string.IsNullOrWhiteSpace(serviceType))
+                return null;
+
+            string[] labels = serviceType.Split('.');
+            return labels.FirstOrDefault(label =>
+                label.Equals("_tcp", StringComparison.OrdinalIgnoreCase) ||
+                label.Equals("_udp", StringComparison.OrdinalIgnoreCase)) switch
+            {
+                string value when value.Equals("_tcp", StringComparison.OrdinalIgnoreCase) => "TCP",
+                string value when value.Equals("_udp", StringComparison.OrdinalIgnoreCase) => "UDP",
+                _ => null
+            };
+        }
+
+        private static string? BuildServiceEndpoint(
+            MdnsServiceEndpoint? endpoint,
+            string? transport)
+        {
+            if (endpoint is null)
+                return null;
+
+            string suffix = string.IsNullOrWhiteSpace(transport)
+                ? string.Empty
+                : $"/{transport.ToLowerInvariant()}";
+            return $"{endpoint.Target}:{endpoint.Port}{suffix}";
+        }
+
+        private static bool IsPreferredServiceEndpoint(
+            MdnsServiceEndpoint candidate,
+            MdnsServiceEndpoint existing)
+        {
+            int priority = candidate.Priority.CompareTo(existing.Priority);
+            if (priority != 0)
+                return priority < 0;
+
+            int weight = candidate.Weight.CompareTo(existing.Weight);
+            if (weight != 0)
+                return weight > 0;
+
+            int target = StringComparer.OrdinalIgnoreCase.Compare(
+                candidate.Target,
+                existing.Target);
+            if (target != 0)
+                return target < 0;
+
+            return candidate.Port < existing.Port;
         }
 
         private bool TryGetOrCreateTxtFields(

@@ -11,6 +11,9 @@ namespace LocalNetworkScanner.Wpf.ViewModels;
 public sealed class DeviceRowViewModel : ObservableObject
 {
     private NetworkDevice _device;
+    private bool _isAliasDirty;
+    private bool _isNotesDirty;
+    private bool _isFavoriteDirty;
 
     public DeviceRowViewModel(NetworkDevice device)
     {
@@ -44,6 +47,8 @@ public sealed class DeviceRowViewModel : ObservableObject
     public string SsdpServiceType => ValueOrDash(_device.SsdpServiceType);
     public string SsdpUniqueServiceName => ValueOrDash(_device.SsdpUniqueServiceName);
     public string SsdpEndpoint => BuildEndpoint(_device.SsdpServer, _device.SsdpLocation);
+    public string MdnsServiceSummary => BuildMdnsServiceSummary(_device.MdnsServices);
+    public string MdnsServiceSearchText => BuildMdnsServiceSearchText(_device.MdnsServices);
     public string SnmpIdentity => BuildEndpoint(_device.SnmpDescription, _device.SnmpObjectIdentifier);
     public string NmapIdentity => ValueOrDash(_device.NmapSummary);
     public string ResponseTime => _device.ResponseTimeDisplay;
@@ -100,6 +105,8 @@ public sealed class DeviceRowViewModel : ObservableObject
 
     public bool IsOnline => _device.IsOnline;
     public bool IsNew => _device.IsNew;
+    public bool IsMetadataDirty => _isAliasDirty || _isNotesDirty || _isFavoriteDirty;
+
     public bool IsFavorite
     {
         get => _device.IsFavorite;
@@ -109,6 +116,7 @@ public sealed class DeviceRowViewModel : ObservableObject
                 return;
 
             _device.IsFavorite = value;
+            MarkMetadataDirty(ref _isFavoriteDirty);
             OnPropertyChanged();
         }
     }
@@ -122,6 +130,7 @@ public sealed class DeviceRowViewModel : ObservableObject
                 return;
 
             _device.Alias = value;
+            MarkMetadataDirty(ref _isAliasDirty);
             OnPropertyChanged();
             OnPropertyChanged(nameof(Hostname));
         }
@@ -136,6 +145,7 @@ public sealed class DeviceRowViewModel : ObservableObject
                 return;
 
             _device.Notes = value;
+            MarkMetadataDirty(ref _isNotesDirty);
             OnPropertyChanged();
         }
     }
@@ -151,8 +161,35 @@ public sealed class DeviceRowViewModel : ObservableObject
     public void Update(NetworkDevice device)
     {
         ArgumentNullException.ThrowIfNull(device);
+
+        if (_isAliasDirty)
+            device.Alias = _device.Alias;
+        if (_isNotesDirty)
+            device.Notes = _device.Notes;
+        if (_isFavoriteDirty)
+            device.IsFavorite = _device.IsFavorite;
+
         _device = device;
         OnAllPropertiesChanged();
+    }
+
+    public void MarkMetadataSaved()
+    {
+        if (!IsMetadataDirty)
+            return;
+
+        _isAliasDirty = false;
+        _isNotesDirty = false;
+        _isFavoriteDirty = false;
+        OnPropertyChanged(nameof(IsMetadataDirty));
+    }
+
+    private void MarkMetadataDirty(ref bool field)
+    {
+        bool wasDirty = IsMetadataDirty;
+        field = true;
+        if (!wasDirty)
+            OnPropertyChanged(nameof(IsMetadataDirty));
     }
 
     private static string ConfidenceToText(ConfidenceLevel confidence) => confidence switch
@@ -186,6 +223,48 @@ public sealed class DeviceRowViewModel : ObservableObject
 
         return $"{primary} · {secondary}";
     }
+
+    private static string BuildMdnsServiceSummary(
+        IReadOnlyList<MdnsServiceObservation> services)
+    {
+        if (services.Count == 0)
+            return "—";
+
+        const int maximumVisibleServices = 8;
+        IEnumerable<string> visible = services
+            .Take(maximumVisibleServices)
+            .Select(service =>
+            {
+                List<string> parts = [service.InstanceName];
+                if (!string.IsNullOrWhiteSpace(service.ServiceType))
+                    parts.Add(service.ServiceType);
+                if (!string.IsNullOrWhiteSpace(service.Endpoint))
+                    parts.Add(service.Endpoint);
+                else if (service.Port.HasValue)
+                    parts.Add(string.IsNullOrWhiteSpace(service.Transport)
+                        ? service.Port.Value.ToString(CultureInfo.InvariantCulture)
+                        : $"{service.Transport}/{service.Port.Value.ToString(CultureInfo.InvariantCulture)}");
+                return string.Join(" · ", parts);
+            });
+
+        string summary = string.Join(Environment.NewLine, visible);
+        return services.Count <= maximumVisibleServices
+            ? summary
+            : $"{summary}{Environment.NewLine}+{services.Count - maximumVisibleServices:N0} serviços";
+    }
+
+    private static string BuildMdnsServiceSearchText(
+        IReadOnlyList<MdnsServiceObservation> services) => string.Join(
+            ' ',
+            services.SelectMany(service => new[]
+            {
+                service.InstanceName,
+                service.ServiceType,
+                service.Port?.ToString(CultureInfo.InvariantCulture),
+                service.Transport,
+                service.Endpoint,
+                service.EvidenceSource
+            }).Where(value => !string.IsNullOrWhiteSpace(value)));
 
     private static string BuildIdentityEvidenceLine(DeviceIdentityEvidence evidence)
     {

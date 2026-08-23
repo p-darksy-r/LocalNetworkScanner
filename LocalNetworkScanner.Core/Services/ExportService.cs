@@ -157,7 +157,7 @@ public sealed class ExportService
         NetworkMap topologyMap = new NetworkTopologyMapService().Build(result);
         object payload = new
         {
-            schemaVersion = 5,
+            schemaVersion = 6,
             generatedAt = DateTimeOffset.UtcNow,
             network = new
             {
@@ -272,6 +272,7 @@ public sealed class ExportService
                 ports = device.Ports,
                 topology = device.Topology,
                 mdnsNames = device.MdnsNames,
+                mdnsServices = device.MdnsServices,
                 ssdp = new
                 {
                     device.SsdpServer,

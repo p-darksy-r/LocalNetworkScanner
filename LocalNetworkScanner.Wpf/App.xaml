@@ -26,9 +26,11 @@
         <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}" />
         <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
         <SolidColorBrush x:Key="AccentDarkBrush" Color="{StaticResource AccentDarkColor}" />
+        <SolidColorBrush x:Key="AccentForegroundBrush" Color="White" />
         <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
         <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
         <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
+        <SolidColorBrush x:Key="DangerForegroundBrush" Color="White" />
         <SolidColorBrush x:Key="SelectionBrush" Color="#FFE7F0FD" />
         <SolidColorBrush x:Key="SelectionForegroundBrush" Color="{StaticResource TextPrimaryColor}" />
         <SolidColorBrush x:Key="RiskHighBrush" Color="#FFFFE8E5" />
@@ -61,6 +63,13 @@
             <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
+        </Style>
+
+        <Style x:Key="IconGlyphStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="Foreground"
+                    Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}" />
         </Style>
 
         <Style TargetType="{x:Type Label}">
@@ -112,14 +121,14 @@
         <Style x:Key="PrimaryButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 
         <Style x:Key="DangerButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Foreground" Value="{DynamicResource DangerForegroundBrush}" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 
@@ -127,6 +136,28 @@
             <Setter Property="Padding" Value="10,5" />
             <Setter Property="MinHeight" Value="30" />
             <Setter Property="FontSize" Value="12" />
+        </Style>
+
+        <Style x:Key="IconButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Width" Value="40" />
+            <Setter Property="Height" Value="40" />
+            <Setter Property="MinWidth" Value="40" />
+            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="PrimaryIconButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource IconButtonStyle}">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
+        </Style>
+
+        <Style x:Key="DangerIconButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource IconButtonStyle}">
+            <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource DangerForegroundBrush}" />
         </Style>
 
         <Style TargetType="{x:Type ToggleButton}">
@@ -155,7 +186,7 @@
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource AccentBrush}" />
                                 <Setter TargetName="ToggleBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="ToggleBorder" Property="Opacity" Value="0.88" />

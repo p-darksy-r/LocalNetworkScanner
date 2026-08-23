@@ -71,12 +71,14 @@ A categoria indica a origem mais provável, não atribui culpa. Uma firewall, po
 
 | Código | Severidade | Significado | Ação recomendada |
 | --- | --- | --- | --- |
-| `LNS-APP-001` | Critical | Falha interna inesperada | Guarde o código/versão, reinicie e comunique uma reprodução mínima com dados anonimizados. |
+| `LNS-APP-001` | Critical | Falha interna inesperada | Guarde o código/versão, reveja `%LOCALAPPDATA%\LocalNetworkScanner\logs\app.log`, reinicie e comunique uma reprodução mínima com dados anonimizados. |
 | `LNS-APP-002` | Error / Warning | Falha ao ler ou escrever um ficheiro | Confirme caminho, espaço, bloqueios, permissões e proteção antimalware. É aviso quando apenas o histórico opcional falha e o scan é preservado. |
 | `LNS-APP-003` | Error | O Windows recusou o acesso | Escolha um recurso permitido ou peça ao administrador que reveja a política; não contorne controlos. |
 | `LNS-APP-004` | Information | Captura integral não suportada nesta versão | Interprete a lista de protocolos como evidência do scan ativo; para analisar tráfego, use uma ferramenta dedicada numa rede autorizada. |
 | `LNS-APP-005` | Error | Windows Application Control bloqueou o ficheiro (`CreateProcess` 4551), confirmado por um evento 3077 com o caminho completo do alvo | Use uma release com assinatura Authenticode confiável ou peça ao administrador que autorize o publisher, hash ou catálogo; não desative a proteção para contornar a política. |
 | `LNS-APP-006` | Warning | O diagnóstico de Application Control é inconclusivo: existe apenas auditoria, não há evento confirmado ou a correlação coincide apenas com caminho relativo/conteúdo/hash/nome | Repita com o caminho exato do ficheiro bloqueado e uma janela temporal adequada; confirme o caminho completo/volume nos eventos antes de atribuir o erro 4551. |
+
+Em `LNS-APP-001`, a UI tenta efetuar um encerramento controlado e escrever um registo técnico local. `app.log` é limitado a 512 KiB e roda para um único `app.previous.log`; não contém mensagens/argumentos da exceção, alvo/contexto do diagnóstico, credenciais nem inventário da rede. Pode incluir versão do sistema, tipo/HResult e stack sanitizada. Reveja o ficheiro antes de o partilhar e não publique outros ficheiros da pasta de dados sem os anonimizar.
 
 O relatório de diagnóstico App Control usa o schema v2. `policyBlockConfirmed=true` só é emitido para um alvo que ainda existe e para o qual foi encontrado um evento de enforcement 3077 com correlação `FullPath`. `Sha256AndPathSuffix` exige o hash e o mesmo caminho relativo, mas recebe confiança média porque o volume NT não foi confirmado; `ContentHashOnly` também recebe confiança média e `FileNameOnly` recebe confiança baixa. Nenhum destes três casos define `policyBlockConfirmed=true`. Um alvo ausente também nunca é confirmado. Um evento de auditoria fortemente correlacionado tem prioridade sobre eventos de enforcement fracos de outras cópias.
 
@@ -92,7 +94,7 @@ Estes códigos pertencem ao workflow e aos scripts de distribuição; não são 
 | `LNS-REL-004` | Error | Certificado incompatível, autoassinado ou sem cadeia confiável no modo local | Use RSA com EKU Code Signing, cadeia pública aceite e chave protegida por token/HSM. |
 | `LNS-REL-005` | Error | Assinatura ou timestamp final não validou | Não publique; corrija a assinatura e volte a gerar todos os assets e hashes. |
 | `LNS-REL-006` | Error | Redistribuição da snapshot IEEE não foi autorizada | Arquive autorização escrita antes de definir `IEEE_REDISTRIBUTION_APPROVED=true`. |
-| `LNS-REL-007` | Error | Build, instalação, smoke ou remoção nativa x64/ARM64 falhou | Corrija o pacote exato; um cross-build x64 não substitui este gate. |
+| `LNS-REL-007` | Error | Build, instalação, smoke ou remoção nativa x64/ARM64 falhou; inclui `CreateProcess 4551` quando App Control bloqueia o executável de QA antes do arranque | Corrija o pacote exato; para `4551`, use Authenticode confiável ou peça autorização ao administrador sem desativar a política. Um cross-build x64 não substitui este gate. |
 | `LNS-REL-008` | Error | Contrato de assets ou checksums divergente | Gere uma versão nova a partir de uma árvore limpa; não substitua ficheiros já publicados. |
 | `LNS-REL-009` | Error | Versão, tag, ref ou commit não corresponde ao HEAD confiável de `main` | Execute a release a partir de uma tag nova, correspondente à versão, criada no commit atual de `main`. |
 | `LNS-REL-010` | Error | O SBOM não pôde ser gerado/validado ou não cobre `win-x64` e `win-arm64` | Preserve o payload, confirme a ferramenta fixada, os metadados dos dois runtimes e os caminhos sob `artifacts`, e repita sem publicar evidência incompleta. |
@@ -112,7 +114,7 @@ A CLI mostra código, categoria, severidade, mensagem, ação, alvo e contexto d
 | `4` | falha fatal associada a dispositivo (`LNS-DEV-*`) |
 | `130` | operação cancelada (`LNS-USR-009`) |
 
-O JSON schema v5 inclui os diagnósticos e as evidências de identidade de forma estruturada em `scan.diagnostics` e `devices[].identityEvidence`. HTML apresenta os diagnósticos numa secção própria e GraphML usa o atributo de grafo `g_diagnostics`. Consumidores automáticos devem decidir pelo código/categoria e não fazer parsing do texto em pt-PT.
+O JSON schema v6 inclui os diagnósticos, as evidências de identidade e os endpoints mDNS/DNS-SD de forma estruturada em `scan.diagnostics`, `devices[].identityEvidence` e `devices[].mdnsServices`. HTML apresenta os diagnósticos numa secção própria e GraphML usa o atributo de grafo `g_diagnostics`. Consumidores automáticos devem decidir pelo código/categoria e não fazer parsing do texto em pt-PT.
 
 ## Pedir suporte
 

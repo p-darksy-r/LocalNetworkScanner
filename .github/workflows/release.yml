@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-storage-${{ github.repository_id }}
   cancel-in-progress: false
 
 jobs:
@@ -30,6 +30,8 @@ jobs:
       version: ${{ steps.preflight.outputs.version }}
       is_tag: ${{ steps.preflight.outputs.is_tag }}
       public_release: ${{ steps.preflight.outputs.public_release }}
+      private_release: ${{ steps.preflight.outputs.private_release }}
+      run_candidate: ${{ steps.preflight.outputs.run_candidate }}
 
     steps:
       - name: Checkout complete history
@@ -44,6 +46,8 @@ jobs:
           RELEASE_REF_NAME: ${{ github.ref_name }}
           RELEASE_REF_TYPE: ${{ github.ref_type }}
           PUBLIC_RELEASE_REQUESTED: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release }}
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+          GH_TOKEN: ${{ github.token }}
           ARTIFACT_SIGNING_ENABLED: ${{ vars.ARTIFACT_SIGNING_ENABLED }}
           ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
           ARTIFACT_SIGNING_RESOURCE_GROUP: ${{ vars.ARTIFACT_SIGNING_RESOURCE_GROUP }}
@@ -63,6 +67,17 @@ jobs:
           $isTag = $env:RELEASE_REF_TYPE -eq 'tag'
           $publicRelease = $env:PUBLIC_RELEASE_REQUESTED -eq 'true'
           $blockers = [Collections.Generic.List[object]]::new()
+          $liveVisibilityResponse = @(
+            gh api "repos/$env:GITHUB_REPOSITORY" --jq '.private' 2>&1
+          )
+          $liveVisibility = ($liveVisibilityResponse -join '').Trim().ToLowerInvariant()
+          $repositoryIsPrivateLive = $LASTEXITCODE -eq 0 -and $liveVisibility -eq 'true'
+          if ($LASTEXITCODE -ne 0 -or $liveVisibility -notin @('true', 'false')) {
+            $blockers.Add([pscustomobject]@{
+              Code = 'LNS-REL-005'
+              Message = 'Unable to establish the live repository visibility through the GitHub API.'
+            })
+          }
           if ($isTag -and $env:RELEASE_REF_NAME -ne "v$version") {
             $blockers.Add([pscustomobject]@{
               Code = 'LNS-REL-009'
@@ -73,6 +88,14 @@ jobs:
             $blockers.Add([pscustomobject]@{
               Code = 'LNS-REL-009'
               Message = 'A public release can only be requested from its matching vX.Y.Z tag.'
+            })
+          }
+          if (-not $isTag -and
+              -not $publicRelease -and
+              (-not $repositoryIsPrivateLive -or $env:REPOSITORY_PRIVATE -ne 'true')) {
+            $blockers.Add([pscustomobject]@{
+              Code = 'LNS-REL-005'
+              Message = 'A NotSigned QA candidate may only be built and uploaded while the repository is private.'
             })
           }
 
@@ -134,6 +157,23 @@ jobs:
             })
           }
 
+          $productionGatesConfigured =
+            $env:ARTIFACT_SIGNING_ENABLED -eq 'true' -and
+            $missingSigningSettings.Count -eq 0 -and
+            $env:IEEE_REDISTRIBUTION_APPROVED -eq 'true'
+          $privateRelease =
+            $isTag -and
+            -not $publicRelease -and
+            $env:REPOSITORY_PRIVATE -eq 'true' -and
+            $repositoryIsPrivateLive -and
+            -not $productionGatesConfigured
+          $privateBranchCandidate =
+            -not $isTag -and
+            -not $publicRelease -and
+            $env:REPOSITORY_PRIVATE -eq 'true' -and
+            $repositoryIsPrivateLive
+          $runCandidate = $publicRelease -or $privateRelease -or $privateBranchCandidate
+
           @(
             '## Windows release trust preflight',
             '',
@@ -141,6 +181,11 @@ jobs:
             "- Current commit equals ``origin/main``: ``$($currentSha -eq $mainSha)``",
             "- Matching tag: ``$isTag``",
             "- Public release requested: ``$publicRelease``",
+            "- Automatic private QA prerelease: ``$privateRelease``",
+            "- Private branch QA candidate: ``$privateBranchCandidate``",
+            "- Repository private (event/live): ``$($env:REPOSITORY_PRIVATE -eq 'true')/$repositoryIsPrivateLive``",
+            "- Production gates configured: ``$productionGatesConfigured``",
+            "- Build candidate in this run: ``$runCandidate``",
             "- Artifact Signing enabled: ``$($env:ARTIFACT_SIGNING_ENABLED -eq 'true')``",
             "- Artifact Signing/OIDC configuration complete: ``$($missingSigningSettings.Count -eq 0)``",
             "- IEEE redistribution approved: ``$($env:IEEE_REDISTRIBUTION_APPROVED -eq 'true')``"
@@ -156,11 +201,13 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "is_tag=$($isTag.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "public_release=$($publicRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "private_release=$($privateRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "run_candidate=$($runCandidate.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           Write-Host "Release preflight passed for trusted main commit $currentSha."
 
   package-private-qa:
     name: Build unsigned private QA packages
-    if: needs.preflight.outputs.public_release != 'true'
+    if: needs.preflight.outputs.run_candidate == 'true' && needs.preflight.outputs.public_release != 'true'
     needs: preflight
     runs-on: windows-latest
     timeout-minutes: 50
@@ -172,6 +219,7 @@ jobs:
       version: ${{ needs.preflight.outputs.version }}
       is_tag: ${{ needs.preflight.outputs.is_tag }}
       signing_state: ${{ steps.manifest.outputs.signing_state }}
+      candidate_digest: ${{ steps.candidate.outputs.artifact-digest }}
 
     steps: &package-steps
       - name: Checkout
@@ -277,6 +325,20 @@ jobs:
           }
           Write-Host "Artifact Signing client: $($module.Path)"
 
+      - name: Reconfirm private boundary before unsigned package generation
+        if: needs.preflight.outputs.public_release != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $visibilityResponse = @(
+            gh api "repos/$env:GITHUB_REPOSITORY" --jq '.private' 2>&1
+          )
+          if ($LASTEXITCODE -ne 0 -or
+              ($visibilityResponse -join '').Trim().ToLowerInvariant() -ne 'true') {
+            throw 'LNS-REL-005: live repository visibility is not private; refusing to generate NotSigned packages.'
+          }
+
       - name: Publish win-x64 portable package
         shell: pwsh
         env:
@@ -321,6 +383,16 @@ jobs:
           $uri = 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe'
           Invoke-WebRequest -Uri $uri -OutFile $download
 
+          $expectedSha256 = '9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732'
+          $actualSha256 = (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash
+          if ($actualSha256 -cne $expectedSha256) {
+            throw "LNS-REL-003: Inno Setup SHA-256 mismatch; actual=$actualSha256 expected=$expectedSha256."
+          }
+          $productVersion = ([string](Get-Item -LiteralPath $download).VersionInfo.ProductVersion).Trim()
+          if ($productVersion -cne '6.7.3') {
+            throw "LNS-REL-003: unexpected Inno Setup ProductVersion: '$productVersion'."
+          }
+
           $signature = Get-AuthenticodeSignature -LiteralPath $download
           if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate) {
             throw "LNS-REL-003: Inno Setup signature validation failed: status=$($signature.Status)."
@@ -339,7 +411,7 @@ jobs:
             '/SP-',
             '/CURRENTUSER',
             "/DIR=$installDir"
-          ) -Wait -PassThru
+          ) -WindowStyle Hidden -Wait -PassThru
           if ($process.ExitCode -ne 0) {
             throw "LNS-REL-003: Inno Setup installation failed with code $($process.ExitCode)."
           }
@@ -494,7 +566,22 @@ jobs:
           ) | Set-Content -LiteralPath (Join-Path $releaseRoot 'SIGNING-STATE.txt') -Encoding ascii
           "signing_state=$signingState" >> $env:GITHUB_OUTPUT
 
+      - name: Reconfirm private boundary before NotSigned artifact upload
+        if: needs.preflight.outputs.public_release != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $visibilityResponse = @(
+            gh api "repos/$env:GITHUB_REPOSITORY" --jq '.private' 2>&1
+          )
+          if ($LASTEXITCODE -ne 0 -or
+              ($visibilityResponse -join '').Trim().ToLowerInvariant() -ne 'true') {
+            throw 'LNS-REL-005: live repository visibility is not private; refusing to upload a NotSigned candidate.'
+          }
+
       - name: Upload unvalidated candidate
+        id: candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: LocalNetworkScanner-${{ needs.preflight.outputs.version }}-windows-candidate
@@ -505,7 +592,9 @@ jobs:
             artifacts/release/SHA256SUMS.txt
             artifacts/release/SIGNING-STATE.txt
           if-no-files-found: error
-          retention-days: 7
+          compression-level: 0
+          overwrite: false
+          retention-days: 1
 
   package-public:
     name: Build and sign public Windows packages
@@ -522,11 +611,12 @@ jobs:
       version: ${{ needs.preflight.outputs.version }}
       is_tag: ${{ needs.preflight.outputs.is_tag }}
       signing_state: ${{ steps.manifest.outputs.signing_state }}
+      candidate_digest: ${{ steps.candidate.outputs.artifact-digest }}
     steps: *package-steps
 
   package:
     name: Select isolated release package path
-    if: ${{ !cancelled() && needs.preflight.result == 'success' }}
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.preflight.outputs.run_candidate == 'true' }}
     needs: [preflight, package-private-qa, package-public]
     runs-on: windows-latest
     timeout-minutes: 5
@@ -534,6 +624,7 @@ jobs:
       contents: read
     outputs:
       signing_state: ${{ steps.select.outputs.signing_state }}
+      candidate_digest: ${{ steps.select.outputs.candidate_digest }}
     steps:
       - name: Require exactly the intended package job
         id: select
@@ -542,25 +633,33 @@ jobs:
           PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
           PRIVATE_RESULT: ${{ needs.package-private-qa.result }}
           PRIVATE_SIGNING_STATE: ${{ needs.package-private-qa.outputs.signing_state }}
+          PRIVATE_CANDIDATE_DIGEST: ${{ needs.package-private-qa.outputs.candidate_digest }}
           PUBLIC_RESULT: ${{ needs.package-public.result }}
           PUBLIC_SIGNING_STATE: ${{ needs.package-public.outputs.signing_state }}
+          PUBLIC_CANDIDATE_DIGEST: ${{ needs.package-public.outputs.candidate_digest }}
         run: |
           if ($env:PUBLIC_RELEASE -eq 'true') {
             if ($env:PUBLIC_RESULT -ne 'success' -or $env:PRIVATE_RESULT -ne 'skipped') {
               throw "LNS-REL-008: expected only the public signing path; public=$env:PUBLIC_RESULT private=$env:PRIVATE_RESULT."
             }
             $signingState = $env:PUBLIC_SIGNING_STATE
+            $candidateDigest = $env:PUBLIC_CANDIDATE_DIGEST
           }
           else {
             if ($env:PRIVATE_RESULT -ne 'success' -or $env:PUBLIC_RESULT -ne 'skipped') {
               throw "LNS-REL-008: expected only the private QA path; private=$env:PRIVATE_RESULT public=$env:PUBLIC_RESULT."
             }
             $signingState = $env:PRIVATE_SIGNING_STATE
+            $candidateDigest = $env:PRIVATE_CANDIDATE_DIGEST
           }
           if ([string]::IsNullOrWhiteSpace($signingState)) {
             throw 'LNS-REL-008: selected package path did not expose a signing state.'
           }
+          if ($candidateDigest -notmatch '^(sha256:)?[0-9a-fA-F]{64}$') {
+            throw 'LNS-REL-008: selected package path did not expose a valid SHA-256 artifact digest.'
+          }
           "signing_state=$signingState" >> $env:GITHUB_OUTPUT
+          "candidate_digest=$candidateDigest" >> $env:GITHUB_OUTPUT
 
   validate-x64:
     name: Validate exact x64 package and installer
@@ -648,38 +747,45 @@ jobs:
           }
           .\scripts\validate-release-package.ps1 @parameters
 
-      - name: Promote natively validated payload state
+      - name: Create compact native validation evidence
         shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+          PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
+          SIGNING_STATE: ${{ needs.package.outputs.signing_state }}
+          CANDIDATE_DIGEST: ${{ needs.package.outputs.candidate_digest }}
         run: |
-          $statePath = '.\artifacts\release\SIGNING-STATE.txt'
-          $state = @(Get-Content -LiteralPath $statePath)
-          $state = @($state | ForEach-Object {
-            if ($_ -eq 'Native x64: Pending') { 'Native x64: Validated' }
-            elseif ($_ -eq 'Native ARM64: Pending') { 'Native ARM64: Validated' }
-            else { $_ }
-          })
-          if ($state -cnotcontains 'Native x64: Validated' -or
-              $state -cnotcontains 'Native ARM64: Validated') {
-            throw 'LNS-REL-007: unable to record both native package validations.'
+          $releaseMode = if ($env:PUBLIC_RELEASE -eq 'true') {
+            'PublicRelease'
           }
-          Set-Content -LiteralPath $statePath -Value $state -Encoding ascii
+          else {
+            'PrivateQa'
+          }
+          .\scripts\new-release-validation-evidence.ps1 `
+            -Version $env:RELEASE_VERSION `
+            -SigningState $env:SIGNING_STATE `
+            -ReleaseMode $releaseMode `
+            -CandidateArtifactName "LocalNetworkScanner-$env:RELEASE_VERSION-windows-candidate" `
+            -CandidateArtifactDigest $env:CANDIDATE_DIGEST `
+            -Repository $env:GITHUB_REPOSITORY `
+            -CommitSha $env:GITHUB_SHA `
+            -SourceRef $env:GITHUB_REF `
+            -WorkflowRunId $env:GITHUB_RUN_ID `
+            -WorkflowRunAttempt $env:GITHUB_RUN_ATTEMPT
 
-      - name: Upload validated release payload
+      - name: Upload compact validation evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: LocalNetworkScanner-${{ needs.preflight.outputs.version }}-windows-validated
+          name: LocalNetworkScanner-${{ needs.preflight.outputs.version }}-windows-validation-evidence
           path: |
-            artifacts/release/*.zip
-            artifacts/release/*.exe
-            artifacts/release/*.sha256
-            artifacts/release/SHA256SUMS.txt
-            artifacts/release/SIGNING-STATE.txt
+            artifacts/validation/VALIDATION-ATTESTATION.json
+            artifacts/validation/SIGNING-STATE.txt
           if-no-files-found: error
           retention-days: 30
 
   validation-gate:
     name: Require successful native Windows validation
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.preflight.outputs.run_candidate == 'true' }}
     needs: [preflight, package, validate-x64, validate-arm64]
     runs-on: windows-latest
     timeout-minutes: 15
@@ -741,7 +847,7 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Download exact validated payload
+      - name: Download immutable candidate and validation evidence
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -749,81 +855,44 @@ jobs:
         run: |
           gh run download $env:GITHUB_RUN_ID `
             --repo $env:GITHUB_REPOSITORY `
-            --name "LocalNetworkScanner-$env:RELEASE_VERSION-windows-validated" `
+            --name "LocalNetworkScanner-$env:RELEASE_VERSION-windows-candidate" `
             --dir .\artifacts\release
           if ($LASTEXITCODE -ne 0) {
-            throw 'LNS-REL-008: unable to download the exact validated payload.'
+            throw 'LNS-REL-008: unable to download the exact immutable candidate.'
+          }
+          gh run download $env:GITHUB_RUN_ID `
+            --repo $env:GITHUB_REPOSITORY `
+            --name "LocalNetworkScanner-$env:RELEASE_VERSION-windows-validation-evidence" `
+            --dir .\artifacts\validation
+          if ($LASTEXITCODE -ne 0) {
+            throw 'LNS-REL-007: unable to download the native validation evidence.'
           }
 
-      - name: Verify exact validated payload contract
+      - name: Materialize and verify exact validated payload contract
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
           PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
+          SIGNING_STATE: ${{ needs.package.outputs.signing_state }}
+          CANDIDATE_DIGEST: ${{ needs.package.outputs.candidate_digest }}
         run: |
-          $releaseRoot = (Resolve-Path .\artifacts\release).Path
-          $binaryNames = @(
-            "LocalNetworkScanner-$env:RELEASE_VERSION-win-x64.zip",
-            "LocalNetworkScanner-$env:RELEASE_VERSION-win-arm64.zip",
-            "LocalNetworkScanner-$env:RELEASE_VERSION-win-x64-setup.exe",
-            "LocalNetworkScanner-$env:RELEASE_VERSION-win-arm64-setup.exe"
-          )
-          $expectedNames = @(
-            $binaryNames
-            $binaryNames | ForEach-Object { "$_.sha256" }
-            'SHA256SUMS.txt'
-            'SIGNING-STATE.txt'
-          ) | Sort-Object
-          $actualNames = @(Get-ChildItem -LiteralPath $releaseRoot -File |
-            Select-Object -ExpandProperty Name |
-            Sort-Object)
-          $difference = @(
-            Compare-Object -ReferenceObject $expectedNames -DifferenceObject $actualNames
-          )
-          if ($difference.Count -ne 0) {
-            throw "LNS-REL-008: validated payload does not match the exact 10-file contract: $($difference | Out-String)"
-          }
-
-          $manifestLines = @(Get-Content -LiteralPath (Join-Path $releaseRoot 'SHA256SUMS.txt'))
-          if ($manifestLines.Count -ne $binaryNames.Count) {
-            throw "LNS-REL-008: SHA256SUMS.txt must contain exactly $($binaryNames.Count) entries."
-          }
-          foreach ($binaryName in $binaryNames) {
-            $binaryPath = Join-Path $releaseRoot $binaryName
-            $expectedLine = '{0} *{1}' -f (
-              Get-FileHash -LiteralPath $binaryPath -Algorithm SHA256
-            ).Hash.ToLowerInvariant(), $binaryName
-            if ((Get-Content -LiteralPath "$binaryPath.sha256" -Raw).Trim() -cne $expectedLine -or
-                $manifestLines -cnotcontains $expectedLine) {
-              throw "LNS-REL-008: checksum mismatch for $binaryName."
-            }
-          }
-
-          $expectedSigningState = if ($env:PUBLIC_RELEASE -eq 'true') {
-            'Signed'
-          }
-          else {
-            'NotSigned'
-          }
-          $expectedReleaseMode = if ($env:PUBLIC_RELEASE -eq 'true') {
+          $releaseMode = if ($env:PUBLIC_RELEASE -eq 'true') {
             'PublicRelease'
           }
           else {
             'PrivateQa'
           }
-          $state = @(Get-Content -LiteralPath (Join-Path $releaseRoot 'SIGNING-STATE.txt'))
-          foreach ($requiredState in @(
-              "Version: $env:RELEASE_VERSION",
-              "Authenticode: $expectedSigningState",
-              'Native x64: Validated',
-              'Native ARM64: Validated',
-              "Release mode: $expectedReleaseMode"
-            )) {
-            if ($state -cnotcontains $requiredState) {
-              throw "LNS-REL-007: SIGNING-STATE.txt is missing '$requiredState'."
-            }
-          }
-          Write-Host "Exact $expectedReleaseMode payload passed the terminal native validation gate."
+          .\scripts\materialize-release-payload.ps1 `
+            -Version $env:RELEASE_VERSION `
+            -SigningState $env:SIGNING_STATE `
+            -ReleaseMode $releaseMode `
+            -CandidateArtifactName "LocalNetworkScanner-$env:RELEASE_VERSION-windows-candidate" `
+            -CandidateArtifactDigest $env:CANDIDATE_DIGEST `
+            -Repository $env:GITHUB_REPOSITORY `
+            -CommitSha $env:GITHUB_SHA `
+            -SourceRef $env:GITHUB_REF `
+            -WorkflowRunId $env:GITHUB_RUN_ID `
+            -WorkflowRunAttempt $env:GITHUB_RUN_ATTEMPT
 
       - name: Generate and validate SPDX SBOM outside the release payload
         shell: pwsh
@@ -840,17 +909,23 @@ jobs:
           retention-days: 30
 
   publish:
-    name: Publish immutable GitHub Release
-    if: needs.preflight.outputs.public_release == 'true' && needs.validation-gate.result == 'success'
+    name: Publish verified GitHub Release
+    if: >-
+      needs.preflight.outputs.is_tag == 'true' &&
+      needs.validation-gate.result == 'success' &&
+      (needs.preflight.outputs.public_release == 'true' || needs.preflight.outputs.private_release == 'true')
     needs: [preflight, package, validation-gate]
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
-      actions: read
+      actions: write
       contents: write
 
     steps:
-      - name: Download validated release payload
+      - name: Checkout release verification scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download immutable candidate and validation evidence
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -858,13 +933,47 @@ jobs:
         run: |
           gh run download $env:GITHUB_RUN_ID `
             --repo $env:GITHUB_REPOSITORY `
-            --name "LocalNetworkScanner-$env:RELEASE_VERSION-windows-validated" `
+            --name "LocalNetworkScanner-$env:RELEASE_VERSION-windows-candidate" `
             --dir .\artifacts\release
           if ($LASTEXITCODE -ne 0) {
-            throw 'LNS-REL-008: unable to download the validated release payload.'
+            throw 'LNS-REL-008: unable to download the immutable candidate payload.'
+          }
+          gh run download $env:GITHUB_RUN_ID `
+            --repo $env:GITHUB_REPOSITORY `
+            --name "LocalNetworkScanner-$env:RELEASE_VERSION-windows-validation-evidence" `
+            --dir .\artifacts\validation
+          if ($LASTEXITCODE -ne 0) {
+            throw 'LNS-REL-007: unable to download the native validation evidence.'
           }
 
-      - name: Revalidate immutable release contract
+      - name: Materialize validated 10-asset release payload
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+          PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
+          SIGNING_STATE: ${{ needs.package.outputs.signing_state }}
+          CANDIDATE_DIGEST: ${{ needs.package.outputs.candidate_digest }}
+        run: |
+          $releaseMode = if ($env:PUBLIC_RELEASE -eq 'true') {
+            'PublicRelease'
+          }
+          else {
+            'PrivateQa'
+          }
+          .\scripts\materialize-release-payload.ps1 `
+            -Version $env:RELEASE_VERSION `
+            -SigningState $env:SIGNING_STATE `
+            -ReleaseMode $releaseMode `
+            -CandidateArtifactName "LocalNetworkScanner-$env:RELEASE_VERSION-windows-candidate" `
+            -CandidateArtifactDigest $env:CANDIDATE_DIGEST `
+            -Repository $env:GITHUB_REPOSITORY `
+            -CommitSha $env:GITHUB_SHA `
+            -SourceRef $env:GITHUB_REF `
+            -WorkflowRunId $env:GITHUB_RUN_ID `
+            -WorkflowRunAttempt $env:GITHUB_RUN_ATTEMPT
+
+      - name: Revalidate signed public release contract
+        if: needs.preflight.outputs.public_release == 'true'
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
@@ -906,16 +1015,21 @@ jobs:
           }
 
           $state = @(Get-Content -LiteralPath (Join-Path $releaseRoot 'SIGNING-STATE.txt'))
-          foreach ($requiredState in @(
+          $expectedState = @(
               "Version: $env:RELEASE_VERSION",
               'Authenticode: Signed',
               'Native x64: Validated',
               'Native ARM64: Validated',
               'Release mode: PublicRelease',
-              'Signing backend: Microsoft Artifact Signing OIDC'
-            )) {
-            if ($state -cnotcontains $requiredState) {
-              throw "LNS-REL-005: SIGNING-STATE.txt is missing '$requiredState'."
+              'Signing backend: Microsoft Artifact Signing OIDC',
+              'Verification: Get-AuthenticodeSignature and signtool verify /pa /tw'
+          )
+          if ($state.Count -ne $expectedState.Count) {
+            throw "LNS-REL-005: public SIGNING-STATE.txt must contain exactly $($expectedState.Count) ordered lines."
+          }
+          for ($index = 0; $index -lt $expectedState.Count; $index++) {
+            if ($state[$index] -cne $expectedState[$index]) {
+              throw "LNS-REL-005: public SIGNING-STATE.txt line $($index + 1) mismatch."
             }
           }
 
@@ -980,27 +1094,79 @@ jobs:
           }
           Write-Host "Release payload revalidated with signer $(@($signerThumbprints | Sort-Object -Unique)[0])."
 
-      - name: Publish signed immutable release
+      - name: Revalidate private QA trust boundary
+        if: needs.preflight.outputs.public_release != 'true'
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+          SIGNING_STATE: ${{ needs.package.outputs.signing_state }}
+        run: |
+          if ($env:REPOSITORY_PRIVATE -ne 'true') {
+            throw 'LNS-REL-005: a NotSigned prerelease may only be published while the repository is private.'
+          }
+          if ($env:SIGNING_STATE -ne 'NotSigned') {
+            throw "LNS-REL-005: private QA publish expected NotSigned; received '$env:SIGNING_STATE'."
+          }
+          $state = @(Get-Content -LiteralPath '.\artifacts\release\SIGNING-STATE.txt')
+          $expectedState = @(
+              "Version: $env:RELEASE_VERSION",
+              'Authenticode: NotSigned',
+              'Native x64: Validated',
+              'Native ARM64: Validated',
+              'Release mode: PrivateQa',
+              'Signing backend: None',
+              'Verification: Get-AuthenticodeSignature and signtool verify /pa /tw'
+          )
+          if ($state.Count -ne $expectedState.Count) {
+            throw "LNS-REL-005: private QA SIGNING-STATE.txt must contain exactly $($expectedState.Count) ordered lines."
+          }
+          for ($index = 0; $index -lt $expectedState.Count; $index++) {
+            if ($state[$index] -cne $expectedState[$index]) {
+              throw "LNS-REL-005: private QA SIGNING-STATE.txt line $($index + 1) mismatch."
+            }
+          }
+
+      - name: Publish and verify exact immutable release assets
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
           RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+          PUBLIC_RELEASE: ${{ needs.preflight.outputs.public_release }}
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
           SIGNING_STATE: ${{ needs.package.outputs.signing_state }}
+          CANDIDATE_DIGEST: ${{ needs.package.outputs.candidate_digest }}
         run: |
-          if ($env:SIGNING_STATE -ne 'Signed') {
-            throw 'LNS-REL-005: publish received a payload that is not Authenticode Signed.'
+          $isPublicRelease = $env:PUBLIC_RELEASE -eq 'true'
+          $repositoryIsPrivate = $env:REPOSITORY_PRIVATE -eq 'true'
+          if ($isPublicRelease) {
+            if ($env:SIGNING_STATE -ne 'Signed') {
+              throw 'LNS-REL-005: public publish received a payload that is not Authenticode Signed.'
+            }
           }
-          $notes = @(
-            "Windows desktop release $env:RELEASE_VERSION.",
-            '',
-            '- `win-x64`: exact ZIP and installer installed, executed and removed on native Windows x64.',
-            '- `win-arm64`: exact ZIP and installer installed, executed and removed on a native Windows ARM64 runner.',
-            '- UI, CLI, App Control diagnostic, installer and embedded uninstaller use timestamped Microsoft Artifact Signing.',
-            '',
-            'O instalador não inicia automaticamente a aplicação. Se o Windows apresentar o código 4551, consulte `docs/APP_CONTROL.md`; não desative a política de Controlo de Aplicações.',
-            'Consulte também `SIGNING-STATE.txt`, o changelog e as limitações técnicas incluídas no pacote.'
-          ) -join [Environment]::NewLine
+          else {
+            if (-not $repositoryIsPrivate) {
+              throw 'LNS-REL-005: refusing to publish NotSigned assets from a public repository.'
+            }
+            if ($env:SIGNING_STATE -ne 'NotSigned') {
+              throw 'LNS-REL-005: private QA publish received an unexpected signing state.'
+            }
+          }
+
+          function Assert-LivePrivateRepositoryForUnsignedRelease {
+            if ($isPublicRelease) {
+              return
+            }
+            $visibilityResponse = @(
+              gh api "repos/$env:GITHUB_REPOSITORY" --jq '.private' 2>&1
+            )
+            if ($LASTEXITCODE -ne 0 -or
+                ($visibilityResponse -join '').Trim().ToLowerInvariant() -ne 'true') {
+              throw 'LNS-REL-005: live repository visibility is not private; refusing to publish NotSigned assets.'
+            }
+          }
+          Assert-LivePrivateRepositoryForUnsignedRelease
 
           $binaryNames = @(
             "LocalNetworkScanner-$env:RELEASE_VERSION-win-x64.zip",
@@ -1017,25 +1183,375 @@ jobs:
           $assets = @($assetNames | ForEach-Object {
             (Resolve-Path (Join-Path .\artifacts\release $_)).Path
           })
-
-          gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -eq 0) {
-            throw "LNS-REL-008: release $env:RELEASE_TAG already exists; create a new version instead of replacing assets."
+          if ($assets.Count -ne 10) {
+            throw "LNS-REL-008: publish must receive exactly 10 local assets; received $($assets.Count)."
           }
 
-          gh release create $env:RELEASE_TAG @assets `
-            --repo $env:GITHUB_REPOSITORY `
-            --title "Local Network Scanner $env:RELEASE_VERSION" `
-            --notes $notes `
-            --draft `
-            --verify-tag
-          if ($LASTEXITCODE -ne 0) {
-            throw "LNS-REL-008: unable to create draft release $env:RELEASE_TAG."
+          if ($isPublicRelease) {
+            $title = "Local Network Scanner $env:RELEASE_VERSION"
+            $requiredReleaseNote = "Windows desktop release $env:RELEASE_VERSION."
+            $notes = @(
+              $requiredReleaseNote,
+              '',
+              '- `win-x64`: exact ZIP and installer installed, executed and removed on native Windows x64.',
+              '- `win-arm64`: exact ZIP and installer installed, executed and removed on a native Windows ARM64 runner.',
+              '- UI, CLI, App Control diagnostic, installer and embedded uninstaller use timestamped Microsoft Artifact Signing.',
+              '',
+              'O instalador não inicia automaticamente a aplicação. Se o Windows apresentar o código 4551, consulte `docs/APP_CONTROL.md`; não desative a política de Controlo de Aplicações.',
+              'Consulte também `SIGNING-STATE.txt`, o changelog e as limitações técnicas incluídas no pacote.'
+            ) -join [Environment]::NewLine
+          }
+          else {
+            $title = "Local Network Scanner $env:RELEASE_VERSION - Private QA (NotSigned)"
+            $requiredReleaseNote = "Private QA prerelease $env:RELEASE_VERSION (NotSigned)."
+            $notes = @(
+              $requiredReleaseNote,
+              '',
+              '**Não distribuir como release de produção.** Estes assets não têm uma identidade Authenticode pública e podem ser bloqueados por Smart App Control, WDAC ou AppLocker com o código 4551.',
+              '',
+              '- O ZIP e instalador x64 exatos foram instalados, executados e removidos em Windows x64 nativo.',
+              '- O ZIP e instalador ARM64 exatos foram instalados, executados e removidos num runner Windows ARM64 nativo.',
+              '- `SIGNING-STATE.txt` regista `PrivateQa`, `NotSigned` e as duas validações nativas.',
+              '- Esta prerelease só foi criada porque o repositório estava privado durante o workflow.',
+              '',
+              'Para distribuição pública é obrigatória uma nova execução com Microsoft Artifact Signing Public Trust, autorização IEEE e `publish_release=true`.'
+            ) -join [Environment]::NewLine
           }
 
-          gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --draft=false
-          if ($LASTEXITCODE -ne 0) {
-            throw "LNS-REL-008: release $env:RELEASE_TAG remains a draft because final publication failed."
+          $ownershipMarker = '<!-- lns-release-owner schema=1 run={0} commit={1} candidate={2} -->' -f @(
+            $env:GITHUB_RUN_ID,
+            $env:GITHUB_SHA.ToLowerInvariant(),
+            $env:CANDIDATE_DIGEST.ToLowerInvariant()
+          )
+          $notes = $notes + [Environment]::NewLine + [Environment]::NewLine + $ownershipMarker
+          if ([string]::IsNullOrWhiteSpace($env:GITHUB_API_URL)) {
+            throw 'LNS-REL-008: GITHUB_API_URL is unavailable.'
           }
+          $apiRoot = "$($env:GITHUB_API_URL.TrimEnd('/'))/repos/$env:GITHUB_REPOSITORY"
+          $apiHeaders = @{
+            Accept = 'application/vnd.github+json'
+            Authorization = "Bearer $env:GH_TOKEN"
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+
+          function Invoke-GitHubApi {
+            param(
+              [Parameter(Mandatory = $true)][ValidateSet('Get', 'Post', 'Patch', 'Delete')][string]$Method,
+              [Parameter(Mandatory = $true)][string]$Path,
+              [hashtable]$Body,
+              [switch]$AllowNotFound
+            )
+
+            $request = @{
+              Method = $Method
+              Uri = "$apiRoot/$Path"
+              Headers = $apiHeaders
+            }
+            if ($null -ne $Body) {
+              $request.ContentType = 'application/json'
+              $request.Body = $Body | ConvertTo-Json -Depth 8 -Compress
+            }
+            try {
+              $response = Invoke-RestMethod @request
+              return $response
+            }
+            catch {
+              $statusCode = 0
+              if ($null -ne $_.Exception.Response) {
+                $statusCode = [int]$_.Exception.Response.StatusCode
+              }
+              if ($AllowNotFound -and $statusCode -eq 404) {
+                return $null
+              }
+              throw "LNS-REL-008: GitHub API $Method '$Path' failed with HTTP ${statusCode}: $($_.Exception.Message)"
+            }
+          }
+
+          function Get-LiveTagTargetCommit {
+            $escapedTag = [Uri]::EscapeDataString($env:RELEASE_TAG)
+            $reference = Invoke-GitHubApi -Method Get -Path "git/ref/tags/$escapedTag"
+            if ([string]$reference.ref -cne "refs/tags/$env:RELEASE_TAG") {
+              throw "LNS-REL-009: GitHub returned an unexpected ref for $env:RELEASE_TAG."
+            }
+
+            $object = $reference.object
+            $referenceType = ([string]$object.type).ToLowerInvariant()
+            $referenceSha = ([string]$object.sha).ToLowerInvariant()
+            $visited = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+            $resolvedCommit = $null
+            for ($depth = 0; $depth -lt 8; $depth++) {
+              $type = ([string]$object.type).ToLowerInvariant()
+              $sha = ([string]$object.sha).ToLowerInvariant()
+              if ($sha -notmatch '^[0-9a-f]{40}$') {
+                throw "LNS-REL-009: tag $env:RELEASE_TAG resolved to an invalid Git object SHA."
+              }
+              if ($type -eq 'commit') {
+                $resolvedCommit = $sha
+                break
+              }
+              if ($type -ne 'tag' -or -not $visited.Add($sha)) {
+                throw "LNS-REL-009: tag $env:RELEASE_TAG does not resolve safely to one commit."
+              }
+              $tagObject = Invoke-GitHubApi -Method Get -Path "git/tags/$sha"
+              if ([string]$tagObject.sha -cne $sha) {
+                throw "LNS-REL-009: annotated tag object SHA changed while resolving $env:RELEASE_TAG."
+              }
+              $object = $tagObject.object
+            }
+            if ([string]::IsNullOrWhiteSpace($resolvedCommit)) {
+              throw "LNS-REL-009: annotated tag $env:RELEASE_TAG exceeds the safe dereference depth."
+            }
+
+            $confirmedReference = Invoke-GitHubApi -Method Get -Path "git/ref/tags/$escapedTag"
+            if ([string]$confirmedReference.ref -cne "refs/tags/$env:RELEASE_TAG" -or
+                ([string]$confirmedReference.object.type).ToLowerInvariant() -cne $referenceType -or
+                ([string]$confirmedReference.object.sha).ToLowerInvariant() -cne $referenceSha) {
+              throw "LNS-REL-009: tag $env:RELEASE_TAG changed while its target was being resolved."
+            }
+            return $resolvedCommit
+          }
+
+          function Assert-LiveTagTargetsWorkflowCommit {
+            $tagCommit = Get-LiveTagTargetCommit
+            if ($tagCommit -cne $env:GITHUB_SHA.ToLowerInvariant()) {
+              throw "LNS-REL-009: live tag $env:RELEASE_TAG targets $tagCommit instead of workflow commit $env:GITHUB_SHA."
+            }
+          }
+
+          function Get-RemoteReleaseByTag {
+            param([switch]$AllowNotFound)
+            $escapedTag = [Uri]::EscapeDataString($env:RELEASE_TAG)
+            Invoke-GitHubApi `
+              -Method Get `
+              -Path "releases/tags/$escapedTag" `
+              -AllowNotFound:$AllowNotFound
+          }
+
+          function Test-OwnedDraft {
+            param([Parameter(Mandatory = $true)][object]$Release)
+            $body = [string]$Release.body
+            return [bool]$Release.draft -and
+              [string]$Release.tag_name -ceq $env:RELEASE_TAG -and
+              [string]$Release.name -ceq $title -and
+              [bool]$Release.prerelease -eq (-not $isPublicRelease) -and
+              $body.IndexOf($ownershipMarker, [StringComparison]::Ordinal) -ge 0
+          }
+
+          function Remove-OwnedDraftIfSafe {
+            param([Parameter(Mandatory = $true)][long]$ReleaseId)
+            $current = Invoke-GitHubApi `
+              -Method Get `
+              -Path "releases/$ReleaseId" `
+              -AllowNotFound
+            if ($null -eq $current) {
+              return
+            }
+            if (-not (Test-OwnedDraft -Release $current)) {
+              throw "LNS-REL-008: refusing to delete release $ReleaseId because it is not the owned draft for this run."
+            }
+            Invoke-GitHubApi -Method Delete -Path "releases/$ReleaseId" | Out-Null
+            $remaining = Invoke-GitHubApi `
+              -Method Get `
+              -Path "releases/$ReleaseId" `
+              -AllowNotFound
+            if ($null -ne $remaining) {
+              throw "LNS-REL-008: owned draft $ReleaseId still exists after cleanup."
+            }
+          }
+
+          function Assert-RemoteRelease {
+            param(
+              [Parameter(Mandatory = $true)][object]$Release,
+              [Parameter(Mandatory = $true)][bool]$ExpectedDraft,
+              [Parameter(Mandatory = $true)][bool]$ExpectedPrerelease
+            )
+
+            $releaseBody = [string]$Release.body
+            if ([string]$Release.tag_name -cne $env:RELEASE_TAG -or
+                [string]$Release.name -cne $title -or
+                [bool]$Release.draft -ne $ExpectedDraft -or
+                [bool]$Release.prerelease -ne $ExpectedPrerelease -or
+                $releaseBody.IndexOf($requiredReleaseNote, [StringComparison]::Ordinal) -lt 0) {
+              throw "LNS-REL-008: remote release state mismatch for $env:RELEASE_TAG."
+            }
+            $remoteAssets = @($Release.assets)
+            $remoteNames = @($remoteAssets | ForEach-Object { [string]$_.name } | Sort-Object)
+            $expectedNames = @($assetNames | Sort-Object)
+            $difference = @(
+              Compare-Object -ReferenceObject $expectedNames -DifferenceObject $remoteNames
+            )
+            if ($remoteAssets.Count -ne 10 -or $difference.Count -ne 0) {
+              throw "LNS-REL-008: remote release does not contain the exact 10-asset contract: $($difference | Out-String)"
+            }
+            foreach ($name in $assetNames) {
+              $matches = @($remoteAssets | Where-Object { [string]$_.name -ceq $name })
+              if ($matches.Count -ne 1 -or [string]$matches[0].state -cne 'uploaded') {
+                throw "LNS-REL-008: remote release must contain exactly one uploaded asset named $name."
+              }
+              $localFile = Get-Item -LiteralPath (Join-Path '.\artifacts\release' $name)
+              $localDigest = 'sha256:{0}' -f (
+                Get-FileHash -LiteralPath $localFile.FullName -Algorithm SHA256
+              ).Hash.ToLowerInvariant()
+              if ([string]$matches[0].digest -cne $localDigest -or
+                  [long]$matches[0].size -ne $localFile.Length) {
+                throw "LNS-REL-008: remote release asset digest or size mismatch for $name."
+              }
+            }
+          }
+
+          function Get-VerifiedRemoteRelease {
+            param(
+              [Parameter(Mandatory = $true)][bool]$ExpectedDraft,
+              [Parameter(Mandatory = $true)][bool]$ExpectedPrerelease
+            )
+
+            $lastFailure = ''
+            for ($attempt = 1; $attempt -le 5; $attempt++) {
+              $release = Get-RemoteReleaseByTag
+              try {
+                Assert-RemoteRelease `
+                  -Release $release `
+                  -ExpectedDraft $ExpectedDraft `
+                  -ExpectedPrerelease $ExpectedPrerelease
+                return $release
+              }
+              catch {
+                $lastFailure = $_.Exception.Message
+                if ($attempt -lt 5) {
+                  Start-Sleep -Seconds 2
+                }
+              }
+            }
+            throw "LNS-REL-008: remote release verification did not converge: $lastFailure"
+          }
+
+          Assert-LivePrivateRepositoryForUnsignedRelease
+          Assert-LiveTagTargetsWorkflowCommit
+
+          $ownedDraftId = $null
+          $publicationConfirmed = $false
+          try {
+            $existingRelease = Get-RemoteReleaseByTag -AllowNotFound
+            if ($null -ne $existingRelease -and -not [bool]$existingRelease.draft) {
+              $publishedRelease = Get-VerifiedRemoteRelease `
+                -ExpectedDraft $false `
+                -ExpectedPrerelease (-not $isPublicRelease)
+              Write-Host "Release $env:RELEASE_TAG is already published with the exact verified assets."
+            }
+            else {
+              if ($null -ne $existingRelease) {
+                if (-not (Test-OwnedDraft -Release $existingRelease)) {
+                  throw "LNS-REL-008: an unowned or mismatched draft already exists for $env:RELEASE_TAG."
+                }
+                $ownedDraftId = [long]$existingRelease.id
+                Assert-LiveTagTargetsWorkflowCommit
+                Remove-OwnedDraftIfSafe -ReleaseId $ownedDraftId
+                $ownedDraftId = $null
+              }
+
+              Assert-LiveTagTargetsWorkflowCommit
+              $createdDraft = Invoke-GitHubApi -Method Post -Path 'releases' -Body @{
+                tag_name = $env:RELEASE_TAG
+                name = $title
+                body = $notes
+                draft = $true
+                prerelease = -not $isPublicRelease
+              }
+              if ([long]$createdDraft.id -le 0) {
+                throw "LNS-REL-008: GitHub did not return a valid draft release ID."
+              }
+              $ownedDraftId = [long]$createdDraft.id
+              if (-not (Test-OwnedDraft -Release $createdDraft)) {
+                throw "LNS-REL-008: created draft does not carry the expected ownership marker and metadata."
+              }
+
+              Assert-LiveTagTargetsWorkflowCommit
+              $uploadArguments = @(
+                'release', 'upload', $env:RELEASE_TAG
+              ) + $assets + @(
+                '--repo', $env:GITHUB_REPOSITORY
+              )
+              & gh @uploadArguments
+              if ($LASTEXITCODE -ne 0) {
+                throw "LNS-REL-008: unable to upload the exact assets to draft release $env:RELEASE_TAG."
+              }
+
+              $draftRelease = Get-VerifiedRemoteRelease `
+                -ExpectedDraft $true `
+                -ExpectedPrerelease (-not $isPublicRelease)
+              if ([long]$draftRelease.id -ne $ownedDraftId) {
+                throw "LNS-REL-008: verified draft ID does not match the draft created by this run."
+              }
+
+              Assert-LiveTagTargetsWorkflowCommit
+              Assert-LivePrivateRepositoryForUnsignedRelease
+              $publishedRelease = Invoke-GitHubApi `
+                -Method Patch `
+                -Path "releases/$ownedDraftId" `
+                -Body @{
+                  draft = $false
+                  prerelease = -not $isPublicRelease
+                }
+              if ([bool]$publishedRelease.draft) {
+                throw "LNS-REL-008: release $env:RELEASE_TAG remains a draft after publication."
+              }
+              $publishedRelease = Get-VerifiedRemoteRelease `
+                -ExpectedDraft $false `
+                -ExpectedPrerelease (-not $isPublicRelease)
+            }
+
+            Assert-LiveTagTargetsWorkflowCommit
+            Assert-LivePrivateRepositoryForUnsignedRelease
+            $publicationConfirmed = $true
+          }
+          catch {
+            $originalFailure = $_
+            if ($null -ne $ownedDraftId -and -not $publicationConfirmed) {
+              try {
+                Remove-OwnedDraftIfSafe -ReleaseId $ownedDraftId
+                Write-Host "Removed owned draft $ownedDraftId after a pre-publication failure."
+              }
+              catch {
+                Write-Host "::warning title=LNS-REL-008::Owned draft cleanup was not safe or did not complete: $($_.Exception.Message)"
+              }
+            }
+            throw $originalFailure
+          }
+
+          $runArtifacts = Invoke-GitHubApi `
+            -Method Get `
+            -Path "actions/runs/$env:GITHUB_RUN_ID/artifacts?per_page=100"
+          $candidateName = "LocalNetworkScanner-$env:RELEASE_VERSION-windows-candidate"
+          $candidateArtifacts = @($runArtifacts.artifacts | Where-Object {
+            [string]$_.name -ceq $candidateName -and -not [bool]$_.expired
+          })
+          if ($candidateArtifacts.Count -gt 1) {
+            throw "LNS-REL-008: release is verified, but multiple current-run candidate artifacts were found."
+          }
+          if ($candidateArtifacts.Count -eq 1) {
+            $expectedArtifactDigest = $env:CANDIDATE_DIGEST.ToLowerInvariant().Replace('sha256:', '')
+            $actualArtifactDigest = ([string]$candidateArtifacts[0].digest).ToLowerInvariant().Replace('sha256:', '')
+            if ([string]::IsNullOrWhiteSpace($actualArtifactDigest) -or
+                $actualArtifactDigest -cne $expectedArtifactDigest) {
+              throw 'LNS-REL-008: release is verified, but the candidate selected for cleanup has an unexpected digest.'
+            }
+            Invoke-GitHubApi `
+              -Method Delete `
+              -Path "actions/artifacts/$($candidateArtifacts[0].id)" | Out-Null
+            $artifactCleanup = 'deleted after final verification'
+          }
+          else {
+            $artifactCleanup = 'already absent (idempotent cleanup)'
+          }
+
+          @(
+            '## Verified GitHub Release',
+            '',
+            "- Tag: ``$env:RELEASE_TAG``",
+            "- Mode: ``$(if ($isPublicRelease) { 'Public Signed' } else { 'Private QA prerelease (NotSigned)' })``",
+            '- Remote assets: `10` (names, sizes and SHA-256 verified)',
+            "- Heavy candidate artifact: $artifactCleanup",
+            '- Compact validation evidence and SBOM: retained for 30 days'
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8
 
 # Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

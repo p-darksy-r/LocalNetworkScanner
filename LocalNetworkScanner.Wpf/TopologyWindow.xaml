@@ -87,10 +87,13 @@
                         ToolTip="Guardar topologia estruturada para Gephi, yEd ou ferramentas compatíveis"
                         AutomationProperties.Name="Guardar topologia em GraphML" />
                 <Button Margin="12,0,0,0"
-                        Style="{StaticResource CompactButtonStyle}"
+                        Style="{StaticResource IconButtonStyle}"
                         Click="OnCloseClick"
-                        Content="Fechar"
-                        AutomationProperties.Name="Fechar janela de topologia" />
+                        ToolTip="Fechar topologia (Escape ou Alt+F4)"
+                        AutomationProperties.Name="Fechar janela de topologia"
+                        AutomationProperties.HelpText="Fecha apenas a janela de topologia. Atalhos Escape e Alt+F4.">
+                    <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE8BB;" />
+                </Button>
             </WrapPanel>
         </Grid>
 

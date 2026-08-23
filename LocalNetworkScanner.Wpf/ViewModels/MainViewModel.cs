@@ -59,6 +59,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _isLoadingInterfaces;
     private bool _isScanning;
     private bool _isCancelling;
+    private bool _isSavingDeviceMetadata;
     private bool _suppressAutomaticCidr;
     private bool _hasInitialized;
     private bool _isSynchronizingTopologySelection;
@@ -155,7 +156,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             () => !IsScanning && !IsLoadingInterfaces,
             HandleUnexpectedException);
         CancelCommand = new RelayCommand(CancelScan, () => IsScanning && !IsCancelling);
-        ClearResultsCommand = new RelayCommand(ClearResults, () => !IsScanning && Devices.Count > 0);
+        ClearResultsCommand = new RelayCommand(
+            ClearResults,
+            () => !IsScanning && !IsSavingDeviceMetadata && Devices.Count > 0);
         ClearSearchCommand = new RelayCommand(() => SearchText = string.Empty, () => SearchText.Length > 0);
         ResetFiltersCommand = new RelayCommand(
             ResetFilters,
@@ -175,7 +178,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             HandleUnexpectedException);
         SaveDeviceMetadataCommand = new AsyncRelayCommand(
             SaveDeviceMetadataAsync,
-            () => SelectedDevice is not null && _lastResult is not null && !IsScanning,
+            () => CanEditSelectedDeviceMetadata,
             HandleUnexpectedException);
         WakeOnLanCommand = new AsyncRelayCommand(
             WakeOnLanAsync,
@@ -308,6 +311,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedDevice, value))
             {
+                OnPropertyChanged(nameof(CanEditSelectedDeviceMetadata));
                 RaiseSelectionCanExecuteChanged();
                 SynchronizeTopologySelectionFromDevice();
             }
@@ -494,6 +498,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 return;
 
             OnPropertyChanged(nameof(CanEditScanSettings));
+            OnPropertyChanged(nameof(CanEditSelectedDeviceMetadata));
             OnPropertyChanged(nameof(IsNotScanning));
             NotifyEmptyStateChanged();
             RaiseAllCanExecuteChanged();
@@ -510,6 +515,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             NotifyEmptyStateChanged();
             CancelCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    public bool IsSavingDeviceMetadata
+    {
+        get => _isSavingDeviceMetadata;
+        private set
+        {
+            if (!SetProperty(ref _isSavingDeviceMetadata, value))
+                return;
+
+            OnPropertyChanged(nameof(CanEditSelectedDeviceMetadata));
+            SaveDeviceMetadataCommand.RaiseCanExecuteChanged();
+            ClearResultsCommand.RaiseCanExecuteChanged();
+            RaiseScanCanExecuteChanged();
         }
     }
 
@@ -701,8 +721,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     public bool CanEditScanSettings => !IsScanning && !IsLoadingInterfaces;
+    public bool CanEditSelectedDeviceMetadata =>
+        SelectedDevice is not null && _lastResult is not null && !IsScanning && !IsSavingDeviceMetadata;
     public bool IsNotScanning => !IsScanning;
     public bool HasNoVisibleDevices => Devices.Count > 0 && VisibleDeviceCount == 0;
+
+    public bool HasUnsavedDeviceMetadata => Devices.Any(device => device.IsMetadataDirty);
     public string ScanConfigurationToggleLabel => IsScanConfigurationExpanded
         ? "Ocultar configuração"
         : "Configuração do scan";
@@ -999,6 +1023,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private async Task ScanAsync()
     {
+        if (Devices.Any(device => device.IsMetadataDirty) &&
+            !_dialogs.Confirm(
+                "Alterações por guardar",
+                "Existem alterações por guardar em nomes personalizados, notas ou favoritos. " +
+                "Iniciar outro scan remove o resultado atual e essas alterações. Continuar sem guardar?"))
+        {
+            return;
+        }
+
         PreparedScan? prepared = PrepareScan();
         if (prepared is null)
             return;
@@ -1139,30 +1172,36 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 throw new ScanInputException(DiagnosticCatalog.PublicAddressScope(NetworkCidr), nameof(NetworkCidr));
             }
 
-            if (addresses.Count > 4_096 && !_dialogs.Confirm(
-                    "Scan de grande dimensão",
-                    $"A rede contém {addresses.Count:N0} endereços. O scan pode demorar e gerar bastante tráfego. Continuar?"))
+            ScanOptions options = BuildScanOptions();
+            ScanWorkloadEstimate workload = ScanWorkloadEstimator.Estimate(addresses.Count, options);
+            bool largeAddressRange = addresses.Count > 4_096;
+            List<string> consentSections = [];
+            if (largeAddressRange || workload.RequiresExplicitConfirmation)
+                consentSections.Add(BuildWorkloadConfirmationMessage(workload));
+
+            if (UseCustomScanSettings && IsSnmpEnabled)
             {
-                return null;
+                consentSections.Add(
+                    "SNMP v2c: a community é enviada sem cifragem aos alvos configurados. " +
+                    "A identidade consulta cada dispositivo online; a topologia consulta apenas o switch indicado. " +
+                    "Usa uma community dedicada e apenas de leitura numa rede de gestão confiável.");
             }
 
-            if (UseCustomScanSettings && IsSnmpEnabled && !_dialogs.Confirm(
-                    "Confirmar consultas SNMP v2c",
-                    "O SNMP v2c envia a community sem cifragem aos alvos configurados. " +
-                    "A identidade SNMP consulta cada dispositivo online; a topologia consulta apenas o switch indicado. " +
-                    "Utiliza uma community dedicada e apenas de leitura numa rede de gestão confiável. " +
-                    "Confirma que administras estes dispositivos e autorizas estas consultas."))
+            if (UseCustomScanSettings && EnableNmapDiscovery)
             {
-                return null;
+                string executable = string.IsNullOrWhiteSpace(NmapExecutablePath)
+                    ? "A autodeteção está limitada a Program Files; PATH e caminhos de rede não são usados."
+                    : $"Executável local: {Path.GetFullPath(Environment.ExpandEnvironmentVariables(NmapExecutablePath.Trim().Trim('\"')))}.";
+                consentSections.Add(
+                    "Nmap: uma ferramenta externa executará sondas TCP ativas apenas nos dispositivos online. " +
+                    $"{executable} Confirma o publisher e a assinatura do ficheiro no Windows.");
             }
 
-            if (UseCustomScanSettings && EnableNmapDiscovery && !_dialogs.Confirm(
-                    "Confirmar enriquecimento Nmap",
-                    "O Nmap é uma ferramenta externa e executará sondas TCP ativas nos dispositivos online. " +
-                    (string.IsNullOrWhiteSpace(NmapExecutablePath)
-                        ? "A autodeteção está limitada às instalações em Program Files; PATH e caminhos de rede não são usados. "
-                        : $"Executável local: {Path.GetFullPath(Environment.ExpandEnvironmentVariables(NmapExecutablePath.Trim().Trim('\"')))}. ") +
-                    "Confirma o publisher/assinatura do ficheiro no Windows e que autorizas este tráfego adicional."))
+            if (consentSections.Count > 0 && !_dialogs.Confirm(
+                    GetWorkloadConfirmationTitle(workload, largeAddressRange),
+                    string.Join(Environment.NewLine + Environment.NewLine, consentSections) +
+                    Environment.NewLine + Environment.NewLine +
+                    "Confirma que administras estes dispositivos, autorizas o tráfego descrito e queres continuar?"))
             {
                 return null;
             }
@@ -1170,7 +1209,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return new PreparedScan(
                 SelectedNetworkInterface,
                 addresses,
-                BuildScanOptions());
+                options);
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or ArgumentException or FormatException)
@@ -1181,6 +1220,43 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 DiagnosticMapper.FromException(exception, NetworkCidr));
             return null;
         }
+    }
+
+    private static string GetWorkloadConfirmationTitle(
+        ScanWorkloadEstimate workload,
+        bool largeAddressRange) => workload.Level switch
+        {
+            ScanWorkloadLevel.Extreme => "Confirmar scan muito intensivo",
+            ScanWorkloadLevel.High => "Confirmar scan intensivo",
+            _ when largeAddressRange => "Confirmar rede de grande dimensão",
+            _ => "Confirmar tráfego ativo"
+        };
+
+    private static string BuildWorkloadConfirmationMessage(ScanWorkloadEstimate workload)
+    {
+        string risk = workload.Level switch
+        {
+            ScanWorkloadLevel.Extreme =>
+                "Esta configuração pode produzir uma carga muito elevada e deve ser usada apenas numa janela de manutenção.",
+            ScanWorkloadLevel.High =>
+                "Esta configuração pode demorar e gerar tráfego significativo.",
+            _ =>
+                "A rede selecionada é extensa e pode demorar a analisar."
+        };
+        string nmapNotice = workload.HasAdditionalNmapTraffic
+            ? " O Nmap está ativo e executará sondas adicionais com o seu próprio orçamento; esse tráfego não entra nesta contagem."
+            : string.Empty;
+
+        return
+            $"A configuração abrange {workload.AddressCount:N0} endereços, " +
+            $"{workload.DiscoveryPortCount:N0} portas de descoberta e " +
+            $"{workload.FullPortCount:N0} portas de inventário. " +
+            $"O máximo conservador das sondas TCP incorporadas é " +
+            $"{workload.MaximumBuiltInTcpAttempts:N0} tentativas, incluindo até " +
+            $"{workload.MaximumServiceProbeAttempts:N0} ligações leves de serviço e " +
+            $"{workload.MaximumUpnpDescriptionAttempts:N0} pedidos de descrição UPnP. " +
+            "As portas de inventário só são testadas nos dispositivos confirmados online, " +
+            $"pelo que a carga real tende a ser inferior.{nmapNotice} {risk}";
     }
 
     private void ResetProfileOverrides()
@@ -1595,6 +1671,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (IsScanning)
             return;
 
+        bool hasUnsavedMetadata = Devices.Any(device => device.IsMetadataDirty);
+        string message = hasUnsavedMetadata
+            ? "Existem alterações por guardar em nomes personalizados, notas ou favoritos. " +
+              "Limpar agora remove os resultados e essas alterações. Continuar sem guardar?"
+            : "Queres remover os resultados, diagnósticos e o mapa do scan atual?";
+        if (!_dialogs.Confirm("Limpar resultados", message))
+            return;
+
         ClearResultsCore();
         IsScanConfigurationExpanded = true;
         ProgressPhase = "Pronto";
@@ -1784,9 +1868,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (selected is null || result is null)
             return;
 
+        IsSavingDeviceMetadata = true;
+        StatusMessage = $"A guardar preferências de {selected.Hostname}...";
         try
         {
             await _deviceMetadata.SaveAsync(selected.Device, result.NetworkInterface.NetworkCidr);
+            selected.MarkMetadataSaved();
             selected.Update(selected.Device);
             RefreshFilter();
             StatusMessage = $"Preferências de {selected.Hostname} guardadas.";
@@ -1794,6 +1881,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             ReportException("Falha ao guardar o dispositivo", exception, selected.IpAddress);
+        }
+        finally
+        {
+            IsSavingDeviceMetadata = false;
         }
     }
 
@@ -1987,6 +2078,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             device.SnmpIdentity,
             device.NmapIdentity,
             device.IdentitySearchText,
+            string.Join(' ', device.MdnsNames),
+            device.MdnsServiceSearchText,
             device.DeviceType,
             device.OpenPorts,
             device.Protocols,
@@ -2019,6 +2112,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private bool CanStartScan() =>
         !IsScanning &&
+        !IsSavingDeviceMetadata &&
         !IsLoadingInterfaces &&
         !HasBlockingInputValidationErrors &&
         SelectedNetworkInterface is not null &&
