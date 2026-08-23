@@ -2,7 +2,7 @@
 
 # Local Network Scanner
 
-[![source v1.3.7](https://img.shields.io/badge/source-v1.3.7-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.3.7)
+[![source v1.3.8](https://img.shields.io/badge/source-v1.3.8-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.3.8)
 ![Windows](https://img.shields.io/badge/Windows-x64%20%7C%20ARM64-0078d4)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/LICENSE)
 
@@ -10,7 +10,7 @@
 
 Scanner de redes locais para Windows com uma UI WPF simples, uma CLI para automação, diagnósticos acionáveis e topologia opcional. O programa separa observações diretas, dados fornecidos pela infraestrutura e inferências, para que um resultado provável nunca seja apresentado como facto confirmado.
 
-> **Estado de distribuição:** a `v1.2.0` é histórica e não é recomendada para instalação porque foi publicada sem Authenticode. A `v1.3.7` identifica o candidato de código e QA mais recente; no repositório privado pode existir como prerelease `Private QA (NotSigned)`, mas não é uma distribuição pública de produção.
+> **Estado de distribuição:** a `v1.2.0` é histórica e não é recomendada para instalação porque foi publicada sem Authenticode. A `v1.3.8` identifica o candidato de código e QA mais recente; no repositório privado pode existir como prerelease `Private QA (NotSigned)`, mas não é uma distribuição pública de produção.
 >
 > O repositório é privado. Uma tag nova executa a QA completa e, enquanto os gates de produção estiverem incompletos, pode criar automaticamente apenas uma prerelease privada `NotSigned`; a distribuição pública só é autorizada depois dos gates de assinatura, validação x64/ARM64 nativa e redistribuição indicados abaixo. Consulte o [guia de assinatura](docs/SIGNING.md).
 
@@ -37,7 +37,7 @@ Além dos quatro downloads, a release inclui os checksums individuais e combinad
 
 | Alvo | Estado |
 | --- | --- |
-| Windows 11 x64 | código 1.3.7: build Release, testes determinísticos e smoke UI/CLI obrigatórios; o workflow da tag instala, executa e remove o pacote self-contained exato antes de o marcar como validado |
+| Windows 11 x64 | código 1.3.8: build Release, testes determinísticos e smoke UI/CLI obrigatórios; o workflow da tag instala, executa e remove o pacote self-contained exato antes de o marcar como validado |
 | Windows 11 ARM64 | CI e release exigem build, testes e smoke num runner Windows ARM64 nativo; o cross-build isolado deixou de contar como validação |
 | Windows 10 | o .NET 10 limita o suporte atual a edições LTSC/Enterprise compatíveis; consulte a [matriz oficial da Microsoft](https://learn.microsoft.com/dotnet/core/install/windows#supported-versions) |
 
@@ -266,7 +266,7 @@ Validação completa:
 powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1 -Configuration Release -VerifyFormat
 ```
 
-O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.3.7`, a suite contém 89 testes. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
+O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.3.8`, a suite contém 89 testes. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
 
 O workflow CodeQL analisa C# com consultas `security-extended` quando o repositório é público ou quando `CODEQL_ENABLED=true` e o plano privado permite code scanning. A release restaura metadados de dependências para `win-x64` e `win-arm64`, exige ambos os runtimes e gera/valida um SBOM SPDX 2.2 como evidência separada, sem o confundir com os dez ficheiros instaláveis validados.
 

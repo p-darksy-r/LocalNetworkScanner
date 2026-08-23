@@ -49,6 +49,94 @@ function Assert-Throws {
     throw "Expected failure matching '$MessagePattern', but the action succeeded."
 }
 
+function Get-WorkflowPowerShellRuns {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string[]]$Lines
+    )
+
+    $runs = [Collections.Generic.List[object]]::new()
+    for ($index = 0; $index -lt $Lines.Count; $index++) {
+        if ($Lines[$index] -notmatch '^      - (?<property>.*)$') {
+            continue
+        }
+
+        $firstProperty = $Matches["property"]
+        $stepName = "unnamed step at workflow line $($index + 1)"
+        if ($firstProperty -match '^name:\s*(?<name>.+?)\s*$') {
+            $stepName = $Matches["name"].Trim()
+        }
+        $stepEnd = $Lines.Count
+        for ($cursor = $index + 1; $cursor -lt $Lines.Count; $cursor++) {
+            if ($Lines[$cursor] -match '^      - ' -or
+                $Lines[$cursor] -match '^  [a-zA-Z0-9_-]+:\s*$') {
+                $stepEnd = $cursor
+                break
+            }
+        }
+
+        $usesPowerShell = $false
+        $runIndex = -1
+        $runValue = $null
+        $runCount = 0
+        for ($cursor = $index; $cursor -lt $stepEnd; $cursor++) {
+            $property = if ($cursor -eq $index) {
+                $firstProperty
+            }
+            elseif ($Lines[$cursor] -match '^        (?<property>.*)$') {
+                $Matches["property"]
+            }
+            else {
+                continue
+            }
+            if ($property -match '^name:\s*(?<name>.+?)\s*$') {
+                $stepName = $Matches["name"].Trim()
+            }
+            if ($property -match '^shell:\s*pwsh\s*$') {
+                $usesPowerShell = $true
+            }
+            if ($property -match '^run:\s*(?<value>.*)$') {
+                $runIndex = $cursor
+                $runValue = $Matches["value"].Trim()
+                $runCount++
+            }
+        }
+
+        if ($usesPowerShell) {
+            if ($runCount -ne 1) {
+                throw "PowerShell workflow step '$stepName' must contain exactly one run declaration."
+            }
+            if ($runValue -match '^[|>]' -and $runValue -cne '|') {
+                throw "PowerShell workflow step '$stepName' uses unsupported run block style '$runValue'."
+            }
+            $source = $runValue
+            if ($runValue -ceq '|') {
+                $body = [Collections.Generic.List[string]]::new()
+                for ($cursor = $runIndex + 1; $cursor -lt $stepEnd; $cursor++) {
+                    if ($Lines[$cursor].Length -eq 0) {
+                        $body.Add("")
+                        continue
+                    }
+                    if ($Lines[$cursor] -notmatch '^          ') {
+                        break
+                    }
+                    $body.Add($Lines[$cursor].Substring(10))
+                }
+                $source = $body -join [Environment]::NewLine
+            }
+            $runs.Add([pscustomobject]@{
+                Name = $stepName
+                Source = $source
+            })
+        }
+
+        $index = $stepEnd - 1
+    }
+
+    $runs
+}
+
 function New-CandidateFixture {
     param(
         [Parameter(Mandatory = $true)]
@@ -320,7 +408,33 @@ try {
         -Message "a terminal status gate must reject incomplete publication and independently verify the release API"
     $passed++
 
-    Write-Host "$passed/10 synthetic release evidence tests passed." -ForegroundColor Green
+    $workflowLines = @(Get-Content -LiteralPath (Join-Path $repoRoot ".github\workflows\release.yml"))
+    $declaredPowerShellRuns = @($workflowLines | Where-Object {
+        $_ -match '^(?:      - |        )shell:\s*pwsh\s*$'
+    }).Count
+    $workflowPowerShellRuns = @(Get-WorkflowPowerShellRuns -Lines $workflowLines)
+    Assert-True `
+        -Condition ($declaredPowerShellRuns -ge 36 -and
+            $workflowPowerShellRuns.Count -eq $declaredPowerShellRuns -and
+            @($workflowPowerShellRuns | Where-Object { $_.Name -ceq "Summarize verified publication" }).Count -eq 1) `
+        -Message "every expected inline PowerShell release step must be included in syntax validation"
+    foreach ($workflowPowerShellRun in $workflowPowerShellRuns) {
+        $tokens = $null
+        $parseErrors = $null
+        [void][Management.Automation.Language.Parser]::ParseInput(
+            [string]$workflowPowerShellRun.Source,
+            [ref]$tokens,
+            [ref]$parseErrors)
+        if (@($parseErrors).Count -ne 0) {
+            $parseMessage = @($parseErrors | ForEach-Object {
+                "line $($_.Extent.StartLineNumber), column $($_.Extent.StartColumnNumber): $($_.Message)"
+            }) -join "; "
+            throw "Inline PowerShell step '$($workflowPowerShellRun.Name)' failed syntax validation: $parseMessage"
+        }
+    }
+    $passed++
+
+    Write-Host "$passed/11 synthetic release evidence tests passed." -ForegroundColor Green
 }
 finally {
     $resolvedTestRoot = [IO.Path]::GetFullPath($testRoot)

@@ -1446,8 +1446,8 @@ jobs:
             "- URL: $env:RELEASE_URL",
             "- Mode: $(if ($env:PUBLIC_RELEASE -eq 'true') { 'Public Signed' } else { 'Private QA prerelease (NotSigned)' })",
             '- Final assets: `12` (names, sizes and SHA-256 verified)',
-            "- Validated 10-file payload digest: `$env:FINAL_PAYLOAD_DIGEST`",
-            "- Final 12-asset release digest: `$env:FINAL_RELEASE_DIGEST`",
+            ('- Validated 10-file payload digest: `{0}`' -f $env:FINAL_PAYLOAD_DIGEST),
+            ('- Final 12-asset release digest: `{0}`' -f $env:FINAL_RELEASE_DIGEST),
             '- Validation attestation and SPDX SBOM: permanent release assets',
             '- GitHub Actions artifact storage used: `0 bytes`'
           ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8

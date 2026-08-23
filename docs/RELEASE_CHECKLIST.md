@@ -201,6 +201,7 @@ Se for usado outro instalador, documentar a ferramenta e versão, privilégios p
 - [ ] O materializador final aceitou o `SIGNING-STATE.txt` já validado do payload apenas através do opt-in do job Publish e confirmou-o contra o atestado; os restantes caminhos continuam a exigir evidência separada.
 - [ ] O workflow não criou artefactos de Actions; `VALIDATION-ATTESTATION.json` e o SBOM SPDX permanecem como assets da release, e qualquer cleanup atuou apenas sobre uma draft owned ainda não publicada.
 - [ ] O gate terminal `Require an actually published release` terminou com sucesso e confirmou pela API `draft=false`, a tag, o modo de confiança, o marker e os 12 assets, recompondo também os digests canónicos do payload e da release; uma publicação elegível `skipped`, falhada ou cancelada não pode deixar o workflow verde.
+- [ ] Todos os blocos `shell: pwsh` do workflow passaram validação sintática, incluindo o resumo executado depois de `draft=false`.
 - [ ] `SIGNING-STATE.txt` e as notas da release publicada dizem explicitamente `Signed`; releases anteriores conhecidas como não assinadas permanecem documentadas como `NotSigned`.
 - [ ] A release explica arquitetura, versão mínima de Windows suportada e known issues.
 - [ ] Existe um canal privado para vulnerabilidades e um canal normal para suporte.

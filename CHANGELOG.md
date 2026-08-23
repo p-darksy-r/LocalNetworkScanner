@@ -4,6 +4,21 @@
 
 Todas as alterações relevantes deste projeto são registadas neste ficheiro. O formato segue os princípios de Keep a Changelog e o versionamento segue Semantic Versioning.
 
+## [1.3.8] - 2026-08-23
+
+Tag nova obrigatória; a `v1.3.7` permanece imutável e a sua prerelease privada continua publicada. Os 12 assets foram materializados, validados e publicados corretamente, mas o passo posterior que escrevia o resumo Markdown continha um escape PowerShell inválido; por isso o job Publish e o gate terminal terminaram vermelhos apesar de a publicação já estar concluída.
+
+### Fixed
+
+- os dois digests do resumo são agora formatados com o operador `-f`, preservando os delimitadores Markdown sem permitir que um backtick escape a aspa final;
+- o contrato sintético descobre os 36 passos `shell: pwsh` do workflow, inclui explicitamente o resumo pós-publicação e compila cada bloco com o parser PowerShell antes de qualquer tag;
+- versão do produto, manifesto Windows, template de erros, README e checklist de release atualizados para `v1.3.8`.
+
+### Security
+
+- a v1.3.7 confirmou que o cleanup nunca elimina uma release já publicada: reconheceu `draft=false` e terminou como no-op;
+- o gate terminal continuou fail-closed e recusou o workflow vermelho, mesmo quando a falha ocorreu depois da publicação remota.
+
 ## [1.3.7] - 2026-08-23
 
 Tag nova obrigatória; a `v1.3.6` permanece imutável como evidência da tentativa falhada e não é movida nem reutilizada. Os pacotes, as validações x64/ARM64, o atestado e o SBOM passaram, mas o job de publicação não repôs uma segunda cópia local do estado validado na pasta de evidência; o cleanup eliminou a draft owned e nenhuma release `v1.3.6` foi publicada.
