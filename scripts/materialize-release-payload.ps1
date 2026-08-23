@@ -44,6 +44,8 @@ param(
 
     [switch]$AllowHistoricalWorkflowRun,
 
+    [switch]$UseMaterializedValidatedState,
+
     [string]$ReleaseRoot,
 
     [string]$EvidenceRoot
@@ -130,12 +132,20 @@ if ($contractDifference.Count -ne 0) {
     throw "LNS-REL-008: candidate does not match the exact 10-file contract: $($contractDifference | Out-String)"
 }
 
+$candidateStatePath = Join-Path $releasePath "SIGNING-STATE.txt"
 $attestationPath = Join-Path $evidencePath "VALIDATION-ATTESTATION.json"
-$validatedStatePath = Join-Path $evidencePath "SIGNING-STATE.txt"
-foreach ($requiredEvidence in @($attestationPath, $validatedStatePath)) {
-    if (-not (Test-Path -LiteralPath $requiredEvidence -PathType Leaf)) {
-        throw "LNS-REL-007: validation evidence file is missing: $requiredEvidence"
-    }
+if (-not (Test-Path -LiteralPath $attestationPath -PathType Leaf)) {
+    throw "LNS-REL-007: validation evidence file is missing: $attestationPath"
+}
+$evidenceStatePath = Join-Path $evidencePath "SIGNING-STATE.txt"
+$validatedStatePath = if (Test-Path -LiteralPath $evidenceStatePath -PathType Leaf) {
+    $evidenceStatePath
+}
+elseif ($UseMaterializedValidatedState) {
+    $candidateStatePath
+}
+else {
+    throw "LNS-REL-007: validation evidence file is missing: $evidenceStatePath"
 }
 try {
     $attestation = Get-Content -LiteralPath $attestationPath -Raw | ConvertFrom-Json
@@ -269,7 +279,6 @@ foreach ($binaryName in $binaryNames) {
     }
 }
 
-$candidateStatePath = Join-Path $releasePath "SIGNING-STATE.txt"
 $candidateState = @(Get-Content -LiteralPath $candidateStatePath)
 if ($alreadyMaterialized) {
     Assert-ExactStateContract `

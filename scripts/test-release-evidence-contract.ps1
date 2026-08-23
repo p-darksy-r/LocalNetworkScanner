@@ -183,6 +183,22 @@ try {
         -Message "an already-published attestation may retain its original verified run identity during an idempotent rerun"
     $passed++
 
+    $finalDownloadFixture = New-CandidateFixture -Name "final-download-layout"
+    $finalDownloadParameters = New-InvocationParameters -Fixture $finalDownloadFixture
+    & $newEvidenceScript @finalDownloadParameters *> $null
+    & $materializeScript @finalDownloadParameters *> $null
+    Remove-Item -LiteralPath (Join-Path $finalDownloadFixture.EvidenceRoot "SIGNING-STATE.txt")
+    Assert-Throws `
+        -Action { & $materializeScript @finalDownloadParameters *> $null } `
+        -MessagePattern "validation evidence file is missing"
+    $materializedFinalParameters = @{} + $finalDownloadParameters
+    $materializedFinalParameters.UseMaterializedValidatedState = $true
+    & $materializeScript @materializedFinalParameters *> $null
+    Assert-True `
+        -Condition (@(Get-Content -LiteralPath (Join-Path $finalDownloadFixture.ReleaseRoot "SIGNING-STATE.txt")) -ccontains "Native ARM64: Validated") `
+        -Message "an authenticated final download may explicitly reuse its attested materialized signing state"
+    $passed++
+
     $tamperFixture = New-CandidateFixture -Name "tamper"
     $tamperParameters = New-InvocationParameters -Fixture $tamperFixture
     & $newEvidenceScript @tamperParameters *> $null
@@ -265,8 +281,10 @@ try {
         $releaseWorkflow,
         '(?ms)^  publish:\r?\n(?<body>.*?)(?=^  [a-zA-Z0-9_-]+:)')
     Assert-True `
-        -Condition $publishJob.Success `
-        -Message "the release workflow must contain the publish job"
+        -Condition ($publishJob.Success -and
+            @([regex]::Matches($releaseWorkflow, '-UseMaterializedValidatedState')).Count -eq 1 -and
+            @([regex]::Matches($publishJob.Groups["body"].Value, '-UseMaterializedValidatedState')).Count -eq 1) `
+        -Message "only the publish job may explicitly recognize the already-materialized final signing state"
     $publishCondition = [regex]::Match(
         $publishJob.Groups["body"].Value,
         '(?ms)^    if: >-\r?\n(?<condition>.*?)(?=^    needs:)')
@@ -302,7 +320,7 @@ try {
         -Message "a terminal status gate must reject incomplete publication and independently verify the release API"
     $passed++
 
-    Write-Host "$passed/9 synthetic release evidence tests passed." -ForegroundColor Green
+    Write-Host "$passed/10 synthetic release evidence tests passed." -ForegroundColor Green
 }
 finally {
     $resolvedTestRoot = [IO.Path]::GetFullPath($testRoot)

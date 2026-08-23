@@ -1244,6 +1244,7 @@ jobs:
             -SourceRef $env:GITHUB_REF `
             -WorkflowRunId $env:GITHUB_RUN_ID `
             -WorkflowRunAttempt $env:GITHUB_RUN_ATTEMPT `
+            -UseMaterializedValidatedState `
             @historyParameters
 
       - name: Revalidate signed public release contract

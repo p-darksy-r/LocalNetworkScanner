@@ -4,6 +4,21 @@
 
 Todas as alterações relevantes deste projeto são registadas neste ficheiro. O formato segue os princípios de Keep a Changelog e o versionamento segue Semantic Versioning.
 
+## [1.3.7] - 2026-08-23
+
+Tag nova obrigatória; a `v1.3.6` permanece imutável como evidência da tentativa falhada e não é movida nem reutilizada. Os pacotes, as validações x64/ARM64, o atestado e o SBOM passaram, mas o job de publicação não repôs uma segunda cópia local do estado validado na pasta de evidência; o cleanup eliminou a draft owned e nenhuma release `v1.3.6` foi publicada.
+
+### Fixed
+
+- o materializador pode reconhecer explicitamente o `SIGNING-STATE.txt` já validado dentro do contrato final descarregado, sem exigir uma duplicação local que não existe entre jobs;
+- o caminho continua estrito por defeito e só o job de publicação ativa esse modo depois de `DownloadFinal` verificar os 12 assets; o estado reutilizado permanece obrigado ao SHA-256 do atestado, às sete linhas ordenadas e ao contrato exato;
+- uma regressão sintética reproduz o layout final, confirma que o modo normal recusa a evidência ausente e que o opt-in validado funciona; versão do produto, manifesto Windows, template de erros e documentação atualizados para `v1.3.7`.
+
+### Security
+
+- a tentativa `v1.3.6` confirmou o novo gate terminal: a falha de publicação deixou a execução vermelha, o cleanup removeu apenas a draft owned de 12 assets e não ficaram release, draft ou artefactos de Actions;
+- nenhum ficheiro é confiado apenas pela sua localização: o conteúdo materializado continua ligado ao atestado nativo, ao commit/tag e aos digests canónicos do candidato e da release.
+
 ## [1.3.6] - 2026-08-23
 
 Tag nova obrigatória; a `v1.3.5` permanece imutável como evidência da tentativa falhada e não é movida nem reutilizada. Embora os pacotes, a validação x64/ARM64 e o SBOM tenham passado, a publicação foi indevidamente ignorada e o cleanup eliminou a draft owned; nenhuma release `v1.3.5` foi publicada.

@@ -2,7 +2,7 @@
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->
 
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.3.6.0" name="LocalNetworkScanner.Windows" />
+  <assemblyIdentity version="1.3.7.0" name="LocalNetworkScanner.Windows" />
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
