@@ -92,10 +92,10 @@ Estes códigos pertencem ao workflow e aos scripts de distribuição; não são 
 | `LNS-REL-002` | Error | Configuração Artifact Signing/OIDC incompleta | Configure endpoint, conta, perfil e os IDs Azure exigidos sem guardar uma chave privada no GitHub. |
 | `LNS-REL-003` | Error | Cliente, endpoint, ferramenta ou autenticação de assinatura inválida | Confirme Azure Login OIDC, módulo ArtifactSigning, endpoint, Inno Setup e Windows SDK/SignTool. |
 | `LNS-REL-004` | Error | Certificado incompatível, autoassinado ou sem cadeia confiável no modo local | Use RSA com EKU Code Signing, cadeia pública aceite e chave protegida por token/HSM. |
-| `LNS-REL-005` | Error | Assinatura ou timestamp final não validou | Não publique; corrija a assinatura e volte a gerar todos os assets e hashes. |
+| `LNS-REL-005` | Error | A fronteira de confiança falhou: visibilidade privada, estado Authenticode, signer ou timestamp final inválido | Não publique; restaure a visibilidade esperada ou corrija a assinatura e volte a gerar todos os assets e hashes. |
 | `LNS-REL-006` | Error | Redistribuição da snapshot IEEE não foi autorizada | Arquive autorização escrita antes de definir `IEEE_REDISTRIBUTION_APPROVED=true`. |
 | `LNS-REL-007` | Error | Build, instalação, smoke ou remoção nativa x64/ARM64 falhou; inclui `CreateProcess 4551` quando App Control bloqueia o executável de QA antes do arranque | Corrija o pacote exato; para `4551`, use Authenticode confiável ou peça autorização ao administrador sem desativar a política. Um cross-build x64 não substitui este gate. |
-| `LNS-REL-008` | Error | Contrato de assets ou checksums divergente | Gere uma versão nova a partir de uma árvore limpa; não substitua ficheiros já publicados. |
+| `LNS-REL-008` | Error | Ownership da draft, contrato de 10/12 assets, digest, tamanho ou checksum divergente | Gere uma versão nova a partir de uma árvore limpa; nunca altere uma draft não owned nem substitua ficheiros já publicados. |
 | `LNS-REL-009` | Error | Versão, tag, ref ou commit não corresponde ao HEAD confiável de `main` | Execute a release a partir de uma tag nova, correspondente à versão, criada no commit atual de `main`. |
 | `LNS-REL-010` | Error | O SBOM não pôde ser gerado/validado ou não cobre `win-x64` e `win-arm64` | Preserve o payload, confirme a ferramenta fixada, os metadados dos dois runtimes e os caminhos sob `artifacts`, e repita sem publicar evidência incompleta. |
 

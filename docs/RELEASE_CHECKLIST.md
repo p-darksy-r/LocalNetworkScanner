@@ -96,10 +96,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeI
 - [ ] Cada pasta de publish contém os executáveis esperados e não contém PDBs, segredos ou ficheiros temporários.
 - [ ] O smoke test `LocalNetworkScanner.Cli.exe --help` termina com exit code `0` numa máquina da arquitetura publicada; o workflow confirma `OSArchitecture=Arm64` antes do smoke ARM64.
 - [ ] Os jobs de release instalaram, executaram e removeram os ZIPs e instaladores exatos em x64 e ARM64; o binário testado é o mesmo cujo hash será publicado.
-- [ ] O job `Require successful native Windows validation` terminou com sucesso; existe um único artefacto pesado `windows-candidate` com os dez ficheiros exatos e um artefacto pequeno `windows-validation-evidence` que liga os SHA-256 desse candidato ao commit/run e regista x64 e ARM64 como `Validated`; `SIGNING-STATE.txt` contém exatamente as sete linhas canónicas, sem marcadores duplicados ou contraditórios.
+- [ ] O job `Require successful native Windows validation` terminou com sucesso; a draft privada recebeu os dez ficheiros candidatos exatos, a evidência ARM64 atravessou apenas outputs limitados/hashados e `SIGNING-STATE.txt` contém exatamente as sete linhas canónicas, sem marcadores duplicados ou contraditórios.
 - [ ] O payload final foi materializado substituindo apenas o `SIGNING-STATE.txt` pendente pela versão validada atestada; os quatro binários, quatro checksums e `SHA256SUMS.txt` são byte a byte os mesmos do candidato imutável.
 - [ ] O grupo de concorrência global de release impediu dois payloads grandes de serem produzidos em paralelo; uma tag reservada à produção executou apenas o preflight até ao pedido assinado explícito.
-- [ ] O SBOM SPDX 2.2 foi gerado a partir desse payload exato e dos metadados restaurados para `win-x64` e `win-arm64`; a cobertura dos dois runtimes foi validada e guardada como evidência separada sem alterar o contrato dos dez ficheiros instaláveis.
+- [ ] O SBOM SPDX 2.2 foi gerado a partir desse payload exato e dos metadados restaurados para `win-x64` e `win-arm64`; a cobertura dos dois runtimes foi validada e o manifesto faz parte do contrato final de 12 assets sem alterar os dez ficheiros instaláveis.
 - [ ] A UI arranca, inicia e cancela um scan de laboratório e fecha sem processo residual.
 - [ ] O ZIP inclui UI, CLI, README, licença, changelog, limites técnicos, `docs/VENDOR_DATABASE.md` e `THIRD_PARTY_NOTICES.md`.
 - [ ] Exports JSON schema v6 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações, identidade, serviços mDNS/DNS-SD, diagnósticos ou estado TLS documentados.
@@ -197,12 +197,12 @@ Se for usado outro instalador, documentar a ferramenta e versão, privilégios p
 - [ ] A autorização escrita aplicável à redistribuição IEEE foi arquivada com a evidência da release e os avisos exigidos estão presentes no pacote.
 - [ ] A variável do repositório `IEEE_REDISTRIBUTION_APPROVED` foi definida como `true` apenas depois de arquivar essa autorização.
 - [ ] Os hashes e assinaturas foram novamente verificados depois do upload.
-- [ ] O job de publicação recebeu exatamente 10 assets, verificou no draft remoto nomes, estado, tamanhos e SHA-256, voltou a validar checksums e, numa release pública, timestamps e um único signer; só depois retirou o estado draft. Uma repetição aceitou uma release publicada apenas quando o contrato era exatamente igual; um draft divergente não foi alterado.
-- [ ] Depois de verificar novamente a release final remota, o workflow eliminou o único artefacto pesado `windows-candidate` dessa execução; o atestado compacto e o SBOM ficaram preservados como artefactos de Actions por 30 dias, sem serem apresentados como evidência permanente.
+- [ ] O job de publicação recebeu exatamente 12 assets pela draft privada, verificou nomes, estado, tamanhos, SHA-256 e os digests canónicos do candidato Pending, payload Validated e release final; voltou a validar checksums e, numa release pública, timestamps e um único signer antes de retirar o estado draft.
+- [ ] O workflow não criou artefactos de Actions; `VALIDATION-ATTESTATION.json` e o SBOM SPDX permanecem como assets da release, e qualquer cleanup atuou apenas sobre uma draft owned ainda não publicada.
 - [ ] `SIGNING-STATE.txt` e as notas da release publicada dizem explicitamente `Signed`; releases anteriores conhecidas como não assinadas permanecem documentadas como `NotSigned`.
 - [ ] A release explica arquitetura, versão mínima de Windows suportada e known issues.
 - [ ] Existe um canal privado para vulnerabilidades e um canal normal para suporte.
-- [ ] A GitHub Release verificada é a cópia imutável dos dez assets; logs, atestado compacto e SBOM do workflow foram preservados sem manter uma segunda cópia de aproximadamente 390 MB no armazenamento de Actions.
+- [ ] A GitHub Release verificada é a cópia final dos 12 assets; atestado e SBOM estão ao lado dos dez ficheiros instaláveis sem qualquer segunda cópia pesada no armazenamento de Actions.
 - [ ] A GitHub Release pública ainda não existia; a tag imutável aponta para o commit validado e assets já publicados nunca são substituídos com `--clobber`.
 - [ ] Foi preparado um plano de rollback ou retirada da release.
 

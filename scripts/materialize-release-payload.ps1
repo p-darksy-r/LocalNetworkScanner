@@ -42,6 +42,8 @@ param(
     [ValidatePattern("^\d+$")]
     [string]$WorkflowRunAttempt,
 
+    [switch]$AllowHistoricalWorkflowRun,
+
     [string]$ReleaseRoot,
 
     [string]$EvidenceRoot
@@ -149,13 +151,21 @@ $metadataChecks = [ordered]@{
     sourceRepository = @([string]$attestation.sourceRepository, $Repository)
     sourceCommit = @([string]$attestation.sourceCommit, $CommitSha.ToLowerInvariant())
     sourceRef = @([string]$attestation.sourceRef, $SourceRef)
-    workflowRunId = @([string]$attestation.workflowRunId, $WorkflowRunId)
-    workflowRunAttempt = @([string]$attestation.workflowRunAttempt, $WorkflowRunAttempt)
     candidateArtifact = @([string]$attestation.candidateArtifact, $CandidateArtifactName)
     candidateArtifactDigest = @([string]$attestation.candidateArtifactDigest, $CandidateArtifactDigest)
     publicRelease = @([bool]$attestation.publicRelease, $expectedPublicRelease)
     authenticode = @([string]$attestation.authenticode, $SigningState)
     releaseMode = @([string]$attestation.releaseMode, $ReleaseMode)
+}
+if ($AllowHistoricalWorkflowRun) {
+    if ([string]$attestation.workflowRunId -notmatch "^\d+$" -or
+        [string]$attestation.workflowRunAttempt -notmatch "^\d+$") {
+        throw "LNS-REL-007: historical validation attestation has an invalid workflow run identity."
+    }
+}
+else {
+    $metadataChecks["workflowRunId"] = @([string]$attestation.workflowRunId, $WorkflowRunId)
+    $metadataChecks["workflowRunAttempt"] = @([string]$attestation.workflowRunAttempt, $WorkflowRunAttempt)
 }
 foreach ($entry in $metadataChecks.GetEnumerator()) {
     if ($entry.Value[0] -cne $entry.Value[1]) {

@@ -21,16 +21,16 @@ O workflow usa **Microsoft Artifact Signing com OIDC**, sem PFX ou chave privada
 5. o runner só executa o Inno Setup 6.7.3 depois de confirmar SHA-256 fixo, `ProductVersion`, Authenticode e publisher; o Inno chama depois o mesmo signer para o instalador e para o desinstalador embebido;
 6. hashes e assinaturas são validados de novo depois do empacotamento;
 7. o ZIP e instalador **exatos** são instalados, executados e removidos primeiro em Windows x64 e depois num runner Windows ARM64 nativo;
-8. o payload grande é carregado uma única vez como artefacto imutável `windows-candidate`; depois do ARM64 é criado apenas um atestado compacto com commit, run, digest do artefacto, SHA-256 dos dez ficheiros e o `SIGNING-STATE.txt` validado;
-9. os gates seguintes materializam o contrato final substituindo apenas esse ficheiro de estado, confirmam que os restantes nove ficheiros continuam byte a byte iguais e só esse conjunto pode chegar à publicação;
+8. o payload grande é carregado uma única vez como dez assets numa draft release privada associada à tag final; não é usado armazenamento de artefactos de Actions;
+9. depois do ARM64, o atestado segue para o gate como Base64 limitado a 64 KiB com tamanho e SHA-256; o gate valida encoding, JSON e proveniência antes de substituir apenas `SIGNING-STATE.txt` e confirmar que os restantes nove ficheiros continuam byte a byte iguais;
 10. o target remoto da tag, incluindo tags anotadas, é resolvido novamente para o commit do workflow antes de criar, carregar ou publicar o draft e depois da publicação;
-11. a release começa como draft identificado pelo run, os dez assets remotos são comparados por nome, estado, tamanho e SHA-256, e o candidato pesado só é eliminado do armazenamento de Actions depois de a release final voltar a ser verificada. Uma repetição aceita uma release já publicada apenas quando todo esse contrato continua exato; um draft divergente nunca é substituído.
+11. o SBOM SPDX e `VALIDATION-ATTESTATION.json` são anexados permanentemente, formando o contrato final de 12 assets; a release continua draft até esse contrato ser verificado imediatamente antes de `draft=false`. Uma repetição aceita uma release já publicada apenas quando assets, três digests e proveniência histórica continuam exatos; um draft divergente nunca é substituído.
 
 Artefactos privados de QA permanecem `NotSigned`. Enquanto os gates de produção ainda não estão todos configurados, uma tag nova promove-os automaticamente para uma **prerelease privada**, mas só depois de ambos os testes nativos. Num repositório público, `workflow_dispatch` com `publish_release=false` falha no preflight e nenhum candidato `NotSigned` é gerado ou carregado. Além do snapshot do evento, o job consulta a visibilidade atual pela API imediatamente antes do upload do candidato, antes de criar/publicar o draft e depois da publicação. Estas verificações reduzem a janela de mudança, mas a visibilidade do repositório e a publicação da release não formam uma transação atómica; mantenha o repositório privado durante toda a execução e não altere a visibilidade enquanto existir uma prerelease `NotSigned`. O título, notas e `SIGNING-STATE.txt` indicam claramente `Private QA (NotSigned)`; a prerelease não é produção nem `Latest`.
 
 Criar ou fazer push de uma tag `vX.Y.Z` executa o caminho privado de QA e, se o repositório for privado e a configuração de produção ainda estiver incompleta, cria a prerelease `NotSigned` depois da validação completa. Quando Artifact Signing/OIDC e a autorização IEEE já estão integralmente configurados antes do push, a criação automática e o build pesado sem assinatura são suprimidos: o preflight reserva essa tag nova à execução assinada por `workflow_dispatch` com `publish_release=true`. Assets publicados divergentes nunca são substituídos; uma release já publicada com o contrato exatamente igual é reconhecida de forma idempotente e a execução avança apenas para a verificação final e limpeza. A passagem de uma prerelease QA já criada para produção exige uma versão/tag nova.
 
-Este desenho evita a segunda cópia integral de aproximadamente 390 MB que era mantida depois da validação. O grupo de concorrência é global ao repositório, pelo que duas execuções de release não produzem payloads grandes em paralelo. Execuções sem publicação conservam o único `windows-candidate` por apenas um dia para diagnóstico; execuções que publicam apagam-no após a verificação remota. O atestado compacto e o SBOM são artefactos de Actions separados com retenção de **30 dias**, não evidência permanente nem assets da GitHub Release. Uma falha de validação, upload ou verificação nunca provoca a limpeza antecipada do único candidato.
+Este desenho evita qualquer cópia de aproximadamente 390 MB no armazenamento de Actions. O grupo de concorrência é global ao repositório e a draft é identificada por repository ID, run, tentativa, commit, tag, digest e nonce. Se a validação ou publicação falhar, o cleanup volta a obter a release por ID e só elimina uma draft com ownership exato; uma release publicada nunca é apagada. O atestado e o SBOM deixam de depender da retenção temporária de Actions e permanecem junto dos binários como assets verificáveis da release.
 
 O suporte local por thumbprint nos scripts continua disponível para laboratórios, PKI privada ou um runner próprio ligado a token/HSM. O workflow público não usa PFX exportável: certificados Code Signing públicos novos exigem normalmente que a chave seja gerada, armazenada e usada num módulo criptográfico adequado.
 
@@ -111,13 +111,13 @@ Definir a variável sem possuir a autorização não cria direitos de redistribu
 ## Sequência segura
 
 1. Execute CI no `main` e confirme **CI gate**, incluindo o job ARM64 nativo.
-2. Apenas enquanto o repositório estiver privado, execute manualmente `Release` com `publish_release=false`; sem tag, o resultado é um candidato `NotSigned` de QA com retenção de um dia e evidência/SBOM por 30 dias. Num repositório público, este pedido falha antes do build.
+2. Apenas enquanto o repositório estiver privado, selecione a tag nova correspondente e execute manualmente `Release` com `publish_release=false`; pedidos sobre um branch falham antes do build. O resultado permitido é uma prerelease `Private QA (NotSigned)` com atestado e SBOM permanentes. Num repositório público, este pedido também falha antes do build.
 3. Teste UI, CLI, scan, topologia, instalação, atualização e remoção num Windows limpo.
 4. Configure e proteja `release-signing`, OIDC e o perfil Artifact Signing.
 5. Registe a autorização IEEE.
 6. Atualize versão/changelog e confirme novamente que o HEAD local e `origin/main` são o mesmo commit.
 7. Para QA sem assinatura, crie uma tag nova `vX.Y.Z` nesse commit enquanto os gates de produção ainda estão incompletos. Num repositório privado, o push cria automaticamente a prerelease `Private QA (NotSigned)` depois de x64 e ARM64 passarem; não reutilize tags nem substitua assets existentes.
-8. Para produção, configure primeiro todos os gates externos e só depois crie uma nova versão/tag. A execução automática faz apenas o preflight e reserva essa tag sem carregar um candidato `NotSigned`; execute então `Release` a partir dela com `publish_release=true`. O workflow recusa drafts/releases divergentes, mas uma repetição aceita uma release já publicada quando título, modo e os dez assets continuam exatamente iguais.
+8. Para produção, configure primeiro todos os gates externos e só depois crie uma nova versão/tag. A execução automática faz apenas o preflight e reserva essa tag sem carregar um candidato `NotSigned`; execute então `Release` a partir dela com `publish_release=true`. O workflow recusa drafts/releases divergentes, mas uma repetição aceita uma release já publicada quando título, modo, 12 assets, digests e proveniência histórica continuam exatamente válidos.
 9. Confirme no workflow que os assets exatos passaram instalação/smoke/uninstall em x64 e ARM64.
 10. Depois do upload, descarregue os ficheiros e volte a validar SHA-256, signer e timestamp num Windows sem histórico do produto.
 
@@ -131,10 +131,10 @@ O runner `windows-11-arm` valida uma VM Windows ARM64 nativa; não substitui um 
 | `LNS-REL-002` | configuração/claims OIDC incompletos, perfil ilegível ou tipo diferente de `PublicTrust` | configure endpoint, resource group, conta, perfil público, IDs Azure e credencial federada imutável |
 | `LNS-REL-003` | cliente, endpoint, ferramenta ou autenticação inválida | valide módulo, Azure login, SignTool e configuração |
 | `LNS-REL-004` | certificado incompatível ou não confiável no modo local | use Code Signing RSA com cadeia confiável e chave protegida |
-| `LNS-REL-005` | assinatura, signer comum ou timestamp final inválido | não publique; corrija e gere todos os assets novamente |
+| `LNS-REL-005` | visibilidade privada, assinatura, signer comum ou timestamp final inválido | não publique; restaure a fronteira de confiança ou corrija e gere todos os assets novamente |
 | `LNS-REL-006` | autorização IEEE não confirmada | obtenha autorização escrita ou não redistribua a snapshot |
 | `LNS-REL-007` | instalação/smoke nativo x64 ou ARM64 falhou | corrija o pacote exato; cross-build não substitui este gate |
-| `LNS-REL-008` | contrato de assets, conteúdo ou checksums divergente | gere uma release nova a partir de uma árvore limpa |
+| `LNS-REL-008` | ownership da draft, contrato de 10/12 assets, conteúdo, digest ou checksums divergente | não altere recursos não owned; gere uma release nova a partir de uma árvore limpa |
 | `LNS-REL-009` | versão, tag, ref ou commit não corresponde ao `main` confiável | use uma tag nova no HEAD atual de `main` |
 | `LNS-REL-010` | o SBOM não pôde ser gerado/validado ou não cobre `win-x64` e `win-arm64` | preserve o payload, confirme a ferramenta fixada, os metadados dos dois runtimes e os caminhos sob `artifacts`, e repita sem publicar evidência incompleta |
 

@@ -170,6 +170,19 @@ try {
         -Message "the canonical PublicRelease/Signed trust combination must materialize"
     $passed++
 
+    $historicalFixture = New-CandidateFixture -Name "historical-published-rerun"
+    $historicalParameters = New-InvocationParameters -Fixture $historicalFixture
+    & $newEvidenceScript @historicalParameters *> $null
+    $historicalRerunParameters = @{} + $historicalParameters
+    $historicalRerunParameters.WorkflowRunId = "456"
+    $historicalRerunParameters.WorkflowRunAttempt = "2"
+    $historicalRerunParameters.AllowHistoricalWorkflowRun = $true
+    & $materializeScript @historicalRerunParameters *> $null
+    Assert-True `
+        -Condition (@(Get-Content -LiteralPath (Join-Path $historicalFixture.ReleaseRoot "SIGNING-STATE.txt")) -ccontains "Native x64: Validated") `
+        -Message "an already-published attestation may retain its original verified run identity during an idempotent rerun"
+    $passed++
+
     $tamperFixture = New-CandidateFixture -Name "tamper"
     $tamperParameters = New-InvocationParameters -Fixture $tamperFixture
     & $newEvidenceScript @tamperParameters *> $null
@@ -226,7 +239,7 @@ try {
         -Message "failed evidence publication must clean its staging directory"
     $passed++
 
-    Write-Host "$passed/6 synthetic release evidence tests passed." -ForegroundColor Green
+    Write-Host "$passed/7 synthetic release evidence tests passed." -ForegroundColor Green
 }
 finally {
     $resolvedTestRoot = [IO.Path]::GetFullPath($testRoot)

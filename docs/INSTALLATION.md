@@ -66,7 +66,7 @@ O checksum deteta alterações no ficheiro relativamente à release publicada, m
 
 O pipeline público assina UI, CLI, diagnóstico PowerShell, instalador e desinstalador através de Microsoft Artifact Signing por OIDC. A chave privada permanece no serviço/HSM e não é copiada para o GitHub. Se a identidade, o timestamp ou uma assinatura estiverem ausentes ou inválidos, o build falha em vez de publicar silenciosamente como assinado. Uma assinatura válida também não substitui uma regra de autorização da organização.
 
-A validação de release deixou de depender apenas do build: os ZIPs e instaladores exatos são instalados, executados e removidos em runners Windows x64 e ARM64 nativos antes da publicação. Um único candidato pesado imutável é ligado ao commit/run por evidência compacta e pelos SHA-256 dos dez assets; a cópia pesada só é eliminada depois da release remota ser novamente verificada. A configuração da identidade cloud/HSM, alternativas legítimas e códigos `LNS-REL-*` estão documentados em [Assinatura e prontidão de release](SIGNING.md).
+A validação de release deixou de depender apenas do build: os ZIPs e instaladores exatos são instalados, executados e removidos em runners Windows x64 e ARM64 nativos antes da publicação. Os dez ficheiros candidatos atravessam uma draft release privada sem consumir quota de artefactos de Actions; depois dos testes, o atestado e o SBOM são acrescentados ao contrato permanente de 12 assets. A configuração da identidade cloud/HSM, alternativas legítimas e códigos `LNS-REL-*` estão documentados em [Assinatura e prontidão de release](SIGNING.md).
 
 ## Compilar o instalador localmente
 

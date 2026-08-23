@@ -4,6 +4,30 @@
 
 Todas as alterações relevantes deste projeto são registadas neste ficheiro. O formato segue os princípios de Keep a Changelog e o versionamento segue Semantic Versioning.
 
+## [1.3.4] - 2026-08-23
+
+Tag nova obrigatória; a `v1.3.3` não é movida nem reutilizada. Esta versão corrige o bloqueio de quota do armazenamento de GitHub Actions sem reduzir os gates de confiança da release.
+
+### Changed
+
+- os dez ficheiros candidatos passam diretamente do job de empacotamento para uma GitHub draft release privada associada à tag final existente, sem criar qualquer artefacto pesado de Actions;
+- a evidência nativa compacta circula entre ARM64 e o gate como Base64 limitado a 64 KiB, acompanhado por tamanho e SHA-256, e é validado como UTF-8/JSON antes de ser usado;
+- depois da validação, `VALIDATION-ATTESTATION.json` e `LocalNetworkScanner-<versão>-sbom.spdx.json` tornam-se assets permanentes, elevando o contrato final verificável de 10 para 12 assets;
+- versão do produto, manifesto Windows, template de erros e documentação atualizados para `v1.3.4`.
+
+### Fixed
+
+- uma quota esgotada de artefactos de Actions já não impede o transporte dos ZIPs e instaladores entre os runners Windows x64/ARM64;
+- repetições recuperam a draft apenas por listagem paginada e `release_id` validado, sem depender de `GET releases/tags` para drafts, e aceitam uma release publicada apenas após verificar a proveniência histórica e os três digests distintos: candidato Pending, payload Validated e release final;
+- uma falha durante o upload ou qualquer gate posterior elimina somente a draft pertencente à execução; uma release já publicada nunca é removida pelo cleanup.
+
+### Security
+
+- ownership da draft liga repository ID, run, tentativa, commit, tag, digest canónico e nonce; tags lightweight/anotadas e visibilidade privada são confirmadas antes e depois das mutações;
+- downloads usam o endpoint autenticado por asset ID e verificam `state`, tamanho e SHA-256; o token com escrita nunca é persistido pelo checkout;
+- a única substituição permitida é `SIGNING-STATE.txt` Pending exato → Validated exato, depois dos dois testes nativos e da validação semântica do atestado;
+- imediatamente antes de `draft=false`, o workflow volta a obter a release por ID e revalida os 12 assets, tag, visibilidade e marker; depois da publicação confirma também o lookup público/autenticado pela tag.
+
 ## [1.3.3] - 2026-08-23
 
 Tag de código e QA privado. Sem uma identidade Authenticode Public Trust e autorização escrita para redistribuir a snapshot IEEE, os pacotes só podem ser publicados no repositório privado como prerelease `Private QA (NotSigned)` e não constituem uma distribuição pública de produção.

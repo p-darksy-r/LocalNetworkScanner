@@ -2,7 +2,7 @@
 
 # Local Network Scanner
 
-[![source v1.3.3](https://img.shields.io/badge/source-v1.3.3-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.3.3)
+[![source v1.3.4](https://img.shields.io/badge/source-v1.3.4-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.3.4)
 ![Windows](https://img.shields.io/badge/Windows-x64%20%7C%20ARM64-0078d4)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/LICENSE)
 
@@ -10,7 +10,7 @@
 
 Scanner de redes locais para Windows com uma UI WPF simples, uma CLI para automação, diagnósticos acionáveis e topologia opcional. O programa separa observações diretas, dados fornecidos pela infraestrutura e inferências, para que um resultado provável nunca seja apresentado como facto confirmado.
 
-> **Estado de distribuição:** a `v1.2.0` é histórica e não é recomendada para instalação porque foi publicada sem Authenticode. A `v1.3.3` identifica o candidato de código e QA mais recente; no repositório privado pode existir como prerelease `Private QA (NotSigned)`, mas não é uma distribuição pública de produção.
+> **Estado de distribuição:** a `v1.2.0` é histórica e não é recomendada para instalação porque foi publicada sem Authenticode. A `v1.3.4` identifica o candidato de código e QA mais recente; no repositório privado pode existir como prerelease `Private QA (NotSigned)`, mas não é uma distribuição pública de produção.
 >
 > O repositório é privado. Uma tag nova executa a QA completa e, enquanto os gates de produção estiverem incompletos, pode criar automaticamente apenas uma prerelease privada `NotSigned`; a distribuição pública só é autorizada depois dos gates de assinatura, validação x64/ARM64 nativa e redistribuição indicados abaixo. Consulte o [guia de assinatura](docs/SIGNING.md).
 
@@ -31,11 +31,13 @@ Cada release disponibiliza uma versão para computadores x64 e outra para Window
 
 Os dois formatos incluem a UI, a CLI e o runtime .NET necessário. O instalador não pede privilégios administrativos no fluxo normal, não instala drivers ou serviços e não altera o `PATH`.
 
+Além dos quatro downloads, a release inclui os checksums individuais e combinado, `SIGNING-STATE.txt`, `VALIDATION-ATTESTATION.json` e o SBOM SPDX 2.2: ao todo, um contrato exato de 12 assets verificáveis.
+
 ### Compatibilidade e validação
 
 | Alvo | Estado |
 | --- | --- |
-| Windows 11 x64 | código 1.3.3: build Release, testes determinísticos e smoke UI/CLI obrigatórios; o workflow da tag instala, executa e remove o pacote self-contained exato antes de o marcar como validado |
+| Windows 11 x64 | código 1.3.4: build Release, testes determinísticos e smoke UI/CLI obrigatórios; o workflow da tag instala, executa e remove o pacote self-contained exato antes de o marcar como validado |
 | Windows 11 ARM64 | CI e release exigem build, testes e smoke num runner Windows ARM64 nativo; o cross-build isolado deixou de contar como validação |
 | Windows 10 | o .NET 10 limita o suporte atual a edições LTSC/Enterprise compatíveis; consulte a [matriz oficial da Microsoft](https://learn.microsoft.com/dotnet/core/install/windows#supported-versions) |
 
@@ -264,7 +266,7 @@ Validação completa:
 powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1 -Configuration Release -VerifyFormat
 ```
 
-O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.3.3`, a suite contém 89 testes. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
+O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.3.4`, a suite contém 89 testes. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
 
 O workflow CodeQL analisa C# com consultas `security-extended` quando o repositório é público ou quando `CODEQL_ENABLED=true` e o plano privado permite code scanning. A release restaura metadados de dependências para `win-x64` e `win-arm64`, exige ambos os runtimes e gera/valida um SBOM SPDX 2.2 como evidência separada, sem o confundir com os dez ficheiros instaláveis validados.
 
@@ -297,9 +299,9 @@ Instalador Inno Setup:
 powershell -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -RuntimeIdentifier win-x64
 ```
 
-Uma tag `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia QA privada dos pacotes. A publicação de produção só é pedida através de `workflow_dispatch` explícito, selecionando essa tag e `publish_release=true`. Antes do build, um preflight confirma que a tag aponta para o HEAD atual de `main` e apresenta códigos `LNS-REL-*` para configuração ou autorizações ausentes. Um pedido manual `publish_release=false` só pode gerar/carregar o candidato `NotSigned` enquanto o repositório estiver privado; a visibilidade live é confirmada imediatamente antes do upload. A assinatura pública usa Microsoft Artifact Signing por OIDC: a chave permanece num HSM/serviço e não existe PFX no GitHub. Depois do empacotamento, os ZIPs e instaladores exatos são instalados, executados e removidos em runners Windows x64 e ARM64 nativos. Existe apenas um payload pesado imutável, `windows-candidate`; após as duas validações nativas, uma evidência compacta liga o digest desse candidato ao commit/run e aos SHA-256 dos dez ficheiros. O gate terminal materializa o `SIGNING-STATE.txt` validado, exige o contrato exato de dez assets, confirma conteúdo e hashes e gera/valida o SBOM SPDX separado. Os resultados privados podem ser publicados automaticamente apenas como prerelease claramente marcada `Private QA (NotSigned)`, depois de confirmar novamente que o repositório continua privado; uma **release pública de produção só é criada** quando todos os ficheiros executáveis e o diagnóstico PowerShell têm Authenticode confiável, os dois testes nativos passaram e a autorização de redistribuição IEEE está registada.
+Uma tag existente `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia a QA dos pacotes; o workflow recusa pedidos executados apenas sobre um branch. A publicação de produção continua a exigir `workflow_dispatch` explícito nessa tag com `publish_release=true`. Antes do build, o preflight confirma que tags lightweight ou anotadas resolvem para o HEAD atual de `main` e apresenta códigos `LNS-REL-*` para configurações ou autorizações ausentes. A assinatura pública usa Microsoft Artifact Signing por OIDC: a chave permanece num HSM/serviço e não existe PFX no GitHub.
 
-A publicação corre num job separado com permissão de escrita mínima, resolve novamente tags lightweight ou anotadas para o commit exato do workflow antes das mutações, exige o conjunto exato de dez assets, volta a verificar nome, estado, tamanho, SHA-256, timestamps e o mesmo signer e prepara tudo como draft antes de tornar a release visível. Uma repetição reconhece uma release já publicada apenas se o contrato remoto for exatamente igual; nunca substitui assets divergentes. O candidato pesado só é eliminado do armazenamento de Actions depois da release remota ser novamente verificada. O atestado compacto e o SBOM ficam disponíveis como artefactos de Actions durante **30 dias**; não são evidência permanente nem fazem parte dos dez assets da release. Consulte [Windows App Control e erro 4551](docs/APP_CONTROL.md).
+Os dez ficheiros candidatos são carregados uma única vez numa **GitHub draft release privada**, identificada pelo repositório, run, tentativa, commit, tag, digest canónico e nonce. Não é criado qualquer artefacto de GitHub Actions, eliminando a duplicação pesada e a falha por quota. Os runners Windows x64 e ARM64 descarregam cada asset autenticado pelo respetivo ID e confirmam nome, estado, tamanho e SHA-256. Só depois dos dois testes nativos o gate aceita a evidência Base64 limitada a 64 KiB, valida tamanho, hash, UTF-8, JSON e proveniência, troca exclusivamente o `SIGNING-STATE.txt` de `Pending` para `Validated` e adiciona `VALIDATION-ATTESTATION.json` e o SBOM SPDX 2.2. O contrato final tem **12 assets permanentes**. Imediatamente antes de publicar, o workflow volta a validar tag, visibilidade, ownership e todos os digests; numa falha, apaga apenas a draft que pertence à própria tentativa. Uma execução idempotente aceita uma release já publicada somente depois de verificar o contrato remoto e a tentativa histórica de validação. Resultados `NotSigned` só podem tornar-se uma prerelease `Private QA` enquanto a API confirmar que o repositório continua privado; a distribuição pública exige Authenticode confiável e autorização IEEE. Consulte [Windows App Control e erro 4551](docs/APP_CONTROL.md).
 
 A [checklist de release](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/RELEASE_CHECKLIST.md) exige validação num Windows limpo, estado de assinatura explícito, verificação pós-upload e teste nativo por arquitetura antes de considerar o suporte totalmente validado. O [guia de assinatura](docs/SIGNING.md) explica exatamente o que o projeto automatiza e o que exige uma identidade externa do publisher.
 
