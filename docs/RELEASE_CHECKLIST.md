@@ -49,6 +49,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1
 - [ ] A UI foi verificada com teclado, leitor de ecrã, escala 100/150/200%, tema claro/escuro e janela pequena.
 - [ ] Português é apresentado corretamente; ausência de dados usa “indisponível/desconhecido” sem inventar valores.
 - [ ] Perfis Rápido, Normal e Avançado aplicam limites distintos e mostram descrições coerentes na UI.
+- [ ] Ícones Informação e Sair têm tooltip, nome de automação e alvo de 40 px; `F1` abre Sobre, `Esc` fecha apenas essa janela e Sair reutiliza as confirmações de scan/metadados.
+- [ ] Sobre apresenta versão do assembly, resumo, criador, copyright, arquitetura/runtime e links legais sem depender de rede para abrir a janela.
 - [ ] A lista de dispositivos permanece a vista principal e **Abrir topologia** só fica disponível quando existe mapa.
 - [ ] A janela de topologia abre/fecha sem repetir o scan e mantém zoom, pan, seleção e exportações.
 - [ ] Códigos `LNS-USR-*`, `LNS-NET-*`, `LNS-DEV-*` e `LNS-APP-*` têm categoria, severidade, ação recomendada e contexto sanitizado.
@@ -59,7 +61,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1
 
 - [ ] A UI liga para `docs/TECHNICAL_LIMITS.md` ou apresenta um resumo equivalente.
 - [ ] VLAN é descrita como informação da interface local ou inferência, nunca como scan por dispositivo.
-- [ ] “Mesmo segmento L2” exige uma linha ARP nova e `Reachable` (sem `IsUnreachable`) ou resposta direta sem entrada prévia e mostra a confiança; uma entrada anterior/passiva, estado nativo não alcançável ou observação SNMP/FDB nunca é apresentada como prova de ligação ao mesmo switch físico.
+- [ ] “Mesmo segmento L2” exige uma linha ARP nova, resposta direta sem entrada prévia ou vizinho atual/revalidado `Reachable` (sem `IsUnreachable`) e mostra a confiança; uma entrada que permaneça passiva/`Stale`, outro estado nativo ou observação SNMP/FDB nunca é apresentada como prova de ligação ao mesmo switch físico.
+- [ ] ARP e a revalidação dirigida de entradas transitórias começam sem esperar pelos timeouts ICMP/TCP; dois scans consecutivos não perdem um vizinho apenas porque o primeiro aqueceu a cache, e `CurrentReachableNeighbor`, `ActiveArp` e `NeighborCache` permanecem distintos na UI/export.
 - [ ] SNMP permanece opt-in; timeouts, switch sem resposta e tabela incompleta degradam para “desconhecido”, não para uma conclusão falsa.
 - [ ] FDB-ID só é convertido em VLAN com mapeamento VLAN→FDB único; PVID é apenas referência, não a VLAN inferida do dispositivo.
 - [ ] MACs repetidos preservam múltiplas observações e não são reduzidos arbitrariamente a uma porta.
@@ -102,7 +105,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeI
 - [ ] O SBOM SPDX 2.2 foi gerado a partir desse payload exato e dos metadados restaurados para `win-x64` e `win-arm64`; a cobertura dos dois runtimes foi validada e o manifesto faz parte do contrato final de 12 assets sem alterar os dez ficheiros instaláveis.
 - [ ] A UI arranca, inicia e cancela um scan de laboratório e fecha sem processo residual.
 - [ ] O ZIP inclui UI, CLI, README, licença, changelog, limites técnicos, `docs/VENDOR_DATABASE.md` e `THIRD_PARTY_NOTICES.md`.
-- [ ] Exports JSON schema v6 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações, identidade, serviços mDNS/DNS-SD, diagnósticos ou estado TLS documentados.
+- [ ] Exports JSON schema v7 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações, identidade, serviços mDNS/DNS-SD, diagnósticos ou estado TLS documentados; JSON/CSV/HTML preservam `macAddressSource`/evidência MAC.
 - [ ] As opções CLI `--html` e `--graphml` foram verificadas com dados sintéticos ou de laboratório.
 - [ ] O SHA-256 publicado corresponde exatamente ao ZIP.
 
@@ -119,6 +122,7 @@ if ($actual -ne $expected) { throw 'SHA-256 invalido.' }
 ## 6. Assinatura e reputação
 
 - [ ] Artefactos privados sem assinatura indicam claramente `Private QA` e `NotSigned`; numa tag nova são publicados automaticamente como prerelease apenas se o repositório continuar privado e os gates de produção ainda não estiverem completos, nunca como `Latest` ou produção.
+- [ ] Uma produção assinada envia `make_latest=true` e os gates Publish/terminal confirmam que `releases/latest` aponta para o mesmo ID/tag; uma QA privada envia `make_latest=false`.
 - [ ] Num repositório público, nenhum caminho do workflow gera ou carrega um candidato `NotSigned`; `workflow_dispatch` com `publish_release=false` falha no preflight, e a visibilidade live é consultada novamente pela API imediatamente antes do upload e antes/depois de publicar a prerelease.
 - [ ] Uma GitHub Release de produção contém apenas artefactos Authenticode `Signed`; a única exceção é uma prerelease `Private QA (NotSigned)` num repositório privado.
 - [ ] Checksums não são apresentados como substitutos de Authenticode nem como prova da identidade do publisher.

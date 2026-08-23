@@ -114,7 +114,7 @@ A CLI mostra código, categoria, severidade, mensagem, ação, alvo e contexto d
 | `4` | falha fatal associada a dispositivo (`LNS-DEV-*`) |
 | `130` | operação cancelada (`LNS-USR-009`) |
 
-O JSON schema v6 inclui os diagnósticos, as evidências de identidade e os endpoints mDNS/DNS-SD de forma estruturada em `scan.diagnostics`, `devices[].identityEvidence` e `devices[].mdnsServices`. HTML apresenta os diagnósticos numa secção própria e GraphML usa o atributo de grafo `g_diagnostics`. Consumidores automáticos devem decidir pelo código/categoria e não fazer parsing do texto em pt-PT.
+O JSON schema v7 inclui os diagnósticos, as evidências de identidade, os endpoints mDNS/DNS-SD e a proveniência MAC de forma estruturada em `scan.diagnostics`, `devices[].identityEvidence`, `devices[].mdnsServices` e `devices[].macAddressSource`. HTML apresenta os diagnósticos numa secção própria e GraphML usa o atributo de grafo `g_diagnostics`. Consumidores automáticos devem decidir pelo código/categoria e não fazer parsing do texto em pt-PT.
 
 ## Pedir suporte
 

@@ -1576,6 +1576,40 @@ jobs:
               ([string]$release.body).IndexOf($finalMarkerPrefix, [StringComparison]::Ordinal) -lt 0) {
             throw 'LNS-REL-008: final release metadata does not match the expected tag, trust mode or ownership marker.'
           }
+          if ($isPublic) {
+            $latestRelease = $null
+            $latestError = 'Latest still points to another release.'
+            for ($attempt = 1; $attempt -le 10; $attempt++) {
+              $latestResponse = @(
+                gh api --method GET "repos/$env:GITHUB_REPOSITORY/releases/latest" 2>&1
+              )
+              $latestExitCode = $LASTEXITCODE
+              if ($latestExitCode -eq 0) {
+                try {
+                  $candidateLatest = $latestResponse -join [Environment]::NewLine | ConvertFrom-Json
+                  if ([long]$candidateLatest.id -eq [long]$release.id -and
+                      [string]$candidateLatest.tag_name -ceq $env:RELEASE_TAG) {
+                    $latestRelease = $candidateLatest
+                    break
+                  }
+                  $latestError = "Latest returned id '$($candidateLatest.id)' and tag '$($candidateLatest.tag_name)'."
+                }
+                catch {
+                  $latestError = "Latest returned invalid JSON: $($_.Exception.Message)"
+                }
+              }
+              else {
+                $latestError = "Latest lookup exited with $latestExitCode`: $($latestResponse -join [Environment]::NewLine)"
+              }
+
+              if ($attempt -lt 10) {
+                Start-Sleep -Seconds 2
+              }
+            }
+            if ($null -eq $latestRelease) {
+              throw "LNS-REL-008: the signed production release is not the repository Latest after bounded retries: $latestError"
+            }
+          }
 
           $binaryNames = @(
             "LocalNetworkScanner-$env:RELEASE_VERSION-win-x64.zip",

@@ -2,7 +2,7 @@
 
 # Local Network Scanner
 
-[![source v1.3.8](https://img.shields.io/badge/source-v1.3.8-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.3.8)
+[![source v1.4.0](https://img.shields.io/badge/source-v1.4.0-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.4.0)
 ![Windows](https://img.shields.io/badge/Windows-x64%20%7C%20ARM64-0078d4)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/LICENSE)
 
@@ -10,9 +10,9 @@
 
 Scanner de redes locais para Windows com uma UI WPF simples, uma CLI para automação, diagnósticos acionáveis e topologia opcional. O programa separa observações diretas, dados fornecidos pela infraestrutura e inferências, para que um resultado provável nunca seja apresentado como facto confirmado.
 
-> **Estado de distribuição:** a `v1.2.0` é histórica e não é recomendada para instalação porque foi publicada sem Authenticode. A `v1.3.8` identifica o candidato de código e QA mais recente; no repositório privado pode existir como prerelease `Private QA (NotSigned)`, mas não é uma distribuição pública de produção.
+> **Estado de distribuição:** a `v1.2.0` é histórica e não é recomendada para instalação porque foi publicada sem Authenticode. A `v1.4.0` identifica o candidato de código e QA mais recente; no repositório privado pode existir como prerelease `Private QA (NotSigned)`, mas não é uma distribuição pública de produção nem a release `Latest`.
 >
-> O repositório é privado. Uma tag nova executa a QA completa e, enquanto os gates de produção estiverem incompletos, pode criar automaticamente apenas uma prerelease privada `NotSigned`; a distribuição pública só é autorizada depois dos gates de assinatura, validação x64/ARM64 nativa e redistribuição indicados abaixo. Consulte o [guia de assinatura](docs/SIGNING.md).
+> O repositório é privado. Uma tag nova executa a QA completa e, enquanto os gates de produção estiverem incompletos, pode criar automaticamente apenas uma prerelease privada `NotSigned`; a distribuição estável/`Latest` só é autorizada depois dos gates de assinatura, validação x64/ARM64 nativa e redistribuição indicados abaixo. Tornar o repositório público não substitui estes requisitos. Consulte o [guia de assinatura](docs/SIGNING.md).
 
 ![Janela principal com inventário de dispositivos demonstrativos](docs/images/main-window-current.png)
 
@@ -37,7 +37,7 @@ Além dos quatro downloads, a release inclui os checksums individuais e combinad
 
 | Alvo | Estado |
 | --- | --- |
-| Windows 11 x64 | código 1.3.8: build Release, testes determinísticos e smoke UI/CLI obrigatórios; o workflow da tag instala, executa e remove o pacote self-contained exato antes de o marcar como validado |
+| Windows 11 x64 | código 1.4.0: build Release, testes determinísticos e smoke UI/CLI obrigatórios; o workflow da tag instala, executa e remove o pacote self-contained exato antes de o marcar como validado |
 | Windows 11 ARM64 | CI e release exigem build, testes e smoke num runner Windows ARM64 nativo; o cross-build isolado deixou de contar como validação |
 | Windows 10 | o .NET 10 limita o suporte atual a edições LTSC/Enterprise compatíveis; consulte a [matriz oficial da Microsoft](https://learn.microsoft.com/dotnet/core/install/windows#supported-versions) |
 
@@ -45,7 +45,7 @@ Os executáveis são self-contained, mas não são NativeAOT. Algumas biblioteca
 
 ### Aviso de assinatura
 
-Os artefactos históricos da `v1.2.0` e as prereleases privadas de QA `v1.3.x` sem credenciais estão **sem assinatura Authenticode (`NotSigned`)**. O Microsoft Defender SmartScreen pode apresentar um aviso de reputação e o Smart App Control ou uma política empresarial pode bloquear completamente o arranque com o código `4551`. Antes de executar:
+Os artefactos históricos da `v1.2.0` e as prereleases privadas de QA sem credenciais estão **sem assinatura Authenticode (`NotSigned`)**. O Microsoft Defender SmartScreen pode apresentar um aviso de reputação e o Smart App Control ou uma política empresarial pode bloquear completamente o arranque com o código `4551`. Antes de executar:
 
 1. não use a `v1.2.0` como build de produção; aguarde uma release cujo `SIGNING-STATE.txt` indique `Authenticode: Signed`;
 2. compare o SHA-256 com `SHA256SUMS.txt` ou com o ficheiro `.sha256` adjacente;
@@ -63,7 +63,7 @@ Um checksum deteta alterações relativamente ao ficheiro publicado, mas não su
 1. Abra `LocalNetworkScanner.exe`.
 2. Escolha a interface IPv4 e confirme o intervalo CIDR.
 3. Use **Rápido** para uma primeira passagem ou **Normal** para o inventário recomendado e inicie com o ícone de reprodução (`Alt+I`).
-4. Analise a lista de dispositivos; abra **Topologia** apenas quando quiser explorar o mapa do mesmo scan. `F5` também inicia o scan, `Alt+C` cancela-o e `Esc` limpa a pesquisa focada ou cancela um scan ativo; na janela da topologia, `Esc` fecha apenas essa janela.
+4. Analise a lista de dispositivos; abra **Topologia** apenas quando quiser explorar o mapa do mesmo scan. O ícone de informação abre **Sobre** (`F1`) e o ícone de saída fecha a aplicação através das mesmas confirmações do `Alt+F4`. `F5` também inicia o scan, `Alt+C` cancela-o e `Esc` limpa a pesquisa focada ou cancela um scan ativo; na janela da topologia, `Esc` fecha apenas essa janela.
 
 Abrir **Parâmetros técnicos personalizados** apenas mostra os valores. Estes só substituem o perfil depois de ativar explicitamente **Usar definições personalizadas**; o contador indica quantas substituições estão efetivamente ativas.
 
@@ -73,6 +73,7 @@ Comece com um intervalo pequeno e use o perfil **Avançado** apenas quando preci
 
 - **Resultados honestos:** cada relação de topologia preserva origem, confiança e evidência.
 - **UI acessível e adaptável:** comandos óbvios usam ícones compactos, mas preservam tooltip, nome de automação, navegação por teclado, alvos de 40 px e feedback para leitores de ecrã; a configuração recolhe durante o scan e os painéis ajustam-se ao espaço disponível.
+- **Informação transparente:** a janela Sobre apresenta versão, autoria, copyright, runtime, arquitetura, licença e limites de confiança sem obrigar o utilizador a procurar esses dados nos ficheiros.
 - **Lista primeiro:** o inventário continua a ser a vista principal depois do scan.
 - **Topologia a pedido:** o mapa abre numa janela separada sem repetir ou alterar o scan.
 - **Diagnósticos pesquisáveis:** códigos `LNS-*` distinguem entrada, rede, dispositivo e falhas internas.
@@ -104,21 +105,23 @@ Comece com um intervalo pequeno e use o perfil **Avançado** apenas quando preci
 
 As opções técnicas da UI só substituem partes do perfil quando **Usar definições personalizadas** está ativado. Abrir ou fechar o painel não muda o comportamento; **Repor valores do perfil** elimina as substituições técnicas. Antes de iniciar, a aplicação calcula uma estimativa de carga: não prevê duração, mas torna explícito o máximo de tentativas nativas por endereços/portas/probes e exige confirmação para níveis altos ou extremos. A identidade SNMP v2c e a topologia SNMP são independentes e permanecem desativadas até o utilizador fornecer explicitamente uma community. A integração Nmap só fica disponível no perfil Avançado, usa um `nmap.exe` instalado separadamente, executa tráfego adicional no seu próprio orçamento e nunca é descarregada ou incluída pelo projeto. Os avisos de carga, SNMP sem cifragem e Nmap são reunidos num único pedido de consentimento.
 
+Os três perfis começam pela mesma combinação de ICMP, TCP, ARP e descoberta multicast e pelas mesmas portas de descoberta. Normal e Avançado aumentam o tempo disponível e enriquecem apenas os alvos já confirmados com mais portas, nomes e identidade; não representam uma garantia matemática de encontrar mais dispositivos. Um inventário é temporal: telemóveis em suspensão, multicast perdido, limites de respostas, firewall e alterações entre segundos podem mudar a contagem. Na v1.4.0, ICMP, TCP e ARP começam em paralelo. Uma entrada preexistente `Reachable` conta como alcance recente; uma entrada `Stale` só volta a contar depois de uma resolução ARP dirigida e de uma segunda leitura nativa `Reachable`, sem `IsUnreachable` e com o mesmo MAC. Isto corrige a diferença 5 → 4 causada pela primeira passagem aquecer a cache sem transformar um MAC antigo em prova de vida.
+
 ## Funcionalidades
 
 | Área | Informação apresentada | Origem ou limite principal |
 | --- | --- | --- |
 | Identidade | IP, hostname, NetBIOS, MAC, titular IEEE, fabricante, modelo, nome anunciado, firmware, serial, serviços/endpoints DNS-SD, fonte e confiança | UPnP, DNS-SD, SNMP e Nmap são evidências não autenticadas ou dependentes da configuração; campos podem ficar desconhecidos ou conflituosos |
-| Disponibilidade | latência e métodos de descoberta | ICMP, TCP ou ARP fresco (`Reachable`/resposta direta) confirmam o alvo naquele instante; a cache existente antes do scan só enriquece um alvo já confirmado |
+| Disponibilidade | latência e métodos de descoberta | ICMP, TCP, ARP novo/resposta direta ou um vizinho `Reachable` atual/revalidado confirmam o alvo; uma entrada preexistente que continue `Stale` ou inválida permanece apenas passiva |
 | Portas e serviços | portas TCP abertas, nome provável, resposta leve e estado TLS verificado | uma porta convencional não prova cifragem; não existe autenticação, exploração ou inspeção profunda |
 | Protocolos | ICMP, ARP, TCP e protocolos associados às respostas observadas | não é uma captura nem uma contagem de pacotes |
 | Equipamento | tipo, sistema operativo provável e risco | classificação heurística, nunca identificação garantida |
 | Wi-Fi | SSID, BSSID, canal, rádio e percentagem de sinal local | sinal do computador para o access point, não de cada dispositivo |
 | VLAN | configuração exposta pelo adaptador ou evidência inequívoca do switch | não captura tags 802.1Q |
-| Camada 2 | alcance direto quando existe evidência ARP ativa | uma entrada passiva em cache não basta e o resultado não confirma o switch físico |
+| Camada 2 | alcance direto quando existe evidência ARP ativa ou um vizinho atual/revalidado em estado `Reachable` | uma entrada passiva/`Stale` não basta e o resultado não confirma o switch físico |
 | Histórico | novo, alterado, visto anteriormente, favorito, alias e notas | snapshots locais; MACs aleatórios podem mudar a identidade |
 | Ações | copiar dados, abrir endpoints e Wake-on-LAN | execute apenas ações autorizadas e confirme o alvo |
-| Exportações | JSON schema v6, CSV UTF-8, HTML, GraphML e relatório de suporte agregado | os relatórios de inventário incluem evidência/serial e endpoints mDNS/DNS-SD quando disponíveis e são sensíveis; o relatório de suporte exclui identificadores |
+| Exportações | JSON schema v7, CSV UTF-8, HTML, GraphML e relatório de suporte agregado | JSON/CSV/HTML preservam a origem da evidência MAC; os relatórios de inventário incluem identidade e endpoints mDNS/DNS-SD e são sensíveis, enquanto o relatório de suporte exclui identificadores |
 
 ### Base IEEE incorporada e offline
 
@@ -193,7 +196,7 @@ O enriquecimento Nmap é explicitamente opt-in, limitado a IPv4 privado e TCP Co
 - Um equipamento pode bloquear ICMP e continuar acessível por TCP, ARP ou multicast.
 - O sinal Wi-Fi pertence à ligação local do computador, não aos clientes remotos.
 - A VLAN pode vir do adaptador local ou de dados inequívocos do switch; não é descoberta universal por dispositivo.
-- Só uma observação ARP posterior ao baseline e ainda marcada `Reachable`, ou uma resposta ARP direta sem entrada prévia, sustenta a inferência de segmento L2; uma entrada anterior na cache não torna um host online, não é eliminada e não identifica o switch físico.
+- Só uma observação ARP posterior ao baseline, uma resposta ARP direta sem entrada prévia ou um vizinho atual/revalidado apresentado como `Reachable` sustenta a inferência moderada de segmento L2. A resolução dirigida usa `SendARP`: o projeto não limpa a tabela inteira nem chama `ResolveIpNetEntry2`, mas o Windows pode atualizar ou invalidar a entrada alvo. Uma entrada que continue `Stale` não torna um host online e o resultado não identifica o switch físico.
 - O titular IEEE do prefixo, o fabricante físico, o tipo de equipamento, o sistema operativo e o risco não são identificações garantidas.
 - Multicast pode ser bloqueado por firewall, isolamento Wi-Fi, VLANs ou políticas da rede. SSDP, WS-Discovery e mDNS repetem transmissões iniciais dentro de um orçamento comum e limitado, mas não garantem resposta; um endereço apenas anunciado dentro de mDNS não cria um dispositivo online sem evidência direta do remetente.
 - SSDP/UPnP, mDNS/DNS-SD, WS-Discovery, SNMP e os banners Nmap são declarações do equipamento e podem ser incompletos, antigos ou forjados; a UI preserva origem, confiança e conflitos.
@@ -266,7 +269,7 @@ Validação completa:
 powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1 -Configuration Release -VerifyFormat
 ```
 
-O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.3.8`, a suite contém 89 testes. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
+O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.4.0`, a suite contém 95 testes. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
 
 O workflow CodeQL analisa C# com consultas `security-extended` quando o repositório é público ou quando `CODEQL_ENABLED=true` e o plano privado permite code scanning. A release restaura metadados de dependências para `win-x64` e `win-arm64`, exige ambos os runtimes e gera/valida um SBOM SPDX 2.2 como evidência separada, sem o confundir com os dez ficheiros instaláveis validados.
 
@@ -301,7 +304,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -RuntimeI
 
 Uma tag existente `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia a QA dos pacotes; o workflow recusa pedidos executados apenas sobre um branch. A publicação de produção continua a exigir `workflow_dispatch` explícito nessa tag com `publish_release=true`. Antes do build, o preflight confirma que tags lightweight ou anotadas resolvem para o HEAD atual de `main` e apresenta códigos `LNS-REL-*` para configurações ou autorizações ausentes. A assinatura pública usa Microsoft Artifact Signing por OIDC: a chave permanece num HSM/serviço e não existe PFX no GitHub.
 
-Os dez ficheiros candidatos são carregados uma única vez numa **GitHub draft release privada**, identificada pelo repositório, run, tentativa, commit, tag, digest canónico e nonce. Não é criado qualquer artefacto de GitHub Actions, eliminando a duplicação pesada e a falha por quota. Os runners Windows x64 e ARM64 descarregam cada asset autenticado pelo respetivo ID e confirmam nome, estado, tamanho e SHA-256. A API de drafts exige push access mesmo para leitura autenticada; por isso esses dois jobs recebem `contents: write`, mas o checkout não persiste a credencial e a operação chamada é exclusivamente `DownloadCandidate`. Só depois dos dois testes nativos o gate aceita a evidência Base64 limitada a 64 KiB, valida tamanho, hash, UTF-8, JSON e proveniência, troca exclusivamente o `SIGNING-STATE.txt` de `Pending` para `Validated` e adiciona `VALIDATION-ATTESTATION.json` e o SBOM SPDX 2.2. O contrato final tem **12 assets permanentes**. Imediatamente antes de publicar, o workflow volta a validar tag, visibilidade, ownership e todos os digests; numa falha, apaga apenas a draft que pertence à própria tentativa. Uma execução idempotente aceita uma release já publicada somente depois de verificar o contrato remoto e a tentativa histórica de validação. Resultados `NotSigned` só podem tornar-se uma prerelease `Private QA` enquanto a API confirmar que o repositório continua privado; a distribuição pública exige Authenticode confiável e autorização IEEE. Consulte [Windows App Control e erro 4551](docs/APP_CONTROL.md).
+Os dez ficheiros candidatos são carregados uma única vez numa **GitHub draft release privada**, identificada pelo repositório, run, tentativa, commit, tag, digest canónico e nonce. Não é criado qualquer artefacto de GitHub Actions, eliminando a duplicação pesada e a falha por quota. Os runners Windows x64 e ARM64 descarregam cada asset autenticado pelo respetivo ID e confirmam nome, estado, tamanho e SHA-256. A API de drafts exige push access mesmo para leitura autenticada; por isso esses dois jobs recebem `contents: write`, mas o checkout não persiste a credencial e a operação chamada é exclusivamente `DownloadCandidate`. Só depois dos dois testes nativos o gate aceita a evidência Base64 limitada a 64 KiB, valida tamanho, hash, UTF-8, JSON e proveniência, troca exclusivamente o `SIGNING-STATE.txt` de `Pending` para `Validated` e adiciona `VALIDATION-ATTESTATION.json` e o SBOM SPDX 2.2. O contrato final tem **12 assets permanentes**. Imediatamente antes de publicar, o workflow volta a validar tag, visibilidade, ownership e todos os digests; numa falha, apaga apenas a draft que pertence à própria tentativa. Uma execução idempotente aceita uma release já publicada somente depois de verificar o contrato remoto e a tentativa histórica de validação. Resultados `NotSigned` pedem explicitamente `make_latest=false` e só podem tornar-se uma prerelease `Private QA` enquanto a API confirmar que o repositório continua privado; uma produção assinada pede `make_latest=true` e é aceite apenas depois de dois gates confirmarem que a API `releases/latest` aponta para a mesma tag. Consulte [Windows App Control e erro 4551](docs/APP_CONTROL.md).
 
 A [checklist de release](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/RELEASE_CHECKLIST.md) exige validação num Windows limpo, estado de assinatura explícito, verificação pós-upload e teste nativo por arquitetura antes de considerar o suporte totalmente validado. O [guia de assinatura](docs/SIGNING.md) explica exatamente o que o projeto automatiza e o que exige uma identidade externa do publisher.
 

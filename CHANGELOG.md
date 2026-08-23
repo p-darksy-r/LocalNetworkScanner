@@ -4,6 +4,32 @@
 
 Todas as alterações relevantes deste projeto são registadas neste ficheiro. O formato segue os princípios de Keep a Changelog e o versionamento segue Semantic Versioning.
 
+## [1.4.0] - 2026-08-23
+
+Tag de código e QA privada. Sem uma identidade Authenticode Public Trust configurada e autorização escrita para redistribuir a snapshot IEEE, os executáveis continuam limitados a uma prerelease privada `Private QA (NotSigned)` e não podem ser apresentados como produção ou `Latest`.
+
+### Added
+
+- ícones compactos de informação e saída no cabeçalho, com alvos de 40 px, tooltips, nomes de automação e acesso por `F1`/`Alt+F4`;
+- janela **Sobre** responsiva com nome, versão dinâmica, resumo, criador, copyright, licença, arquitetura/runtime, capacidades principais e links explícitos para o repositório e avisos legais;
+- fonte de evidência `CurrentReachableNeighbor`, separada de `ActiveArp` e da cache passiva, preservada na UI e nos exports JSON/CSV/HTML;
+- testes determinísticos para ARP em paralelo, reconfirmação de vizinhos entre scans, metadados/acessibilidade da janela Sobre e contrato `Latest` da futura publicação assinada.
+
+### Changed
+
+- ARP começa em paralelo com ICMP e TCP, incluindo a revalidação de vizinhos já presentes, evitando que os timeouts maiores dos perfis Normal/Avançado atrasem a tentativa de camada 2;
+- uma entrada preexistente `Reachable` representa alcance recente; uma entrada transitória como `Stale` exige `SendARP` e uma segunda leitura nativa `Reachable`, sem `IsUnreachable` e com o mesmo MAC, enquanto uma entrada `Permanent` permanece passiva;
+- o export JSON sobe para schema v7 e identifica `devices[].macAddressSource`; CSV e HTML apresentam a mesma proveniência MAC;
+- o README explica por que um inventário é temporal, por que os três perfis partilham a mesma passagem de descoberta e por que Normal/Avançado acrescentam detalhe sem garantirem uma contagem superior;
+- a publicação de produção passa a pedir explicitamente `make_latest=true` e os dois gates finais confirmam `releases/latest`; a QA privada pede `make_latest=false`;
+- versão do produto, manifesto Windows, linha de segurança, template de erros e documentação atualizados para `v1.4.0`.
+
+### Security
+
+- a aplicação não usa `ResolveIpNetEntry2` nem limpa a tabela ARP inteira; a revalidação `SendARP` é dirigida a um alvo e pode atualizar ou invalidar essa entrada no Windows, mas nunca promove o MAC sem uma leitura posterior coerente;
+- links da janela Sobre aceitam apenas URIs HTTP/HTTPS fixos e abrir o ícone Sair reutiliza integralmente as confirmações existentes para scans e metadados por guardar;
+- uma release estável/`Latest` permanece impossível sem assinatura Authenticode válida, timestamp, validação nativa x64/ARM64 e autorização IEEE; tornar o repositório público não satisfaz estes gates.
+
 ## [1.3.8] - 2026-08-23
 
 Tag nova obrigatória; a `v1.3.7` permanece imutável e a sua prerelease privada continua publicada. Os 12 assets foram materializados, validados e publicados corretamente, mas o passo posterior que escrevia o resumo Markdown continha um escape PowerShell inválido; por isso o job Publish e o gate terminal terminaram vermelhos apesar de a publicação já estar concluída.

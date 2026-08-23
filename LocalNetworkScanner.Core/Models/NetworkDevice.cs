@@ -24,6 +24,8 @@ public sealed class NetworkDevice
 
     public string? MacAddress { get; set; }
 
+    public MacAddressResolutionSource? MacAddressSource { get; set; }
+
     public string? Manufacturer { get; set; }
 
     public string? MacAssignee { get; set; }
@@ -115,6 +117,16 @@ public sealed class NetworkDevice
     public string HostnameDisplay => string.IsNullOrWhiteSpace(Hostname) ? "—" : Hostname;
 
     public string MacDisplay => string.IsNullOrWhiteSpace(MacAddress) ? "—" : MacAddress;
+
+    public string MacEvidenceDisplay => MacAddressSource switch
+    {
+        MacAddressResolutionSource.LocalInterface => "Interface local",
+        MacAddressResolutionSource.NeighborCache => "Cache ARP passiva",
+        MacAddressResolutionSource.ActiveArp => "ARP ativo deste scan",
+        MacAddressResolutionSource.CurrentReachableNeighbor => "Vizinho Reachable atual/revalidado",
+        _ when !string.IsNullOrWhiteSpace(MacAddress) => "Outro protocolo / origem não classificada",
+        _ => "—"
+    };
 
     public string ManufacturerDisplay => string.IsNullOrWhiteSpace(Manufacturer) ? "Desconhecido" : Manufacturer;
 

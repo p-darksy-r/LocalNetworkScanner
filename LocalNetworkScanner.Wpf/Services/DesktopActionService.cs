@@ -8,6 +8,18 @@ namespace LocalNetworkScanner.Wpf.Services;
 
 public sealed class DesktopActionService
 {
+    public void OpenUri(Uri uri)
+    {
+        ArgumentNullException.ThrowIfNull(uri);
+        if (!uri.IsAbsoluteUri ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new InvalidOperationException("A aplicação só abre endereços Web HTTP ou HTTPS explícitos.");
+        }
+
+        Start(uri.AbsoluteUri);
+    }
+
     public void OpenWeb(NetworkDevice device)
     {
         ArgumentNullException.ThrowIfNull(device);

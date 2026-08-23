@@ -493,6 +493,33 @@ function Wait-ForReleaseAssets {
     throw "LNS-REL-008: remote draft asset verification did not converge: $lastError"
 }
 
+function Wait-ForLatestRelease {
+    param(
+        [Parameter(Mandatory = $true)][long]$Id,
+        [Parameter(Mandatory = $true)][string]$Tag
+    )
+
+    $lastError = "Latest still points to another release."
+    for ($attempt = 1; $attempt -le 10; $attempt++) {
+        try {
+            $latest = Invoke-GitHubJson -Method Get -Path "releases/latest"
+            if ([long]$latest.id -eq $Id -and [string]$latest.tag_name -ceq $Tag) {
+                return $latest
+            }
+            $lastError = "Latest returned id '$($latest.id)' and tag '$($latest.tag_name)'."
+        }
+        catch {
+            $lastError = $_.Exception.Message
+        }
+
+        if ($attempt -lt 10) {
+            Start-Sleep -Seconds 2
+        }
+    }
+
+    throw "LNS-REL-008: the signed production release was not selected as Latest after bounded retries: $lastError"
+}
+
 function Remove-Asset {
     param([Parameter(Mandatory = $true)][long]$AssetId)
 
@@ -625,6 +652,7 @@ function Get-FinalReleaseMetadata {
         lead = $lead
         bodyLines = $bodyLines
         prerelease = -not $isPublic
+        makeLatest = if ($isPublic) { "true" } else { "false" }
     }
 }
 
@@ -1009,6 +1037,7 @@ switch ($Operation) {
                 body = $body
                 draft = $false
                 prerelease = [bool]$metadata.prerelease
+                make_latest = $metadata.makeLatest
             }
         }
         $release = Invoke-GitHubJson -Method Get -Path "releases/$ReleaseId"
@@ -1027,6 +1056,11 @@ switch ($Operation) {
         }
         Assert-ExactNames -Expected $finalNames -Assets @($releaseByTag.assets) -Description "published tag lookup"
         Assert-RecordsEqual -LocalRecords $localRecords -RemoteRecords (Get-RemoteRecords -Assets @($releaseByTag.assets)) -Description "published tag lookup"
+        if ($ReleaseMode -eq "PublicRelease") {
+            $latestRelease = Wait-ForLatestRelease -Id ([long]$ReleaseId) -Tag $ReleaseTag
+            Assert-ExactNames -Expected $finalNames -Assets @($latestRelease.assets) -Description "Latest release lookup"
+            Assert-RecordsEqual -LocalRecords $localRecords -RemoteRecords (Get-RemoteRecords -Assets @($latestRelease.assets)) -Description "Latest release lookup"
+        }
         Assert-LiveTag
         Assert-PrivateBoundary
         "release_url=$($release.html_url)" >> $env:GITHUB_OUTPUT

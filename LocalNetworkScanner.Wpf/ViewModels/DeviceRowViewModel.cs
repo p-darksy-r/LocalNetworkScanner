@@ -34,6 +34,7 @@ public sealed class DeviceRowViewModel : ObservableObject
         ? "—"
         : _device.WsDiscoveryTypes;
     public string MacAddress => _device.MacDisplay;
+    public string MacEvidence => _device.MacEvidenceDisplay;
     public string Manufacturer => _device.ManufacturerDisplay;
     public string MacAssignee => _device.MacAssigneeDisplay;
     public string MacAssignment => BuildMacAssignment();

@@ -157,7 +157,7 @@ public sealed class ExportService
         NetworkMap topologyMap = new NetworkTopologyMapService().Build(result);
         object payload = new
         {
-            schemaVersion = 6,
+            schemaVersion = 7,
             generatedAt = DateTimeOffset.UtcNow,
             network = new
             {
@@ -232,6 +232,7 @@ public sealed class ExportService
                 device.IsFavorite,
                 device.Hostname,
                 device.MacAddress,
+                macAddressSource = device.MacAddressSource?.ToString(),
                 device.Manufacturer,
                 device.MacAssignee,
                 device.MacRegistry,
@@ -426,7 +427,7 @@ public sealed class ExportService
     {
         EnsureDirectory(path);
         StringBuilder csv = new();
-        csv.AppendLine("Resultado parcial;Favorito;Alias;Notas;IP;Hostname;NetBIOS;Grupo de trabalho;MAC;Titular IEEE;Fabricante;Modelo;Nome anunciado;Firmware;Confiança identidade;Fontes identidade;PingMs;Descoberta;Portas;Tipo;SO provável;Protocolos;Risco;Pontuação;Topologia;Histórico");
+        csv.AppendLine("Resultado parcial;Favorito;Alias;Notas;IP;Hostname;NetBIOS;Grupo de trabalho;MAC;Evidência MAC;Titular IEEE;Fabricante;Modelo;Nome anunciado;Firmware;Confiança identidade;Fontes identidade;PingMs;Descoberta;Portas;Tipo;SO provável;Protocolos;Risco;Pontuação;Topologia;Histórico");
 
         foreach (NetworkDevice device in result.Devices)
         {
@@ -441,6 +442,7 @@ public sealed class ExportService
                 device.NetBiosName ?? string.Empty,
                 device.Workgroup ?? string.Empty,
                 device.MacAddress ?? string.Empty,
+                device.MacEvidenceDisplay,
                 device.MacAssignee ?? string.Empty,
                 device.Manufacturer ?? string.Empty,
                 device.Model ?? string.Empty,
@@ -515,7 +517,7 @@ public sealed class ExportService
             html.Append($"<td><strong>{H(device.IdentityDisplay)}</strong><br>{H(device.DeviceType)}</td>");
             html.Append($"<td>{H(device.IpAddressText)}</td>");
             html.Append($"<td>{H(device.ManufacturerDisplay)}<br>{H(device.ModelDisplay)} · {H(device.IdentityConfidenceDisplay)}</td>");
-            html.Append($"<td>{H(device.MacDisplay)}<br>{H(device.MacAssigneeDisplay)}</td>");
+            html.Append($"<td>{H(device.MacDisplay)}<br>{H(device.MacEvidenceDisplay)}<br>{H(device.MacAssigneeDisplay)}</td>");
             html.Append($"<td>{H(device.ResponseTimeDisplay)}</td>");
             html.Append($"<td>{H(device.OpenPortsText)}<br>{H(device.ProtocolsText)}</td>");
             html.Append($"<td class=\"{riskClass}\">{H(device.RiskLevel)} · {device.RiskScore}/100</td>");

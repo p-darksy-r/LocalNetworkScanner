@@ -15,6 +15,7 @@ public sealed partial class MacAddressService
 {
     private const int DefaultMaximumActiveConcurrency = 32;
     private const int ErrorNotFound = 1_168;
+    private const int NeighborStateStale = 4;
     private const int NeighborStateReachable = 5;
     private const byte NeighborFlagIsUnreachable = 0x02;
     private const int EthernetAddressLength = 6;
@@ -198,25 +199,21 @@ public sealed partial class MacAddressService
             return null;
         }
 
-        MibIpNetRow2 row = new()
-        {
-            Address = SockaddrInet.FromIpv4Bytes(addressBytes),
-            InterfaceIndex = interfaceIndex.Value
-        };
+        MibIpNetRow2 row = CreateNeighborRow(addressBytes, interfaceIndex.Value);
         // A sessão captura a tabela antes dos probes. Se a entrada só existe agora,
-        // nasceu durante este scan e constitui evidência fresca sem ser removida.
+        // nasceu durante este scan. Um estado Reachable constitui evidência recente.
         int existingEntryResult = getIpNetEntry(ref row);
+        bool hadExistingEntry = existingEntryResult == 0;
         if (existingEntryResult == 0)
         {
-            bool isReachable = row.State == NeighborStateReachable &&
-                (row.Flags & NeighborFlagIsUnreachable) == 0;
-            string? existingMac = isReachable &&
-                row.PhysicalAddressLength == EthernetAddressLength
-                    ? FormatEthernetAddress(row.GetEthernetAddress())
-                    : null;
-            return TryNormalizeDeviceAddress(existingMac, out string existingNormalized)
-                ? existingNormalized
-                : null;
+            if (TryGetReachableNeighborMac(row, out string reachableMac))
+                return reachableMac;
+
+            // Permanent, Maximum e um Reachable marcado IsUnreachable não devem
+            // ser alterados por uma tentativa de descoberta. Apenas estados
+            // transitórios até Stale são candidatos a uma revalidação dirigida.
+            if (row.State < 0 || row.State > NeighborStateStale)
+                return null;
         }
         else if (existingEntryResult != ErrorNotFound)
         {
@@ -231,9 +228,47 @@ public sealed partial class MacAddressService
         string? candidate = result == 0 && length == EthernetAddressLength
             ? FormatEthernetAddress(mac.AsSpan(0, EthernetAddressLength))
             : null;
-        return TryNormalizeDeviceAddress(candidate, out string normalized)
-            ? normalized
-            : null;
+        if (!TryNormalizeDeviceAddress(candidate, out string normalized))
+            return null;
+
+        if (!hadExistingEntry)
+            return normalized;
+
+        // SendARP pode reutilizar ou atualizar a cache do Windows. Para uma entrada
+        // preexistente que não estava Reachable, o código de retorno não basta como
+        // prova de vida: a nova leitura tem de estar Reachable, sem IsUnreachable, e
+        // devolver exatamente o mesmo MAC. Assim uma entrada Stale antiga nunca é
+        // promovida apenas por continuar na tabela.
+        MibIpNetRow2 refreshedRow = CreateNeighborRow(addressBytes, interfaceIndex.Value);
+        int refreshedEntryResult = getIpNetEntry(ref refreshedRow);
+        return refreshedEntryResult == 0 &&
+            TryGetReachableNeighborMac(refreshedRow, out string refreshedMac) &&
+            string.Equals(normalized, refreshedMac, StringComparison.Ordinal)
+                ? refreshedMac
+                : null;
+    }
+
+    private static MibIpNetRow2 CreateNeighborRow(
+        byte[] addressBytes,
+        uint interfaceIndex) =>
+        new()
+        {
+            Address = SockaddrInet.FromIpv4Bytes(addressBytes),
+            InterfaceIndex = interfaceIndex
+        };
+
+    private static bool TryGetReachableNeighborMac(
+        MibIpNetRow2 row,
+        out string normalized)
+    {
+        normalized = string.Empty;
+        bool isReachable = row.State == NeighborStateReachable &&
+            (row.Flags & NeighborFlagIsUnreachable) == 0;
+        string? candidate = isReachable &&
+            row.PhysicalAddressLength == EthernetAddressLength
+                ? FormatEthernetAddress(row.GetEthernetAddress())
+                : null;
+        return TryNormalizeDeviceAddress(candidate, out normalized);
     }
 
     private static string FormatEthernetAddress(ReadOnlySpan<byte> address) =>
@@ -623,6 +658,50 @@ public sealed partial class MacAddressService
                     LazyThreadSafetyMode.ExecutionAndPublication),
                 this);
             return await cached.Value.WaitAsync(cancellationToken);
+        }
+
+        internal async Task<MacAddressResolution?> ConfirmReachabilityAsync(
+            IPAddress address,
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(address);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (address.Equals(_networkInterface.IpAddress) ||
+                !IpAddressHelper.IsInSameSubnet(
+                    address,
+                    _networkInterface.IpAddress,
+                    _networkInterface.SubnetMask))
+            {
+                return null;
+            }
+
+            NeighborTableSnapshot snapshot =
+                await _neighborTable.Value.WaitAsync(cancellationToken);
+            IsNeighborBaselineAvailable = snapshot.IsAvailable;
+            if (!snapshot.IsAvailable)
+                return null;
+
+            MacAddressResolution? resolution =
+                await GetActiveResolutionAsync(address).WaitAsync(cancellationToken);
+            return resolution is null
+                ? null
+                : new MacAddressResolution(
+                    resolution.MacAddress,
+                    MacAddressResolutionSource.CurrentReachableNeighbor);
+        }
+
+        internal async Task<MacAddressResolution?> ResolveForDiscoveryAsync(
+            IPAddress address,
+            CancellationToken cancellationToken)
+        {
+            MacAddressResolution? resolution = await ResolveWithEvidenceAsync(
+                address,
+                cancellationToken);
+            if (resolution?.Source != MacAddressResolutionSource.NeighborCache)
+                return resolution;
+
+            return await ConfirmReachabilityAsync(address, cancellationToken) ?? resolution;
         }
 
         private async Task<MacAddressResolution?> ResolveWithCacheCoreAsync(IPAddress address)

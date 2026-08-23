@@ -4,7 +4,7 @@
 
 ## Versões suportadas
 
-A linha de código suportada é `1.3.x`; apenas a revisão mais recente dessa linha recebe correções de segurança. A `1.2.x` é histórica e não deve ser usada como build de produção. Builds locais, forks e tags não são releases instaláveis oficiais. Uma prerelease existente apenas no repositório privado e marcada `Private QA (NotSigned)` continua a ser evidência de validação, não uma distribuição pública de produção.
+A linha de código suportada é `1.4.x`; apenas a revisão mais recente dessa linha recebe correções de segurança. As linhas `1.2.x` e `1.3.x` são históricas e não devem ser usadas como builds de produção. Builds locais, forks e tags não são releases instaláveis oficiais. Uma prerelease existente apenas no repositório privado e marcada `Private QA (NotSigned)` continua a ser evidência de validação, não uma distribuição pública de produção.
 
 ## Comunicar uma vulnerabilidade
 

@@ -1,0 +1,188 @@
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->
+
+<Window x:Class="LocalNetworkScanner.Wpf.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sobre — Local Network Scanner"
+        Width="640"
+        Height="620"
+        MinWidth="560"
+        MinHeight="540"
+        Background="{DynamicResource WindowBackgroundBrush}"
+        FontFamily="Segoe UI Variable Text, Segoe UI"
+        Icon="Assets/App.ico"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        TextOptions.TextFormattingMode="Display"
+        WindowStartupLocation="CenterOwner"
+        Loaded="OnLoaded"
+        PreviewKeyDown="OnPreviewKeyDown"
+        AutomationProperties.Name="Sobre o Local Network Scanner">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Border Style="{StaticResource CardBorderStyle}" Padding="18">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Width="82"
+                                Height="82"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Top"
+                                Background="{DynamicResource SelectionBrush}"
+                                CornerRadius="18">
+                            <Image Width="70"
+                                   Height="70"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Source="/LocalNetworkScanner;component/Assets/AppIcon.png"
+                                   Stretch="Uniform"
+                                   AutomationProperties.Name="Ícone do Local Network Scanner" />
+                        </Border>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock FontFamily="Segoe UI Variable Display, Segoe UI"
+                                       FontSize="25"
+                                       FontWeight="SemiBold"
+                                       Text="{Binding ProductName}" />
+                            <WrapPanel Margin="0,7,0,0">
+                                <Border Margin="0,0,8,0"
+                                        Padding="8,3"
+                                        Background="{DynamicResource SelectionBrush}"
+                                        CornerRadius="9">
+                                    <TextBlock x:Name="VersionTextBlock"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource SelectionForegroundBrush}"
+                                               Text="{Binding VersionLabel}" />
+                                </Border>
+                                <Border Padding="8,3"
+                                        Background="{DynamicResource SurfaceMutedBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="9">
+                                    <TextBlock FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Text="Windows x64 · ARM64" />
+                                </Border>
+                            </WrapPanel>
+                            <TextBlock Margin="0,10,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="{Binding Summary}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Margin="0,12,0,0" Style="{StaticResource CardBorderStyle}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="122" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.ColumnSpan="2"
+                                   Margin="0,0,0,10"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="INFORMAÇÃO DA APLICAÇÃO" />
+                        <TextBlock Grid.Row="1" Margin="0,3" Foreground="{DynamicResource TextSecondaryBrush}" Text="Criador" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,3" FontWeight="SemiBold" Text="{Binding Creator}" />
+                        <TextBlock Grid.Row="2" Margin="0,3" Foreground="{DynamicResource TextSecondaryBrush}" Text="Execução" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,3" Text="{Binding RuntimeLabel}" />
+                        <TextBlock Grid.Row="3" Margin="0,3" Foreground="{DynamicResource TextSecondaryBrush}" Text="Licença" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,3" Text="MIT para o código-fonte" />
+                    </Grid>
+                </Border>
+
+                <Border Margin="0,12,0,0" Style="{StaticResource CardBorderStyle}">
+                    <StackPanel>
+                        <TextBlock FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="CAPACIDADES PRINCIPAIS" />
+                        <WrapPanel Margin="0,9,0,0">
+                            <Border Margin="0,0,7,7" Padding="9,4" Background="{DynamicResource SurfaceMutedBrush}" CornerRadius="10">
+                                <TextBlock FontSize="11" Text="Descoberta multicamada" />
+                            </Border>
+                            <Border Margin="0,0,7,7" Padding="9,4" Background="{DynamicResource SurfaceMutedBrush}" CornerRadius="10">
+                                <TextBlock FontSize="11" Text="Inventário e identidade" />
+                            </Border>
+                            <Border Margin="0,0,7,7" Padding="9,4" Background="{DynamicResource SurfaceMutedBrush}" CornerRadius="10">
+                                <TextBlock FontSize="11" Text="Diagnósticos LNS" />
+                            </Border>
+                            <Border Margin="0,0,7,7" Padding="9,4" Background="{DynamicResource SurfaceMutedBrush}" CornerRadius="10">
+                                <TextBlock FontSize="11" Text="Topologia opcional" />
+                            </Border>
+                        </WrapPanel>
+                        <TextBlock Margin="0,4,0,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="A aplicação não envia telemetria. Executa scans apenas em redes próprias ou explicitamente autorizadas."
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Margin="4,13,4,0"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Text="{Binding CopyrightText}"
+                           TextWrapping="Wrap" />
+                <TextBlock Margin="4,4,4,0"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Text="Os dados IEEE incorporados mantêm os termos dos respetivos titulares. O estado de assinatura e validação encontra-se no SIGNING-STATE.txt de cada release."
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid Grid.Row="1" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <WrapPanel VerticalAlignment="Center">
+                <Button Margin="0,0,7,0"
+                        Style="{StaticResource CompactButtonStyle}"
+                        Click="OnRepositoryClick"
+                        Content="GitHub"
+                        AutomationProperties.Name="Abrir repositório no GitHub" />
+                <Button Margin="0,0,7,0"
+                        Style="{StaticResource CompactButtonStyle}"
+                        Click="OnLicenseClick"
+                        Content="Licença MIT"
+                        AutomationProperties.Name="Abrir licença MIT" />
+                <Button Style="{StaticResource CompactButtonStyle}"
+                        Click="OnThirdPartyNoticesClick"
+                        Content="Avisos de terceiros"
+                        AutomationProperties.Name="Abrir avisos de terceiros" />
+            </WrapPanel>
+            <Button x:Name="CloseAboutButton"
+                    Grid.Column="1"
+                    Margin="12,0,0,0"
+                    Style="{StaticResource IconButtonStyle}"
+                    Click="OnCloseClick"
+                    ToolTip="Fechar informação (Esc)"
+                    AutomationProperties.Name="Fechar informação sobre a aplicação"
+                    AutomationProperties.HelpText="Fecha esta janela. Também pode usar Escape.">
+                <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE8BB;" />
+            </Button>
+        </Grid>
+    </Grid>
+</Window>
+
+<!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

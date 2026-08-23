@@ -60,16 +60,37 @@
                            Text="Descoberta multicamada, inventário e segurança da tua rede local" />
             </StackPanel>
             <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
-                <ToggleButton x:Name="ScanConfigurationToggle"
-                              IsChecked="{Binding IsScanConfigurationExpanded, Mode=TwoWay}"
-                              Content="{Binding ScanConfigurationToggleLabel}"
-                              AutomationProperties.Name="Mostrar ou ocultar configuração do scan"
-                              AutomationProperties.HelpText="Recolhe a configuração para dar mais espaço aos resultados. Pode ser reaberta a qualquer momento." />
+                <WrapPanel HorizontalAlignment="Right">
+                    <ToggleButton x:Name="ScanConfigurationToggle"
+                                  IsChecked="{Binding IsScanConfigurationExpanded, Mode=TwoWay}"
+                                  Content="{Binding ScanConfigurationToggleLabel}"
+                                  AutomationProperties.Name="Mostrar ou ocultar configuração do scan"
+                                  AutomationProperties.HelpText="Recolhe a configuração para dar mais espaço aos resultados. Pode ser reaberta a qualquer momento." />
+                    <Button x:Name="AboutButton"
+                            Margin="8,0,0,0"
+                            Style="{StaticResource IconButtonStyle}"
+                            Click="OnAboutClick"
+                            ToolTip="Sobre o Local Network Scanner (F1)"
+                            AutomationProperties.Name="Abrir informação sobre a aplicação"
+                            AutomationProperties.HelpText="Mostra versão, resumo, criador, licença e informação técnica da aplicação. Atalho F1.">
+                        <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE946;" />
+                    </Button>
+                    <Button x:Name="ExitButton"
+                            Margin="8,0,0,0"
+                            Style="{StaticResource IconButtonStyle}"
+                            Click="OnExitClick"
+                            ToolTip="Sair da aplicação (Alt+F4)"
+                            AutomationProperties.Name="Sair da aplicação"
+                            AutomationProperties.HelpText="Fecha a aplicação e pede confirmação se existir um scan ou alterações por guardar.">
+                        <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE8BB;" />
+                    </Button>
+                </WrapPanel>
                 <TextBlock Margin="0,5,0,0"
                            HorizontalAlignment="Right"
                            FontSize="11"
                            Foreground="{DynamicResource TextSecondaryBrush}"
-                           Text="F5 iniciar · Esc cancelar · Ctrl+F procurar · Ctrl+E exportar" />
+                           Text="F5 iniciar · Esc cancelar · Ctrl+F procurar · Ctrl+E exportar"
+                           TextTrimming="CharacterEllipsis" />
             </StackPanel>
         </Grid>
 
@@ -1194,7 +1215,14 @@
                                             <TextBlock Grid.Row="1" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="IP" />
                                             <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.IpAddress}" />
                                             <TextBlock Grid.Row="2" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="MAC" />
-                                            <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.MacAddress}" />
+                                            <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,4">
+                                                <TextBlock Text="{Binding SelectedDevice.MacAddress}" />
+                                                <TextBlock Margin="0,2,0,0"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           Text="{Binding SelectedDevice.MacEvidence}"
+                                                           TextWrapping="Wrap" />
+                                            </StackPanel>
                                             <TextBlock Grid.Row="3" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Titular do prefixo IEEE" />
                                             <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.MacAssignee}" TextWrapping="Wrap" />
                                             <TextBlock Grid.Row="4" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="SO provável" />

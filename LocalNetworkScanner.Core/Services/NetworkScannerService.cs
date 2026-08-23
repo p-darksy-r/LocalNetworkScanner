@@ -158,30 +158,32 @@ public sealed class NetworkScannerService
                         networkInterface.IpAddress,
                         token)
                     : Task.FromResult<int?>(null);
+                Task<MacAddressResolution?> macTask = options.EnableArp
+                    ? macScanSession!.ResolveForDiscoveryAsync(address, token)
+                    : Task.FromResult<MacAddressResolution?>(null);
 
-                await Task.WhenAll(pingTask, tcpTask);
+                await Task.WhenAll(pingTask, tcpTask, macTask);
                 PingProbeResult ping = await pingTask;
                 int? discoveryPort = await tcpTask;
                 bool confirmedByProbe = ping.Success || discoveryPort.HasValue;
-                MacAddressResolution? macResolution = options.EnableArp
-                    ? await macScanSession!.ResolveWithEvidenceAsync(address, token)
-                    : null;
-                bool confirmedByActiveArp = macResolution?.ConfirmsReachability == true;
+                MacAddressResolution? macResolution = await macTask;
+                bool confirmedByArp = macResolution?.ConfirmsReachability == true;
 
-                if (confirmedByProbe || confirmedByActiveArp)
+                if (confirmedByProbe || confirmedByArp)
                 {
                     DiscoveryMethod methods = DiscoveryMethod.None;
                     if (ping.Success)
                         methods |= DiscoveryMethod.Icmp;
                     if (discoveryPort.HasValue)
                         methods |= DiscoveryMethod.Tcp;
-                    if (confirmedByActiveArp)
+                    if (confirmedByArp)
                         methods |= DiscoveryMethod.Arp;
 
                     device = CreateOnlineDevice(address, methods);
                     device.ResponseTimeMs = ping.RoundtripTimeMs;
                     device.ReplyTtl = ping.ReplyTtl;
                     device.MacAddress = macResolution?.MacAddress;
+                    device.MacAddressSource = macResolution?.Source;
                 }
             }
 
@@ -297,7 +299,10 @@ public sealed class NetworkScannerService
             device.Hostname ??= await hostnameTask;
             MacAddressResolution? macResolution = await macTask;
             if (shouldResolveMacWithArp)
+            {
                 device.MacAddress = macResolution?.MacAddress;
+                device.MacAddressSource = macResolution?.Source;
+            }
             if (macResolution?.ConfirmsReachability == true)
                 device.DiscoveryMethods |= DiscoveryMethod.Arp;
             NetBiosInfo? netBios = await netBiosTask;
@@ -786,6 +791,7 @@ public sealed class NetworkScannerService
         }
 
         device.MacAddress = null;
+        device.MacAddressSource = null;
         device.MacAssignee = null;
         device.MacRegistry = null;
         device.MacAssignmentPrefix = null;

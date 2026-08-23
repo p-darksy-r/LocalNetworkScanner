@@ -383,6 +383,15 @@ try {
             $publishCondition.Groups["condition"].Value -match "needs\.package\.result == 'success'" -and
             $publishCondition.Groups["condition"].Value -match "needs\.validation-gate\.result == 'success'") `
         -Message "publish must override implicit success and require every direct release gate"
+    $transportScript = Get-Content -LiteralPath (Join-Path $repoRoot "scripts\release-draft-transport.ps1") -Raw
+    Assert-True `
+        -Condition ($transportScript -match 'makeLatest\s*=\s*if \(\$isPublic\) \{ "true" \} else \{ "false" \}' -and
+            $transportScript -match 'make_latest\s*=\s*\$metadata\.makeLatest' -and
+            $transportScript -match 'if \(\$ReleaseMode -eq "PublicRelease"\)' -and
+            $transportScript -match 'Get -Path "releases/latest"' -and
+            $transportScript -match 'function Wait-ForLatestRelease' -and
+            $transportScript -match 'Start-Sleep -Seconds 2') `
+        -Message "a signed production publication must explicitly become Latest and verify the Latest API lookup"
 
     $cleanupJob = [regex]::Match(
         $releaseWorkflow,
@@ -403,6 +412,10 @@ try {
             $resultJob.Groups["body"].Value -match 'publish = \$env:PUBLISH_RESULT' -and
             $resultJob.Groups["body"].Value -match 'Where-Object \{ \$_\.Value -ne ''success'' \}' -and
             $resultJob.Groups["body"].Value -match 'releases/tags/\$escapedTag' -and
+            $resultJob.Groups["body"].Value -match 'releases/latest' -and
+            $resultJob.Groups["body"].Value -match '\$candidateLatest\.id -eq \[long\]\$release\.id' -and
+            $resultJob.Groups["body"].Value -match '\$null -eq \$latestRelease' -and
+            $resultJob.Groups["body"].Value -match 'Start-Sleep -Seconds 2' -and
             $resultJob.Groups["body"].Value -match '\$assets\.Count -ne 12' -and
             $resultJob.Groups["body"].Value -match 'Get-CanonicalRemoteDigest -Records \$records') `
         -Message "a terminal status gate must reject incomplete publication and independently verify the release API"

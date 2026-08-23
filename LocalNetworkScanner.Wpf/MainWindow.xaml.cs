@@ -180,6 +180,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (modifiers == ModifierKeys.None && key == Key.F1)
+        {
+            ShowAboutWindow();
+            e.Handled = true;
+            return;
+        }
+
         if (modifiers == ModifierKeys.Alt && key == Key.C && ViewModel.CancelCommand.CanExecute(null))
         {
             ViewModel.CancelCommand.Execute(null);
@@ -289,6 +296,19 @@ public partial class MainWindow : Window
         _topologyWindow.Closed += (_, _) => _topologyWindow = null;
         _topologyWindow.Show();
     }
+
+    private void OnAboutClick(object sender, RoutedEventArgs e) => ShowAboutWindow();
+
+    private void ShowAboutWindow()
+    {
+        AboutWindow window = new()
+        {
+            Owner = this
+        };
+        window.ShowDialog();
+    }
+
+    private void OnExitClick(object sender, RoutedEventArgs e) => Close();
 }
 
 // Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

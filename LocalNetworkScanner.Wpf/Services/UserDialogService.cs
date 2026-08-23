@@ -44,7 +44,10 @@ public sealed class UserDialogService
             MessageBoxButton.OK,
             MessageBoxImage.Error);
 
-    public void ShowDiagnostic(string title, ScanDiagnostic diagnostic)
+    public void ShowDiagnostic(string title, ScanDiagnostic diagnostic) =>
+        ShowDiagnostic(Application.Current.MainWindow, title, diagnostic);
+
+    public void ShowDiagnostic(Window? owner, string title, ScanDiagnostic diagnostic)
     {
         ArgumentNullException.ThrowIfNull(diagnostic);
 
@@ -60,7 +63,7 @@ public sealed class UserDialogService
             message.AppendLine().Append("Alvo: ").Append(diagnostic.Target);
 
         MessageBox.Show(
-            Application.Current.MainWindow,
+            owner,
             message.ToString(),
             title,
             MessageBoxButton.OK,
