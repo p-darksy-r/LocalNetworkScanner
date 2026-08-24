@@ -58,4 +58,16 @@ O workflow recusa uma nova publicação pública de produção enquanto os biná
 
 A avaliação de elegibilidade para a SignPath Foundation está pendente. Nenhuma release atual foi assinada ou aprovada pela SignPath, e o workflow ainda não possui essa integração. A [Code signing policy](CODE_SIGNING_POLICY.md) define o estado atual, as funções da equipa e os gates pendentes. Entre esses gates estão a clarificação das funcionalidades de enumeração/risco face à condição **No hacking tools** e a licença/autorização aplicável à snapshot IEEE incorporada. A acessibilidade pública do repositório ou dos assets não resolve nenhum desses pontos.
 
+## Proteções do repositório público
+
+O GitHub está configurado para:
+
+- impedir eliminação, force-push e histórico não linear em `main`;
+- impedir eliminação ou movimentação não fast-forward de tags `v*`;
+- exigir referências de GitHub Actions fixadas por SHA completo;
+- executar CodeQL `security-extended` em alterações C#/XAML e semanalmente;
+- usar secret scanning, push protection e relatórios privados de vulnerabilidade.
+
+O projeto mantém apenas o branch `main`; por isso atualizações de Actions fixadas por SHA são revistas manualmente em vez de abrir branches automáticos do Dependabot. Uma alteração a workflows, scripts de release, políticas de assinatura ou futuros ficheiros `.signpath` deve receber atenção equivalente a código executável.
+
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

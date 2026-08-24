@@ -24,6 +24,7 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 - a topologia ajusta-se à work area do monitor atual, permite scroll horizontal da toolbar, realça apenas o nó selecionado e as suas ligações e preserva o zoom ao atualizar a paleta de Alto Contraste;
 - resumo, pesquisa e seleção da topologia passam a emitir eventos live-region para leitores de ecrã;
 - README, segurança, instalação, assinatura, App Control, checklist e documentação IEEE distinguem corretamente repositório público, prereleases históricas `Private QA (NotSigned)` e candidatura SignPath ainda não aprovada;
+- todas as páginas de releases existentes ligam agora a **Code signing policy** e à política de privacidade; a `v1.2.0` foi reclassificada como prerelease histórica `NotSigned`, deixando o projeto sem uma falsa release `Latest` enquanto não existir produção assinada;
 - metadados do produto e manifesto Windows avançam para `1.4.1`, sem criar uma release.
 
 ### Security
