@@ -86,6 +86,8 @@ O relatório de diagnóstico App Control usa o schema v2. `policyBlockConfirmed=
 
 Estes códigos pertencem ao workflow e aos scripts de distribuição; não são diagnósticos de um scan. Impedem que uma ausência de identidade, autorização ou validação seja apresentada como release pronta.
 
+Os significados abaixo descrevem o backend Microsoft Artifact Signing atualmente versionado, que não está configurado neste repositório e não assinou nenhuma release. A avaliação SignPath está pendente; uma futura integração terá de acrescentar ou generalizar códigos antes de ser usada, sem reutilizar silenciosamente mensagens Azure para falhas SignPath. Consulte a [Code signing policy](../CODE_SIGNING_POLICY.md).
+
 | Código | Severidade | Significado | Ação recomendada |
 | --- | --- | --- | --- |
 | `LNS-REL-001` | Error | Publicação pedida sem Microsoft Artifact Signing ativado | Configure primeiro a identidade cloud/HSM e só depois ative `ARTIFACT_SIGNING_ENABLED`. |

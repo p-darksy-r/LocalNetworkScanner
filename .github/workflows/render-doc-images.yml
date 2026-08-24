@@ -1,0 +1,73 @@
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
+
+name: Render documentation images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-doc-images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    name: Render WPF screenshots
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install .NET SDK from global.json
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Restore and build renderer
+        shell: pwsh
+        run: |
+          dotnet restore .\LocalNetworkScanner.slnx --nologo
+          dotnet build .\LocalNetworkScanner.slnx --configuration Release --no-restore --nologo
+
+      - name: Render synthetic screenshots
+        shell: pwsh
+        run: dotnet run --project .\LocalNetworkScanner.Tests\LocalNetworkScanner.Tests.csproj --configuration Release --no-build -- --render-doc-images
+
+      - name: Validate generated PNG files
+        shell: pwsh
+        run: |
+          $expected = @(
+            '.\docs\images\main-window-current.png',
+            '.\docs\images\topology-window-current.png'
+          )
+          foreach ($path in $expected) {
+            $file = Get-Item -LiteralPath $path -ErrorAction Stop
+            if ($file.Length -lt 10KB) {
+              throw "Rendered image is unexpectedly small: $path ($($file.Length) bytes)."
+            }
+            $bytes = [IO.File]::ReadAllBytes($file.FullName)
+            $pngHeader = @(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+            for ($index = 0; $index -lt $pngHeader.Count; $index++) {
+              if ($bytes[$index] -ne $pngHeader[$index]) {
+                throw "Rendered file is not a valid PNG: $path."
+              }
+            }
+            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            Write-Host "$($file.Name): $($file.Length) bytes, sha256=$hash"
+          }
+
+      - name: Upload documentation images
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        with:
+          name: LocalNetworkScanner-documentation-images
+          path: |
+            docs/images/main-window-current.png
+            docs/images/topology-window-current.png
+          if-no-files-found: error
+          retention-days: 1
+
+# Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

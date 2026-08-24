@@ -25,68 +25,27 @@
         </Grid.RowDefinitions>
 
         <Grid Margin="2,0,2,10">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <StackPanel>
-                <TextBlock FontFamily="Segoe UI Variable Display, Segoe UI"
-                           FontSize="24"
-                           FontWeight="SemiBold"
-                           Text="Topologia do scan" />
-                <TextBlock Margin="0,3,0,0"
-                           Foreground="{DynamicResource TextSecondaryBrush}"
-                           Text="{Binding TopologyMap.NetworkCidr, StringFormat=Mapa opcional da rede {0}}" />
-            </StackPanel>
-            <WrapPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
-                <Button Margin="4,0"
-                        MinWidth="34"
-                        Style="{StaticResource CompactButtonStyle}"
-                        Click="OnZoomOutTopologyClick"
-                        Content="−"
-                        ToolTip="Reduzir a topologia (tecla −)"
-                        AutomationProperties.Name="Reduzir topologia" />
-                <TextBlock x:Name="TopologyZoomText"
-                           MinWidth="48"
-                           Margin="2,0"
-                           VerticalAlignment="Center"
-                           TextAlignment="Center"
-                           FontWeight="SemiBold"
-                           AutomationProperties.LiveSetting="Polite"
-                           AutomationProperties.Name="Nível de ampliação da topologia"
-                           Text="100%" />
-                <Button Margin="4,0"
-                        MinWidth="34"
-                        Style="{StaticResource CompactButtonStyle}"
-                        Click="OnZoomInTopologyClick"
-                        Content="+"
-                        ToolTip="Ampliar a topologia (tecla +)"
-                        AutomationProperties.Name="Ampliar topologia" />
-                <Button Margin="4,0"
-                        Style="{StaticResource CompactButtonStyle}"
-                        Click="OnFitTopologyClick"
-                        Content="Ajustar"
-                        ToolTip="Enquadrar todos os nós (Home)"
-                        AutomationProperties.Name="Ajustar topologia à área visível" />
-                <Button Margin="4,0"
-                        Style="{StaticResource CompactButtonStyle}"
-                        Click="OnResetTopologyClick"
-                        Content="100%"
-                        ToolTip="Repor ampliação a 100 por cento"
-                        AutomationProperties.Name="Repor ampliação da topologia" />
-                <Button Margin="4,0"
-                        Style="{StaticResource CompactButtonStyle}"
-                        Click="OnExportTopologyPngClick"
-                        Content="Guardar PNG"
-                        ToolTip="Guardar exatamente o mapa visível como imagem PNG"
-                        AutomationProperties.Name="Guardar mapa de topologia em PNG" />
-                <Button Margin="4,0"
-                        Style="{StaticResource CompactButtonStyle}"
-                        Command="{Binding ExportGraphMlCommand}"
-                        Content="GraphML"
-                        ToolTip="Guardar topologia estruturada para Gephi, yEd ou ferramentas compatíveis"
-                        AutomationProperties.Name="Guardar topologia em GraphML" />
-                <Button Margin="12,0,0,0"
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock FontFamily="Segoe UI Variable Display, Segoe UI"
+                               FontSize="24"
+                               FontWeight="SemiBold"
+                               Text="Topologia do scan" />
+                    <TextBlock Margin="0,3,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Text="{Binding TopologyMap.NetworkCidr, StringFormat=Mapa opcional da rede {0}}" />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Margin="12,0,0,0"
+                        VerticalAlignment="Center"
                         Style="{StaticResource IconButtonStyle}"
                         Click="OnCloseClick"
                         ToolTip="Fechar topologia (Escape ou Alt+F4)"
@@ -94,7 +53,64 @@
                         AutomationProperties.HelpText="Fecha apenas a janela de topologia. Atalhos Escape e Alt+F4.">
                     <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE8BB;" />
                 </Button>
-            </WrapPanel>
+            </Grid>
+
+            <ScrollViewer Grid.Row="1"
+                          Margin="0,9,0,0"
+                          HorizontalContentAlignment="Right"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled"
+                          AutomationProperties.Name="Ferramentas do mapa de topologia">
+                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                    <Button Margin="4,0"
+                            MinWidth="34"
+                            Style="{StaticResource CompactButtonStyle}"
+                            Click="OnZoomOutTopologyClick"
+                            Content="−"
+                            ToolTip="Reduzir a topologia (tecla −)"
+                            AutomationProperties.Name="Reduzir topologia" />
+                    <TextBlock x:Name="TopologyZoomText"
+                               MinWidth="48"
+                               Margin="2,0"
+                               VerticalAlignment="Center"
+                               TextAlignment="Center"
+                               FontWeight="SemiBold"
+                               AutomationProperties.LiveSetting="Polite"
+                               AutomationProperties.Name="Nível de ampliação da topologia"
+                               Text="100%" />
+                    <Button Margin="4,0"
+                            MinWidth="34"
+                            Style="{StaticResource CompactButtonStyle}"
+                            Click="OnZoomInTopologyClick"
+                            Content="+"
+                            ToolTip="Ampliar a topologia (tecla +)"
+                            AutomationProperties.Name="Ampliar topologia" />
+                    <Button Margin="4,0"
+                            Style="{StaticResource CompactButtonStyle}"
+                            Click="OnFitTopologyClick"
+                            Content="Ajustar"
+                            ToolTip="Enquadrar todos os nós (Home)"
+                            AutomationProperties.Name="Ajustar topologia à área visível" />
+                    <Button Margin="4,0"
+                            Style="{StaticResource CompactButtonStyle}"
+                            Click="OnResetTopologyClick"
+                            Content="100%"
+                            ToolTip="Repor ampliação a 100 por cento"
+                            AutomationProperties.Name="Repor ampliação da topologia" />
+                    <Button Margin="4,0"
+                            Style="{StaticResource CompactButtonStyle}"
+                            Click="OnExportTopologyPngClick"
+                            Content="Guardar PNG"
+                            ToolTip="Guardar exatamente o mapa visível como imagem PNG"
+                            AutomationProperties.Name="Guardar mapa de topologia em PNG" />
+                    <Button Margin="4,0"
+                            Style="{StaticResource CompactButtonStyle}"
+                            Command="{Binding ExportGraphMlCommand}"
+                            Content="GraphML"
+                            ToolTip="Guardar topologia estruturada para Gephi, yEd ou ferramentas compatíveis"
+                            AutomationProperties.Name="Guardar topologia em GraphML" />
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
 
         <Border Grid.Row="1"
@@ -105,10 +121,16 @@
                 BorderThickness="1"
                 CornerRadius="8">
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock VerticalAlignment="Center"
@@ -128,17 +150,59 @@
                 </ComboBox>
                 <TextBlock x:Name="TopologySummaryText"
                            Grid.Column="2"
+                           Grid.ColumnSpan="3"
                            Margin="14,0,0,0"
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource TextSecondaryBrush}"
+                           TextTrimming="CharacterEllipsis"
                            AutomationProperties.LiveSetting="Polite"
+                           AutomationProperties.Name="Resumo da topologia"
                            Text="A preparar a topologia..." />
-                <TextBlock Grid.Column="3"
-                           Margin="14,0,0,0"
+
+                <TextBlock Grid.Row="1"
+                           Margin="0,10,0,0"
                            VerticalAlignment="Center"
+                           FontWeight="SemiBold"
+                           Text="Localizar" />
+                <TextBox x:Name="TopologySearchTextBox"
+                         Grid.Row="1"
+                         Grid.Column="1"
+                         Grid.ColumnSpan="2"
+                         MinWidth="140"
+                         Margin="9,10,0,0"
+                         PreviewKeyDown="OnTopologySearchKeyDown"
+                         AutomationProperties.Name="Localizar nó na topologia"
+                         AutomationProperties.HelpText="Escreve parte do nome, IP, MAC, tipo ou fabricante e prime Enter. Repete Enter ou usa F3 para percorrer as correspondências." />
+                <Button x:Name="FindTopologyNodeButton"
+                        Grid.Row="1"
+                        Grid.Column="3"
+                        Margin="8,10,0,0"
+                        Style="{StaticResource IconButtonStyle}"
+                        Click="OnFindTopologyNodeClick"
+                        ToolTip="Localizar e centrar nó (Enter ou F3)"
+                        AutomationProperties.Name="Localizar e centrar nó na topologia">
+                    <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE721;" />
+                </Button>
+                <Button x:Name="ClearTopologySearchButton"
+                        Grid.Row="1"
+                        Grid.Column="4"
+                        Margin="8,10,0,0"
+                        Style="{StaticResource IconButtonStyle}"
+                        Click="OnClearTopologySearchClick"
+                        ToolTip="Limpar pesquisa de nós"
+                        AutomationProperties.Name="Limpar pesquisa de nós">
+                    <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE711;" />
+                </Button>
+                <TextBlock x:Name="TopologySearchStatusText"
+                           Grid.Row="2"
+                           Grid.ColumnSpan="5"
+                           Margin="0,7,0,0"
                            FontSize="11"
                            Foreground="{DynamicResource TextSecondaryBrush}"
-                           Text="Evidência observada e inferida claramente distinguida" />
+                           TextWrapping="Wrap"
+                           Visibility="Collapsed"
+                           AutomationProperties.LiveSetting="Polite"
+                           AutomationProperties.Name="Estado da pesquisa na topologia" />
             </Grid>
         </Border>
 
@@ -149,14 +213,14 @@
                     AutomationProperties.Name="Vistas da topologia">
             <TabItem Header="Mapa visual">
                 <Border Margin="0,4,0,0"
-                Background="{DynamicResource SurfaceMutedBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1"
-                CornerRadius="9">
+                        Background="{DynamicResource SurfaceMutedBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="9">
                     <controls:NetworkTopologyControl x:Name="TopologyGraph"
                                                      Map="{Binding TopologyMap}"
                                                      SelectedNode="{Binding SelectedTopologyNode, Mode=TwoWay}"
-                                                     MinHeight="280" />
+                                                     MinHeight="100" />
                 </Border>
             </TabItem>
 
@@ -222,7 +286,7 @@
                 <TextBlock FontSize="11"
                            Foreground="{DynamicResource TextSecondaryBrush}"
                            TextWrapping="Wrap"
-                           Text="Roda: zoom · arrastar o fundo: mover · Tab: percorrer nós · +/−: zoom · setas: mover · Home: ajustar · Ctrl+1/Ctrl+2: mapa/tabela. A FDB mostra onde o MAC foi aprendido, não prova a ligação física." />
+                           Text="Roda: zoom · arrastar o fundo: mover · Tab: percorrer nós · +/−: zoom · setas: mover · Home: ajustar · Ctrl+F/F3: localizar · Ctrl+1/Ctrl+2: mapa/tabela. A FDB mostra onde o MAC foi aprendido, não prova a ligação física." />
                 <Expander Margin="0,3,0,0"
                           Header="Notas e limites do mapa"
                           AutomationProperties.Name="Notas e limites técnicos da topologia">
@@ -240,7 +304,8 @@
                 </Expander>
             </StackPanel>
 
-            <Border Grid.Column="1"
+            <Border x:Name="TopologySelectionRegion"
+                    Grid.Column="1"
                     MinWidth="265"
                     MaxWidth="400"
                     Margin="18,0,0,0"
@@ -249,7 +314,8 @@
                     BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1"
                     CornerRadius="7"
-                    AutomationProperties.LiveSetting="Polite">
+                    AutomationProperties.LiveSetting="Polite"
+                    AutomationProperties.Name="Nenhum nó selecionado">
                 <StackPanel>
                     <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Text="NÓ SELECIONADO" />
                     <TextBlock Margin="0,3,0,0" FontWeight="SemiBold" Text="{Binding SelectedTopologyNode.Label, TargetNullValue=Nenhum nó selecionado}" TextTrimming="CharacterEllipsis" />

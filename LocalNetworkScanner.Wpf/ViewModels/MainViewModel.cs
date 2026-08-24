@@ -60,6 +60,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _isScanning;
     private bool _isCancelling;
     private bool _isSavingDeviceMetadata;
+    private bool _isOnboardingVisible = true;
     private bool _suppressAutomaticCidr;
     private bool _hasInitialized;
     private bool _isSynchronizingTopologySelection;
@@ -113,21 +114,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             new ScanProfileOption(
                 ScanProfile.Quick,
                 "Rápido",
-                "Confirma rapidamente quais os equipamentos disponíveis.",
+                "Primeira passagem pelos mesmos alvos, com menos detalhe e tempos mais curtos.",
                 "Ping, ARP e portas essenciais",
                 "Mais rápido",
                 "VISÃO RÁPIDA"),
             new ScanProfileOption(
                 ScanProfile.Standard,
                 "Normal",
-                "Equilibra velocidade e detalhe para a maioria das redes.",
+                "Os mesmos alvos, com tempo equilibrado e mais identidade e serviços.",
                 "mDNS, SSDP/UPnP, serviços e identidade",
                 "Equilibrado",
                 "RECOMENDADO"),
             new ScanProfileOption(
                 ScanProfile.Deep,
                 "Avançado",
-                "Produz um inventário mais completo quando precisas de investigar.",
+                "Os mesmos alvos, com mais portas, tempo e enriquecimento opcional.",
                 "Mais portas; SNMP e Nmap opcionais",
                 "Mais demorado",
                 "ANÁLISE PROFUNDA")
@@ -163,6 +164,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ResetFiltersCommand = new RelayCommand(
             ResetFilters,
             () => SearchText.Length > 0 || !SelectedFilter.Key.Equals("all", StringComparison.Ordinal));
+        DismissOnboardingCommand = new RelayCommand(
+            DismissOnboarding,
+            () => IsOnboardingVisible);
         ResetProfileOverridesCommand = new RelayCommand(ResetProfileOverrides);
         ExportCsvCommand = new AsyncRelayCommand(ExportCsvAsync, CanExport, HandleUnexpectedException);
         ExportJsonCommand = new AsyncRelayCommand(ExportJsonAsync, CanExport, HandleUnexpectedException);
@@ -232,6 +236,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand ClearResultsCommand { get; }
     public RelayCommand ClearSearchCommand { get; }
     public RelayCommand ResetFiltersCommand { get; }
+    public RelayCommand DismissOnboardingCommand { get; }
     public RelayCommand ResetProfileOverridesCommand { get; }
     public AsyncRelayCommand ExportCsvCommand { get; }
     public AsyncRelayCommand ExportJsonCommand { get; }
@@ -725,6 +730,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         SelectedDevice is not null && _lastResult is not null && !IsScanning && !IsSavingDeviceMetadata;
     public bool IsNotScanning => !IsScanning;
     public bool HasNoVisibleDevices => Devices.Count > 0 && VisibleDeviceCount == 0;
+    public bool IsOnboardingVisible
+    {
+        get => _isOnboardingVisible;
+        private set
+        {
+            if (!SetProperty(ref _isOnboardingVisible, value))
+                return;
+
+            DismissOnboardingCommand.RaiseCanExecuteChanged();
+        }
+    }
 
     public bool HasUnsavedDeviceMetadata => Devices.Any(device => device.IsMetadataDirty);
     public string ScanConfigurationToggleLabel => IsScanConfigurationExpanded
@@ -841,6 +857,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             LastInterfaceAddress = SelectedNetworkInterface?.IpAddress.ToString(),
             LastCidr = NetworkCidr,
             Profile = SelectedProfile.Value,
+            HasCompletedOnboarding = !IsOnboardingVisible,
             IsAdvancedMode = UseCustomScanSettings,
             UseCustomScanSettings = UseCustomScanSettings,
             IsCustomScanSettingsExpanded = IsCustomScanSettingsExpanded,
@@ -884,6 +901,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void ApplyLoadedSettings()
     {
+        _isOnboardingVisible = !_loadedSettings.HasCompletedOnboarding;
         _useCustomScanSettings = _loadedSettings.UseCustomScanSettings ?? _loadedSettings.IsAdvancedMode;
         _isCustomScanSettingsExpanded = _loadedSettings.IsCustomScanSettingsExpanded ??
             _loadedSettings.IsAdvancedMode;
@@ -1691,6 +1709,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         SearchText = string.Empty;
         SelectedFilter = Filters[0];
         StatusMessage = $"Filtros repostos. {Devices.Count:N0} dispositivos disponíveis.";
+    }
+
+    private void DismissOnboarding()
+    {
+        IsOnboardingVisible = false;
+        SaveSettings();
     }
 
     private async Task DeleteHistoryAsync()

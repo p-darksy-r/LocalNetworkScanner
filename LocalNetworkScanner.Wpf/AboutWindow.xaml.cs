@@ -17,6 +17,10 @@ public partial class AboutWindow : Window
         new("https://github.com/p-darksy-r/LocalNetworkScanner", UriKind.Absolute);
     private static readonly Uri LicenseUri =
         new("https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/LICENSE", UriKind.Absolute);
+    private static readonly Uri PrivacyPolicyUri =
+        new("https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/PRIVACY.md", UriKind.Absolute);
+    private static readonly Uri CodeSigningPolicyUri =
+        new("https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/CODE_SIGNING_POLICY.md", UriKind.Absolute);
     private static readonly Uri ThirdPartyNoticesUri =
         new("https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/THIRD_PARTY_NOTICES.md", UriKind.Absolute);
 
@@ -110,6 +114,10 @@ public partial class AboutWindow : Window
     private void OnRepositoryClick(object sender, RoutedEventArgs e) => OpenExternal(RepositoryUri);
 
     private void OnLicenseClick(object sender, RoutedEventArgs e) => OpenExternal(LicenseUri);
+
+    private void OnPrivacyPolicyClick(object sender, RoutedEventArgs e) => OpenExternal(PrivacyPolicyUri);
+
+    private void OnCodeSigningPolicyClick(object sender, RoutedEventArgs e) => OpenExternal(CodeSigningPolicyUri);
 
     private void OnThirdPartyNoticesClick(object sender, RoutedEventArgs e) => OpenExternal(ThirdPartyNoticesUri);
 

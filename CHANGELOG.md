@@ -4,6 +4,34 @@
 
 Todas as alterações relevantes deste projeto são registadas neste ficheiro. O formato segue os princípios de Keep a Changelog e o versionamento segue Semantic Versioning.
 
+## [Unreleased]
+
+O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag/release: a elegibilidade SignPath, a integração de assinatura e a licença/autorização aplicável à snapshot IEEE continuam pendentes, por isso os binários atuais permanecem `NotSigned` e não são apresentados como produção.
+
+### Added
+
+- `PRIVACY.md` documenta comunicações iniciadas pelo utilizador, dados locais, terceiros, retenção e eliminação;
+- `CODE_SIGNING_POLICY.md` regista o estado pendente da SignPath, funções da equipa, âmbito proposto, aprovação manual e gates que impedem alegações prematuras de assinatura;
+- onboarding inicial, não modal e persistente, explica redes autorizadas, tráfego ativo, histórico local e ausência de telemetria;
+- pesquisa de nós na topologia por nome, IP, MAC, tipo, VLAN ou identidade visível, com `Ctrl+F`, `Enter`/`F3`, centralização e anúncios acessíveis;
+- a janela Sobre liga diretamente às políticas de privacidade e assinatura;
+- workflow manual para renderizar, validar e disponibilizar as imagens sintéticas da documentação num runner Windows quando App Control impede a renderização local.
+
+### Changed
+
+- os perfis Rápido, Normal e Avançado explicam agora que partilham o mesmo objetivo de descoberta, diferindo sobretudo no tempo e detalhe, e que as contagens são retratos transitórios;
+- o cabeçalho de configuração deixa de impor uma largura mínima superior à janela e mantém Iniciar/Cancelar acessíveis a 760 DIPs;
+- a topologia ajusta-se à work area do monitor atual, permite scroll horizontal da toolbar, realça apenas o nó selecionado e as suas ligações e preserva o zoom ao atualizar a paleta de Alto Contraste;
+- resumo, pesquisa e seleção da topologia passam a emitir eventos live-region para leitores de ecrã;
+- README, segurança, instalação, assinatura, App Control, checklist e documentação IEEE distinguem corretamente repositório público, prereleases históricas `Private QA (NotSigned)` e candidatura SignPath ainda não aprovada;
+- metadados do produto e manifesto Windows avançam para `1.4.1`, sem criar uma release.
+
+### Security
+
+- secret scanning, push protection, relatórios privados de vulnerabilidade e fixação obrigatória das GitHub Actions por SHA foram ativados no repositório público;
+- nenhuma funcionalidade de enumeração de portas, Nmap ou avaliação heurística de risco foi removida ou escondida enquanto se aguarda a resposta de elegibilidade da SignPath;
+- a documentação deixa explícito que a exposição pública dos dados IEEE não constitui autorização e bloqueia uma nova release assinada/estável até existir clarificação escrita aplicável.
+
 ## [1.4.0] - 2026-08-23
 
 Tag de código e QA privada. Sem uma identidade Authenticode Public Trust configurada e autorização escrita para redistribuir a snapshot IEEE, os executáveis continuam limitados a uma prerelease privada `Private QA (NotSigned)` e não podem ser apresentados como produção ou `Latest`.

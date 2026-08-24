@@ -4067,10 +4067,11 @@ List<(string Name, Func<Task> Run)> tests =
     {
         string directory = Path.Combine(Path.GetTempPath(), "LocalNetworkScanner.Tests", Guid.NewGuid().ToString("N"));
         string path = Path.Combine(directory, "topology.png");
+        string settingsPath = Path.Combine(directory, "settings.json");
         App application = new();
         application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         application.InitializeComponent();
-        MainWindow window = new(new UiSettingsService(Path.Combine(directory, "settings.json")))
+        MainWindow window = new(new UiSettingsService(settingsPath))
         {
             Opacity = 0,
             ShowActivated = false,
@@ -4152,6 +4153,11 @@ List<(string Name, Func<Task> Run)> tests =
                 window.FindName("DeviceNotesTextBox") as TextBox;
             Button? aboutButton = window.FindName("AboutButton") as Button;
             Button? exitButton = window.FindName("ExitButton") as Button;
+            Border? onboardingBanner = window.FindName("OnboardingBanner") as Border;
+            Button? scanStartButton = window.FindName("ScanStartButton") as Button;
+            Button? scanCancelButton = window.FindName("ScanCancelButton") as Button;
+            TextBlock? scanProfileScopeExplanation =
+                window.FindName("ScanProfileScopeExplanation") as TextBlock;
             NotNull(configurationToggle);
             NotNull(configurationPanel);
             NotNull(customSettingsExpander);
@@ -4167,8 +4173,23 @@ List<(string Name, Func<Task> Run)> tests =
             NotNull(deviceNotesTextBox);
             NotNull(aboutButton);
             NotNull(exitButton);
+            NotNull(onboardingBanner);
+            NotNull(scanStartButton);
+            NotNull(scanCancelButton);
+            NotNull(scanProfileScopeExplanation);
             Equal("Abrir informação sobre a aplicação", AutomationProperties.GetName(aboutButton));
             Equal("Sair da aplicação", AutomationProperties.GetName(exitButton));
+            Equal(true, window.ViewModel.IsOnboardingVisible);
+            Equal(Visibility.Visible, onboardingBanner!.Visibility);
+            True(
+                scanProfileScopeExplanation!.Text.Contains("mesmos equipamentos", StringComparison.Ordinal) &&
+                scanProfileScopeExplanation.Text.Contains("transitórias", StringComparison.Ordinal),
+                "A UI deve explicar o alcance comum dos perfis e a natureza temporal das contagens.");
+            window.ViewModel.DismissOnboardingCommand.Execute(null);
+            onboardingBanner.GetBindingExpression(UIElement.VisibilityProperty)?.UpdateTarget();
+            Equal(false, window.ViewModel.IsOnboardingVisible);
+            Equal(Visibility.Collapsed, onboardingBanner.Visibility);
+            Equal(true, new UiSettingsService(settingsPath).Load().HasCompletedOnboarding);
             AutomationPeer? statusPeer = UIElementAutomationPeer.CreatePeerForElement(statusLiveRegion!);
             NotNull(statusPeer);
             Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(statusLiveRegion));
@@ -4300,6 +4321,25 @@ List<(string Name, Func<Task> Run)> tests =
             Equal("Avançado", window.ViewModel.Profiles[2].DisplayName);
             Equal(ScanProfile.Deep, window.ViewModel.Profiles[2].Value);
 
+            isScanningProperty.SetValue(window.ViewModel, true);
+            scanCancelButton!.GetBindingExpression(UIElement.VisibilityProperty)?.UpdateTarget();
+            window.Width = 760;
+            window.Height = 500;
+            window.UpdateLayout();
+            Equal(Visibility.Visible, scanCancelButton.Visibility);
+            Rect startBounds = scanStartButton!.TransformToAncestor(window)
+                .TransformBounds(new Rect(scanStartButton.RenderSize));
+            Rect cancelBounds = scanCancelButton.TransformToAncestor(window)
+                .TransformBounds(new Rect(scanCancelButton.RenderSize));
+            True(
+                startBounds.Right <= window.ActualWidth + 0.5 &&
+                cancelBounds.Right <= window.ActualWidth + 0.5,
+                "Iniciar e Cancelar devem permanecer dentro da largura mínima da janela.");
+            isScanningProperty.SetValue(window.ViewModel, false);
+            window.Width = 1_440;
+            window.Height = 880;
+            window.UpdateLayout();
+
             Rect workArea = SystemParameters.WorkArea;
             double intendedLeft = workArea.Left + Math.Max(10, (workArea.Width - 640) / 4);
             double intendedTop = workArea.Top + Math.Max(10, (workArea.Height - 620) / 4);
@@ -4341,12 +4381,22 @@ List<(string Name, Func<Task> Run)> tests =
                 aboutWindow.CopyrightText.Contains("p-darksy-r", StringComparison.Ordinal),
                 "A janela Sobre deve apresentar o titular do copyright.");
             Button? closeAboutButton = aboutWindow.FindName("CloseAboutButton") as Button;
+            Button? privacyPolicyButton = aboutWindow.FindName("PrivacyPolicyButton") as Button;
+            Button? codeSigningPolicyButton = aboutWindow.FindName("CodeSigningPolicyButton") as Button;
             TextBlock? versionTextBlock = aboutWindow.FindName("VersionTextBlock") as TextBlock;
             NotNull(closeAboutButton);
+            NotNull(privacyPolicyButton);
+            NotNull(codeSigningPolicyButton);
             NotNull(versionTextBlock);
             Equal(
                 "Fechar informação sobre a aplicação",
                 AutomationProperties.GetName(closeAboutButton));
+            Equal(
+                "Abrir política de privacidade",
+                AutomationProperties.GetName(privacyPolicyButton));
+            Equal(
+                "Abrir política de assinatura de código",
+                AutomationProperties.GetName(codeSigningPolicyButton));
             Equal(
                 application.Resources["SelectionForegroundBrush"],
                 versionTextBlock!.Foreground);
@@ -4382,9 +4432,18 @@ List<(string Name, Func<Task> Run)> tests =
             {
                 Opacity = 0,
                 ShowActivated = false,
-                ShowInTaskbar = false
+                ShowInTaskbar = false,
+                Width = workArea.Width > 0 ? workArea.Width + 400 : 1_240,
+                Height = workArea.Height > 0 ? workArea.Height + 300 : 760
             };
             topologyWindow.Show();
+            if (workArea.Width > 0 && workArea.Height > 0)
+            {
+                True(topologyWindow.ActualWidth <= workArea.Width + 1,
+                    "A topologia deve ajustar-se à largura útil do monitor atual.");
+                True(topologyWindow.ActualHeight <= workArea.Height + 1,
+                    "A topologia deve ajustar-se à altura útil do monitor atual.");
+            }
             topologyWindow.Hide();
             topologyWindow.Measure(new Size(1_240, 760));
             topologyWindow.Arrange(new Rect(0, 0, 1_240, 760));
@@ -4394,8 +4453,29 @@ List<(string Name, Func<Task> Run)> tests =
                 topologyWindow.FindName("TopologyGraph") as NetworkTopologyControl;
             TextBlock? topologyZoomText =
                 topologyWindow.FindName("TopologyZoomText") as TextBlock;
+            TextBlock? topologySummaryText =
+                topologyWindow.FindName("TopologySummaryText") as TextBlock;
+            Border? topologySelectionRegion =
+                topologyWindow.FindName("TopologySelectionRegion") as Border;
+            TextBox? topologySearchTextBox =
+                topologyWindow.FindName("TopologySearchTextBox") as TextBox;
+            TextBlock? topologySearchStatusText =
+                topologyWindow.FindName("TopologySearchStatusText") as TextBlock;
+            Button? findTopologyNodeButton =
+                topologyWindow.FindName("FindTopologyNodeButton") as Button;
+            Button? clearTopologySearchButton =
+                topologyWindow.FindName("ClearTopologySearchButton") as Button;
             NotNull(optionalTopology);
             NotNull(topologyZoomText);
+            NotNull(topologySummaryText);
+            NotNull(topologySelectionRegion);
+            NotNull(topologySearchTextBox);
+            NotNull(topologySearchStatusText);
+            NotNull(findTopologyNodeButton);
+            NotNull(clearTopologySearchButton);
+            Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(topologySummaryText));
+            Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(topologySelectionRegion));
+            Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(topologySearchStatusText));
             Equal(map, optionalTopology!.Map);
             optionalTopology.ResetView();
             Equal(100, optionalTopology.ZoomPercent);
@@ -4403,6 +4483,20 @@ List<(string Name, Func<Task> Run)> tests =
             optionalTopology.ZoomIn();
             Equal(115, optionalTopology.ZoomPercent);
             Equal("115%", topologyZoomText.Text);
+            NetworkMapNode searchableNode = map.Nodes.First(node => node.IpAddress is not null);
+            topologySearchTextBox!.Text = searchableNode.IpAddress!.ToString();
+            findTopologyNodeButton!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Equal(searchableNode.Id, window.ViewModel.SelectedTopologyNode?.Id);
+            Equal(searchableNode.Id, optionalTopology.SelectedNode?.Id);
+            Equal(Visibility.Visible, topologySearchStatusText!.Visibility);
+            True(
+                topologySearchStatusText.Text.Contains("Correspondência", StringComparison.Ordinal),
+                "A pesquisa deve anunciar a correspondência localizada.");
+            clearTopologySearchButton!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Equal(string.Empty, topologySearchTextBox.Text);
+            Equal(Visibility.Collapsed, topologySearchStatusText.Visibility);
+            Equal(false, optionalTopology.CenterOnNode("node-that-does-not-exist"));
+            Equal(true, optionalTopology.CenterOnNode(searchableNode.Id));
 
             NetworkTopologyControl topology = new()
             {

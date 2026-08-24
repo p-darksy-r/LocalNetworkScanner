@@ -2,17 +2,18 @@
 
 # Local Network Scanner
 
-[![source v1.4.0](https://img.shields.io/badge/source-v1.4.0-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.4.0)
+[![QA v1.4.0](https://img.shields.io/badge/QA-v1.4.0-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.4.0)
+![main v1.4.1 unreleased](https://img.shields.io/badge/main-v1.4.1%20unreleased-475569)
 ![Windows](https://img.shields.io/badge/Windows-x64%20%7C%20ARM64-0078d4)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/LICENSE)
 
-[CI](https://github.com/p-darksy-r/LocalNetworkScanner/actions/workflows/ci.yml) · [Releases](https://github.com/p-darksy-r/LocalNetworkScanner/releases) · [Instalação](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/INSTALLATION.md) · [Limites técnicos](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/TECHNICAL_LIMITS.md)
+[CI](https://github.com/p-darksy-r/LocalNetworkScanner/actions/workflows/ci.yml) · [Releases](https://github.com/p-darksy-r/LocalNetworkScanner/releases) · [Instalação](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/INSTALLATION.md) · [Privacidade](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/PRIVACY.md) · [Code signing policy](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/CODE_SIGNING_POLICY.md) · [Limites técnicos](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/TECHNICAL_LIMITS.md)
 
 Scanner de redes locais para Windows com uma UI WPF simples, uma CLI para automação, diagnósticos acionáveis e topologia opcional. O programa separa observações diretas, dados fornecidos pela infraestrutura e inferências, para que um resultado provável nunca seja apresentado como facto confirmado.
 
-> **Estado de distribuição:** a `v1.2.0` é histórica e não é recomendada para instalação porque foi publicada sem Authenticode. A `v1.4.0` identifica o candidato de código e QA mais recente; no repositório privado pode existir como prerelease `Private QA (NotSigned)`, mas não é uma distribuição pública de produção nem a release `Latest`.
+> **Estado de distribuição:** o repositório é público, mas todos os binários publicados atualmente continuam sem assinatura Authenticode. A `v1.2.0` é histórica, não é recomendada para instalação e permanece marcada como `Latest` apenas por ser a última release estável no GitHub. A `v1.4.0` é o candidato de código e QA mais recente; a sua prerelease conserva o título histórico `Private QA (NotSigned)`, mas os assets são agora publicamente acessíveis e não constituem uma distribuição de produção.
 >
-> O repositório é privado. Uma tag nova executa a QA completa e, enquanto os gates de produção estiverem incompletos, pode criar automaticamente apenas uma prerelease privada `NotSigned`; a distribuição estável/`Latest` só é autorizada depois dos gates de assinatura, validação x64/ARM64 nativa e redistribuição indicados abaixo. Tornar o repositório público não substitui estes requisitos. Consulte o [guia de assinatura](docs/SIGNING.md).
+> O `main` prepara a versão `1.4.1`, ainda sem tag nem release. A avaliação de elegibilidade para o programa gratuito da SignPath Foundation está pendente. O projeto ainda não foi aceite, não tem integração SignPath configurada e não possui uma release assinada pela SignPath Foundation. Uma eventual primeira release assinada terá de usar uma versão/tag nova e só poderá tornar-se estável/`Latest` depois dos gates de assinatura, validação x64/ARM64, política e redistribuição. Consulte a [Code signing policy](CODE_SIGNING_POLICY.md) e o [guia técnico de assinatura](docs/SIGNING.md).
 
 ![Janela principal com inventário de dispositivos demonstrativos](docs/images/main-window-current.png)
 
@@ -33,6 +34,8 @@ Os dois formatos incluem a UI, a CLI e o runtime .NET necessário. O instalador 
 
 Além dos quatro downloads, a release inclui os checksums individuais e combinado, `SIGNING-STATE.txt`, `VALIDATION-ATTESTATION.json` e o SBOM SPDX 2.2: ao todo, um contrato exato de 12 assets verificáveis.
 
+Antes de descarregar, consulte a [Code signing policy](CODE_SIGNING_POLICY.md). Nenhum download atual está assinado pela SignPath Foundation; o nome `Private QA` nas prereleases existentes descreve a finalidade original de QA, não a visibilidade atual do repositório público.
+
 ### Compatibilidade e validação
 
 | Alvo | Estado |
@@ -45,7 +48,7 @@ Os executáveis são self-contained, mas não são NativeAOT. Algumas biblioteca
 
 ### Aviso de assinatura
 
-Os artefactos históricos da `v1.2.0` e as prereleases privadas de QA sem credenciais estão **sem assinatura Authenticode (`NotSigned`)**. O Microsoft Defender SmartScreen pode apresentar um aviso de reputação e o Smart App Control ou uma política empresarial pode bloquear completamente o arranque com o código `4551`. Antes de executar:
+Os artefactos históricos da `v1.2.0` e as prereleases de QA existentes estão **sem assinatura Authenticode (`NotSigned`)**. O Microsoft Defender SmartScreen pode apresentar um aviso de reputação e o Smart App Control ou uma política empresarial pode bloquear completamente o arranque com o código `4551`. Antes de executar:
 
 1. não use a `v1.2.0` como build de produção; aguarde uma release cujo `SIGNING-STATE.txt` indique `Authenticode: Signed`;
 2. compare o SHA-256 com `SHA256SUMS.txt` ou com o ficheiro `.sha256` adjacente;
@@ -129,7 +132,7 @@ A aplicação inclui uma snapshot comprimida de MA-L, MA-M, MA-S e IAB: **58 166
 
 A atualização pela IEEE é opcional e só começa quando o utilizador escolhe **Verificar atualização IEEE**. Não existe telemetria nem envio do inventário durante essa operação. A aplicação apresenta o titular registado do prefixo, não garante o fabricante físico: atribuições `Private`, MACs locais/aleatórios, virtualização, componentes OEM e blocos partilhados podem permanecer desconhecidos ou identificar apenas a interface.
 
-Consulte [Base de entidades MAC](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/VENDOR_DATABASE.md) para fontes, contagens e limites. Os dados IEEE não são licenciados sob MIT; antes de redistribuir publicamente um binário que inclua a snapshot, obtenha autorização escrita da IEEE e consulte [THIRD_PARTY_NOTICES.md](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/THIRD_PARTY_NOTICES.md).
+Consulte [Base de entidades MAC](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/VENDOR_DATABASE.md) para fontes, contagens e limites. Os dados IEEE não são licenciados sob MIT. O facto de o repositório e alguns assets estarem publicamente acessíveis não constitui uma licença nem resolve a incerteza de redistribuição. Uma futura release assinada/estável fica bloqueada até existir autorização ou clarificação escrita aplicável da IEEE e confirmação de compatibilidade com as condições do serviço de assinatura. Consulte [THIRD_PARTY_NOTICES.md](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/THIRD_PARTY_NOTICES.md).
 
 ## Topologia opcional
 
@@ -176,6 +179,8 @@ Uma falha fatal da UI cria, quando possível, um registo técnico local em `%LOC
 
 O projeto não envia o inventário nem telemetria para um serviço do Local Network Scanner. Um scan comunica diretamente com a rede escolhida; a atualização opcional das listagens IEEE e os links externos são ações explícitas. A atualização não envia MACs, IPs, inventário, SSID ou topologia.
 
+A [política de privacidade completa](PRIVACY.md) descreve comunicações iniciadas pelo utilizador, dados locais, terceiros, retenção e eliminação. Em resumo: **This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.**
+
 O histórico é guardado em:
 
 ```text
@@ -203,7 +208,7 @@ O enriquecimento Nmap é explicitamente opt-in, limitado a IPv4 privado e TCP Co
 - Nenhuma combinação de protocolos garante marca/modelo para todos os dispositivos: muitos não publicam metadados, usam MAC local, bloqueiam gestão ou ficam atrás de routers/APs.
 - Os resultados são um retrato temporal, não monitorização contínua.
 - O suporte ARM64 só é considerado validado quando o job nativo `windows-11-arm` conclui build, testes e smoke; um cross-build local isolado não satisfaz esse gate.
-- Builds locais e artefactos privados de QA podem estar `NotSigned`; uma GitHub Release pública é recusada até todos os executáveis terem Authenticode confiável e timestamp válido.
+- Builds locais e as prereleases de QA publicadas atualmente estão `NotSigned`; não existe ainda uma release de produção assinada. Uma release pública futura só poderá declarar `Signed` depois de validar todos os executáveis abrangidos, o timestamp e a identidade esperada.
 
 ## CLI
 
@@ -271,7 +276,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1 -Configuration Rele
 
 O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.4.0`, a suite contém 95 testes. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
 
-O workflow CodeQL analisa C# com consultas `security-extended` quando o repositório é público ou quando `CODEQL_ENABLED=true` e o plano privado permite code scanning. A release restaura metadados de dependências para `win-x64` e `win-arm64`, exige ambos os runtimes e gera/valida um SBOM SPDX 2.2 como evidência separada, sem o confundir com os dez ficheiros instaláveis validados.
+O workflow CodeQL está configurado para analisar C# com consultas `security-extended` no repositório público; o resultado de cada execução deve ser verificado no GitHub e não é substituído por esta afirmação documental. A release restaura metadados de dependências para `win-x64` e `win-arm64`, exige ambos os runtimes e gera/valida um SBOM SPDX 2.2 como evidência separada, sem o confundir com os dez ficheiros instaláveis validados.
 
 Executar a UI:
 
@@ -302,9 +307,13 @@ Instalador Inno Setup:
 powershell -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -RuntimeIdentifier win-x64
 ```
 
-Uma tag existente `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia a QA dos pacotes; o workflow recusa pedidos executados apenas sobre um branch. A publicação de produção continua a exigir `workflow_dispatch` explícito nessa tag com `publish_release=true`. Antes do build, o preflight confirma que tags lightweight ou anotadas resolvem para o HEAD atual de `main` e apresenta códigos `LNS-REL-*` para configurações ou autorizações ausentes. A assinatura pública usa Microsoft Artifact Signing por OIDC: a chave permanece num HSM/serviço e não existe PFX no GitHub.
+Uma tag existente `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia o preflight de release; o workflow recusa pedidos executados apenas sobre um branch. A publicação de produção continua a exigir `workflow_dispatch` explícito nessa tag com `publish_release=true`. Antes do build, o preflight confirma que tags lightweight ou anotadas resolvem para o HEAD atual de `main` e apresenta códigos `LNS-REL-*` para configurações ou autorizações ausentes.
 
-Os dez ficheiros candidatos são carregados uma única vez numa **GitHub draft release privada**, identificada pelo repositório, run, tentativa, commit, tag, digest canónico e nonce. Não é criado qualquer artefacto de GitHub Actions, eliminando a duplicação pesada e a falha por quota. Os runners Windows x64 e ARM64 descarregam cada asset autenticado pelo respetivo ID e confirmam nome, estado, tamanho e SHA-256. A API de drafts exige push access mesmo para leitura autenticada; por isso esses dois jobs recebem `contents: write`, mas o checkout não persiste a credencial e a operação chamada é exclusivamente `DownloadCandidate`. Só depois dos dois testes nativos o gate aceita a evidência Base64 limitada a 64 KiB, valida tamanho, hash, UTF-8, JSON e proveniência, troca exclusivamente o `SIGNING-STATE.txt` de `Pending` para `Validated` e adiciona `VALIDATION-ATTESTATION.json` e o SBOM SPDX 2.2. O contrato final tem **12 assets permanentes**. Imediatamente antes de publicar, o workflow volta a validar tag, visibilidade, ownership e todos os digests; numa falha, apaga apenas a draft que pertence à própria tentativa. Uma execução idempotente aceita uma release já publicada somente depois de verificar o contrato remoto e a tentativa histórica de validação. Resultados `NotSigned` pedem explicitamente `make_latest=false` e só podem tornar-se uma prerelease `Private QA` enquanto a API confirmar que o repositório continua privado; uma produção assinada pede `make_latest=true` e é aceite apenas depois de dois gates confirmarem que a API `releases/latest` aponta para a mesma tag. Consulte [Windows App Control e erro 4551](docs/APP_CONTROL.md).
+O workflow versionado atualmente implementa apenas o backend **Microsoft Artifact Signing por OIDC**. Esse backend não está configurado neste repositório e não deve ser confundido com a candidatura SignPath pendente. O repositório ainda não contém o transporte por GitHub Actions artifact, a ação de submissão, os identificadores nem a política de origin verification necessários à SignPath; essa integração só será implementada depois de uma decisão de elegibilidade e da configuração fornecida pelo serviço. Em qualquer backend aceite, a chave privada permanece fora do repositório.
+
+No caminho atualmente implementado, os dez ficheiros candidatos atravessam uma **GitHub draft release não publicada**, identificada pelo repositório, run, tentativa, commit, tag, digest canónico e nonce. Não é criado qualquer artefacto de GitHub Actions. Os runners Windows x64 e ARM64 descarregam cada asset autenticado pelo respetivo ID e confirmam nome, estado, tamanho e SHA-256. A API de drafts exige push access mesmo para leitura autenticada; por isso esses dois jobs recebem `contents: write`, mas o checkout não persiste a credencial e a operação chamada é exclusivamente `DownloadCandidate`. Só depois dos dois testes nativos o gate aceita a evidência Base64 limitada a 64 KiB, valida tamanho, hash, UTF-8, JSON e proveniência, troca exclusivamente o `SIGNING-STATE.txt` de `Pending` para `Validated` e adiciona `VALIDATION-ATTESTATION.json` e o SBOM SPDX 2.2. O contrato final tem **12 assets permanentes**.
+
+Imediatamente antes de publicar, o workflow volta a validar tag, visibilidade, ownership e todos os digests; numa falha, apaga apenas a draft que pertence à própria tentativa. Uma execução idempotente aceita uma release já publicada somente depois de verificar o contrato remoto e a tentativa histórica de validação. O modo `PrivateQa/NotSigned` só permite publicação quando a API confirma que o repositório é privado; como o repositório é agora público, esse caminho é recusado antes de gerar ou publicar um novo candidato. As prereleases `Private QA (NotSigned)` já existentes foram criadas anteriormente e continuam sem assinatura. Uma produção assinada pede `make_latest=true` e é aceite apenas depois de dois gates confirmarem que a API `releases/latest` aponta para a mesma tag. A integração SignPath futura terá de substituir o transporte de entrada por um GitHub Actions artifact verificável pelo conector. Consulte [Windows App Control e erro 4551](docs/APP_CONTROL.md).
 
 A [checklist de release](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/RELEASE_CHECKLIST.md) exige validação num Windows limpo, estado de assinatura explícito, verificação pós-upload e teste nativo por arquitetura antes de considerar o suporte totalmente validado. O [guia de assinatura](docs/SIGNING.md) explica exatamente o que o projeto automatiza e o que exige uma identidade externa do publisher.
 
@@ -326,6 +335,8 @@ scripts/                    validação, publish e empacotamento
 - Problemas reproduzíveis: [GitHub Issues](https://github.com/p-darksy-r/LocalNetworkScanner/issues)
 - Vulnerabilidades exploráveis: [Security Advisory privado](https://github.com/p-darksy-r/LocalNetworkScanner/security/advisories/new)
 - Política de segurança: [SECURITY.md](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/SECURITY.md)
+- Política de privacidade: [PRIVACY.md](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/PRIVACY.md)
+- Code signing policy: [CODE_SIGNING_POLICY.md](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/CODE_SIGNING_POLICY.md)
 - Changelog: [CHANGELOG.md](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/CHANGELOG.md)
 - Código e assets originais: [MIT](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/LICENSE)
 - Dados e materiais de terceiros: [THIRD_PARTY_NOTICES.md](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/THIRD_PARTY_NOTICES.md)

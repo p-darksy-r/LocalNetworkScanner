@@ -69,11 +69,11 @@ Se o PC for gerido, o administrador deve decidir se autoriza o publisher, o hash
 
 ## Assinatura das releases
 
-Os artefactos oficiais históricos já publicados sem certificado, incluindo a release `v1.2.0`, são explicitamente **`NotSigned`**. Uma prerelease visível apenas no repositório privado pode continuar `Private QA (NotSigned)`; o workflow bloqueia qualquer publicação de produção que não esteja `Signed`. Confirme sempre `SIGNING-STATE.txt` e valide localmente com `Get-AuthenticodeSignature`. Um checksum confirma que o ficheiro é igual ao publicado, mas não substitui Authenticode nem prova a identidade do publisher.
+Os artefactos oficiais históricos já publicados sem certificado, incluindo a release `v1.2.0`, são explicitamente **`NotSigned`**. As prereleases `v1.3.x`/`v1.4.0` com o título histórico `Private QA (NotSigned)` também continuam sem assinatura; como o repositório é agora público, os respetivos assets são publicamente acessíveis, mas não se tornam por isso builds de produção. O workflow bloqueia qualquer publicação de produção que não esteja `Signed`. Confirme sempre `SIGNING-STATE.txt` e valide localmente com `Get-AuthenticodeSignature`. Um checksum confirma que o ficheiro é igual ao publicado, mas não substitui Authenticode nem prova a identidade do publisher.
 
 A `v1.2.0` não deve ser tratada como uma distribuição de produção compatível com Smart App Control. Criar um certificado autoassinado durante o build também não resolve a distribuição geral: o computador do utilizador não possui uma cadeia pública que confirme a identidade desse publisher.
 
-O pipeline público usa Microsoft Artifact Signing por OIDC. A chave RSA permanece no serviço/HSM e o runner recebe apenas um token temporário:
+O caminho de produção versionado no workflow foi implementado para Microsoft Artifact Signing por OIDC, mas esse serviço não está configurado neste repositório e não assinou nenhuma release atual. Se fosse ativado com uma identidade elegível, a chave RSA permaneceria no serviço/HSM e o runner receberia apenas um token temporário. Esse caminho foi desenhado para:
 
 - assina `LocalNetworkScanner.exe`, `LocalNetworkScanner.Cli.exe` e `diagnose-app-control.ps1` antes de criar os ZIPs;
 - manda o Inno Setup assinar o instalador e o desinstalador embebido;
@@ -81,9 +81,9 @@ O pipeline público usa Microsoft Artifact Signing por OIDC. A chave RSA permane
 - valida signer, timestamp, hashes e a mesma identidade em todos os ficheiros;
 - instala, executa e remove os ZIPs/instaladores exatos em Windows x64 e ARM64 nativos;
 - falha explicitamente se a assinatura for pedida mas a configuração estiver ausente ou inválida;
-- mantém o estado `NotSigned` nos artefactos privados de QA quando a assinatura não é pedida; uma tag pode publicá-los apenas como prerelease no repositório privado, nunca como release pública de produção nem como `Latest`.
+- manter o estado `NotSigned` no modo de QA sem assinatura; esse modo só pode publicar uma prerelease quando a API confirma que o repositório é privado, nunca como release pública de produção nem como `Latest`.
 
-Configuração principal no GitHub:
+Configuração que o backend Microsoft exigiria no GitHub:
 
 - Environment protegido `release-signing`, com reviewers e restrições de deployment;
 - credencial federada OIDC limitada a esse environment e função mínima no perfil de assinatura;
@@ -92,9 +92,11 @@ Configuração principal no GitHub:
 
 O workflow não lê PFX, palavra-passe ou chave privada. Os antigos secrets `AUTHENTICODE_PFX_*`, caso existam, devem ser removidos depois de confirmar que nenhuma outra automação depende deles.
 
+A avaliação de elegibilidade para a SignPath Foundation está pendente. O projeto ainda não foi aceite e o workflow ainda não envia artefactos à SignPath. Uma eventual integração exigirá GitHub Actions artifacts, origin verification e aprovação manual, e substituirá ou generalizará o backend atual; não se deve configurar credenciais ou alegar assinatura antes de o serviço fornecer e aprovar a configuração. Consulte a [Code signing policy](../CODE_SIGNING_POLICY.md).
+
 O preflight usa códigos `LNS-REL-*` e termina antes do build quando a tag não corresponde ao HEAD de `main`, falta Artifact Signing/OIDC ou não existe autorização IEEE. Consulte [Assinatura e prontidão de release](SIGNING.md) para a configuração completa.
 
-Em artefactos públicos, o script de diagnóstico também tem Authenticode. Numa build privada `NotSigned`, o PowerShell pode bloquear o script ou executá-lo em Constrained Language; nesse caso, use o Event Viewer/CiTool com o administrador. Um diagnóstico que não arrancou não prova que a aplicação esteja corrompida.
+Numa futura release pública assinada, o script de diagnóstico também deverá ter Authenticode. Numa build `NotSigned`, o PowerShell pode bloquear o script ou executá-lo em Constrained Language; nesse caso, use o Event Viewer/CiTool com o administrador. Um diagnóstico que não arrancou não prova que a aplicação esteja corrompida.
 
 Uma assinatura válida melhora identidade, integridade e regras por publisher, mas não garante autorização: a política ativa pode exigir um publisher específico, reputação, managed installer, catálogo ou hash aprovado.
 
@@ -107,6 +109,8 @@ Uma assinatura válida melhora identidade, integridade e regras por publisher, m
 - [Microsoft — assinatura de código com App Control](https://learn.microsoft.com/windows/security/application-security/application-control/app-control-for-business/deployment/use-code-signing-for-better-control-and-protection)
 - [Microsoft — comportamento do PowerShell sob App Control](https://learn.microsoft.com/powershell/scripting/security/app-control/how-app-control-works)
 - [Microsoft — integrações do Artifact Signing](https://learn.microsoft.com/azure/artifact-signing/how-to-signing-integrations)
+- [SignPath Foundation — condições para projetos open source](https://signpath.org/terms.html)
+- [SignPath — integração com GitHub](https://docs.signpath.io/trusted-build-systems/github)
 - [Microsoft — SignTool](https://learn.microsoft.com/windows/win32/seccrypto/signtool)
 - [Inno Setup — SignTool](https://jrsoftware.org/ishelp/topic_setup_signtool.htm)
 - [Inno Setup — SignedUninstaller](https://jrsoftware.org/ishelp/topic_setup_signeduninstaller.htm)

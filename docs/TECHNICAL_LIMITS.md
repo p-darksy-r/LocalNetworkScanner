@@ -193,4 +193,6 @@ Snapshots e exportações podem conter IPs, MACs, SSIDs, BSSIDs, hostnames, fabr
 
 Não existe telemetria do produto. Os únicos pedidos externos fora do scan são ações explícitas, como abrir um link ou atualizar opcionalmente as listagens IEEE; a atualização obtém ficheiros públicos sem anexar o inventário da rede.
 
+A [política de privacidade](../PRIVACY.md) documenta os ficheiros locais, comunicações, terceiros, retenção e eliminação. A avaliação de elegibilidade para a SignPath Foundation está pendente; nenhuma release atual foi assinada pela Foundation. Consulte a [Code signing policy](../CODE_SIGNING_POLICY.md) antes de interpretar o estado de distribuição.
+
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

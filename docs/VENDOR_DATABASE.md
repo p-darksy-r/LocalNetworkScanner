@@ -60,6 +60,8 @@ O script descarrega as quatro listagens oficiais, valida o schema e os prefixos,
 
 **IEEE. All rights reserved.** A snapshot e os dados derivados da IEEE não são colocados sob a licença MIT do Local Network Scanner. A inclusão não implica certificação, patrocínio ou endorsement da IEEE.
 
-Antes de redistribuir publicamente uma release que contenha estes dados, é necessário obter autorização escrita da [IEEE Registration Authority](https://standards.ieee.org/products-programs/regauth/contact/) ou através do [formulário de permissão IEEE SA](https://standards.ieee.org/ipr/copyright-permissions-form/), e cumprir o texto e as condições que forem fornecidos. Consulte [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) antes de publicar.
+O repositório e alguns pacotes que contêm a snapshot estão agora publicamente acessíveis, mas essa acessibilidade não constitui uma licença, autorização ou conclusão jurídica. O projeto ainda não arquivou autorização escrita aplicável à redistribuição da snapshot. Não crie uma nova release assinada/estável nem reutilize estes dados noutro produto enquanto a incerteza não estiver resolvida.
+
+Peça clarificação/autorização escrita à [IEEE Registration Authority](https://standards.ieee.org/products-programs/regauth/contact/) ou através do [formulário de permissão IEEE SA](https://standards.ieee.org/ipr/copyright-permissions-form/) e cumpra o texto e as condições recebidos. Uma eventual autorização de redistribuição também terá de ser avaliada contra as condições do serviço de assinatura, que pode exigir licença OSI para todas as componentes. Consulte [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) e a [Code signing policy](../CODE_SIGNING_POLICY.md).
 
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
 
 using System.IO;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -64,10 +65,13 @@ public sealed class NetworkTopologyControl : Grid
     private readonly TextBlock _emptyMessage;
     private readonly Dictionary<string, Button> _nodeButtons = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Point> _nodeCenters = new(StringComparer.Ordinal);
+    private readonly List<EdgeVisual> _edgeVisuals = [];
     private Point _panStart;
     private Vector _translateStart;
     private bool _isPanning;
     private bool _isAutoFitEnabled = true;
+    private bool _isSystemParametersSubscribed;
+    private bool _paletteRefreshQueued;
 
     public NetworkTopologyControl()
     {
@@ -104,6 +108,8 @@ public sealed class NetworkTopologyControl : Grid
         PreviewMouseRightButtonUp += OnPreviewMouseRightButtonUp;
         KeyDown += OnKeyDown;
         SizeChanged += OnSizeChanged;
+        Loaded += OnControlLoaded;
+        Unloaded += OnControlUnloaded;
 
         AutomationProperties.SetName(this, "Mapa de topologia da rede");
         AutomationProperties.SetHelpText(
@@ -269,6 +275,31 @@ public sealed class NetworkTopologyControl : Grid
 
     public void ZoomOut() => ZoomAtCenter(1 / 1.15);
 
+    public bool CenterOnNode(string nodeId, bool focusKeyboard = false)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
+        if (!_nodeCenters.TryGetValue(nodeId, out Point center) ||
+            !_nodeButtons.TryGetValue(nodeId, out Button? button) ||
+            button.Tag is not NetworkMapNode node)
+        {
+            return false;
+        }
+
+        double scale = Math.Clamp(Math.Max(_scale.ScaleX, 0.72), 0.025, 2.8);
+        _scale.ScaleX = scale;
+        _scale.ScaleY = scale;
+        _translate.X = (ActualWidth / 2) - (center.X * scale);
+        _translate.Y = (ActualHeight / 2) - (center.Y * scale);
+        _isAutoFitEnabled = false;
+        SetCurrentValue(SelectedNodeProperty, node);
+        OnViewportChanged();
+
+        if (focusKeyboard)
+            button.Focus();
+
+        return true;
+    }
+
     public void ExportVisiblePng(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -303,11 +334,12 @@ public sealed class NetworkTopologyControl : Grid
     private static void OnFilterModeChanged(DependencyObject sender, DependencyPropertyChangedEventArgs e) =>
         ((NetworkTopologyControl)sender).RebuildVisuals();
 
-    private void RebuildVisuals()
+    private void RebuildVisuals(bool scheduleFit = true)
     {
         _canvas.Children.Clear();
         _nodeButtons.Clear();
         _nodeCenters.Clear();
+        _edgeVisuals.Clear();
 
         NetworkMap? map = Map;
         if (map is null || map.Nodes.Count == 0)
@@ -349,7 +381,8 @@ public sealed class NetworkTopologyControl : Grid
             AddNode(node);
 
         RefreshNodeSelection();
-        Dispatcher.BeginInvoke(FitToView, DispatcherPriority.Loaded);
+        if (scheduleFit)
+            Dispatcher.BeginInvoke(FitToView, DispatcherPriority.Loaded);
     }
 
     private void BuildLayout(IReadOnlyList<NetworkMapNode> nodes)
@@ -481,11 +514,12 @@ public sealed class NetworkTopologyControl : Grid
         Panel.SetZIndex(path, 2);
         _canvas.Children.Add(path);
 
+        Border? edgeLabel = null;
         if ((showLabel || edge.Kind == NetworkMapEdgeKind.LldpNeighbor) &&
             edge.Kind is NetworkMapEdgeKind.MacLearned or NetworkMapEdgeKind.Layer2Observed or
             NetworkMapEdgeKind.IpReachability or NetworkMapEdgeKind.LldpNeighbor)
         {
-            Border label = new()
+            edgeLabel = new Border
             {
                 Background = ResourceBrush("SurfaceBrush", Brushes.White),
                 BorderBrush = brush,
@@ -500,11 +534,13 @@ public sealed class NetworkTopologyControl : Grid
                 },
                 IsHitTestVisible = false
             };
-            Canvas.SetLeft(label, ((source.X + target.X) / 2) - 35);
-            Canvas.SetTop(label, ((source.Y + target.Y) / 2) - 11);
-            Panel.SetZIndex(label, 3);
-            _canvas.Children.Add(label);
+            Canvas.SetLeft(edgeLabel, ((source.X + target.X) / 2) - 35);
+            Canvas.SetTop(edgeLabel, ((source.Y + target.Y) / 2) - 11);
+            Panel.SetZIndex(edgeLabel, 3);
+            _canvas.Children.Add(edgeLabel);
         }
+
+        _edgeVisuals.Add(new EdgeVisual(edge, halo, path, edgeLabel));
     }
 
     private static PathGeometry BuildEdgeGeometry(Point source, Point target)
@@ -680,16 +716,87 @@ public sealed class NetworkTopologyControl : Grid
     private void RefreshNodeSelection()
     {
         string? selectedId = SelectedNode?.Id;
+        if (selectedId is not null && !_nodeButtons.ContainsKey(selectedId))
+            selectedId = null;
+
+        HashSet<string> connectedNodeIds = selectedId is null
+            ? []
+            : new HashSet<string>(StringComparer.Ordinal) { selectedId };
+        foreach (EdgeVisual visual in _edgeVisuals)
+        {
+            bool isConnected = selectedId is null ||
+                string.Equals(visual.Edge.SourceId, selectedId, StringComparison.Ordinal) ||
+                string.Equals(visual.Edge.TargetId, selectedId, StringComparison.Ordinal);
+            visual.Path.Opacity = isConnected ? 1 : 0.12;
+            visual.Halo.Opacity = isConnected ? 0.94 : 0.06;
+            if (visual.Label is not null)
+                visual.Label.Opacity = isConnected ? 1 : 0.12;
+
+            if (selectedId is not null && isConnected)
+            {
+                connectedNodeIds.Add(visual.Edge.SourceId);
+                connectedNodeIds.Add(visual.Edge.TargetId);
+            }
+        }
+
         foreach ((string id, Button button) in _nodeButtons)
         {
             bool selected = string.Equals(id, selectedId, StringComparison.Ordinal);
+            bool connected = selectedId is null || connectedNodeIds.Contains(id);
+            button.Opacity = connected ? 1 : 0.36;
             button.BorderThickness = selected
                 ? new Thickness(4)
                 : NodeBorderThickness(((NetworkMapNode)button.Tag).Kind);
             button.BorderBrush = selected
                 ? ResourceBrush("AccentBrush", Brushes.DodgerBlue)
                 : NodeBorder(((NetworkMapNode)button.Tag).Kind);
+            AutomationProperties.SetItemStatus(
+                button,
+                selected
+                    ? "Selecionado"
+                    : selectedId is not null && connected
+                        ? "Ligado ao nó selecionado"
+                        : string.Empty);
         }
+    }
+
+    private void OnControlLoaded(object sender, RoutedEventArgs e)
+    {
+        if (_isSystemParametersSubscribed)
+            return;
+
+        SystemParameters.StaticPropertyChanged += OnSystemParametersChanged;
+        _isSystemParametersSubscribed = true;
+    }
+
+    private void OnControlUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (!_isSystemParametersSubscribed)
+            return;
+
+        SystemParameters.StaticPropertyChanged -= OnSystemParametersChanged;
+        _isSystemParametersSubscribed = false;
+    }
+
+    private void OnSystemParametersChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_paletteRefreshQueued ||
+            !string.IsNullOrEmpty(e.PropertyName) &&
+            !e.PropertyName.Equals(nameof(SystemParameters.HighContrast), StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _paletteRefreshQueued = true;
+        _ = Dispatcher.BeginInvoke(
+            DispatcherPriority.ContextIdle,
+            new Action(() =>
+            {
+                _paletteRefreshQueued = false;
+                RebuildVisuals(scheduleFit: false);
+                InvalidateVisual();
+                OnViewportChanged();
+            }));
     }
 
     private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -967,6 +1074,12 @@ public sealed class NetworkTopologyControl : Grid
 
         return null;
     }
+
+    private sealed record EdgeVisual(
+        NetworkMapEdge Edge,
+        System.Windows.Shapes.Path Halo,
+        System.Windows.Shapes.Path Path,
+        Border? Label);
 }
 
 // Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

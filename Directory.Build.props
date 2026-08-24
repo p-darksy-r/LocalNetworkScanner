@@ -2,11 +2,11 @@
 
 <Project>
   <PropertyGroup>
-    <Version>1.4.0</Version>
-    <VersionPrefix>1.4.0</VersionPrefix>
-    <AssemblyVersion>1.4.0.0</AssemblyVersion>
-    <FileVersion>1.4.0.0</FileVersion>
-    <InformationalVersion>1.4.0</InformationalVersion>
+    <Version>1.4.1</Version>
+    <VersionPrefix>1.4.1</VersionPrefix>
+    <AssemblyVersion>1.4.1.0</AssemblyVersion>
+    <FileVersion>1.4.1.0</FileVersion>
+    <InformationalVersion>1.4.1</InformationalVersion>
 
     <Title>Local Network Scanner</Title>
     <Product>Local Network Scanner</Product>

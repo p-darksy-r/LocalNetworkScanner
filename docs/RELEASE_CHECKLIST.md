@@ -4,6 +4,8 @@
 
 Uma release só deve ser marcada como concluída quando todos os itens obrigatórios estiverem verificados. Guardar evidência dos comandos, versões, hashes e máquinas usadas.
 
+**Estado atual:** o repositório é público, a avaliação SignPath está pendente e todos os downloads existentes estão `NotSigned`. Esta checklist não autoriza criar outra tag/release sem assinatura. Os itens SignPath só podem ser marcados depois de aceitação e configuração reais; os itens Microsoft Artifact Signing só se aplicam se esse backend for efetivamente escolhido e configurado.
+
 ## 1. Identidade e âmbito
 
 - [ ] A versão em `Directory.Build.props` coincide com o changelog, nome do ZIP e tag.
@@ -14,6 +16,9 @@ Uma release só deve ser marcada como concluída quando todos os itens obrigató
 - [ ] `THIRD_PARTY_NOTICES.md` acompanha a release, inclui `IEEE. All rights reserved.`, ausência de endorsement e as fontes MA-L/MA-M/MA-S/IAB.
 - [ ] Nmap/Npcap não estão no instalador/ZIP/repositório; a integração opcional e os termos externos estão descritos em `THIRD_PARTY_NOTICES.md`.
 - [ ] Existe autorização escrita da IEEE para redistribuir publicamente a snapshot incorporada e a release cumpre integralmente o texto e as condições recebidas.
+- [ ] A licença/condição da snapshot IEEE também foi aceite pelo serviço de assinatura; uma autorização de redistribuição não é confundida automaticamente com uma licença OSI.
+- [ ] `PRIVACY.md` e `CODE_SIGNING_POLICY.md` refletem o comportamento e o estado reais e estão ligados a partir da homepage e da página de download/release.
+- [ ] Uma resposta escrita da SignPath confirma a elegibilidade do conjunto exato de funcionalidades incluído no artefacto assinado; enumeração de portas, Nmap e avisos heurísticos de risco não são omitidos da avaliação.
 - [ ] O `CHANGELOG.md` descreve apenas funcionalidades presentes nessa revisão.
 - [ ] Não existem links placeholder, contactos inexistentes ou alegações de capacidades futuras.
 
@@ -121,21 +126,21 @@ if ($actual -ne $expected) { throw 'SHA-256 invalido.' }
 
 ## 6. Assinatura e reputação
 
-- [ ] Artefactos privados sem assinatura indicam claramente `Private QA` e `NotSigned`; numa tag nova são publicados automaticamente como prerelease apenas se o repositório continuar privado e os gates de produção ainda não estiverem completos, nunca como `Latest` ou produção.
+- [ ] Artefactos sem assinatura indicam claramente `QA` e `NotSigned`; no estado público atual não é criada nem publicada uma nova prerelease `PrivateQa`.
 - [ ] Uma produção assinada envia `make_latest=true` e os gates Publish/terminal confirmam que `releases/latest` aponta para o mesmo ID/tag; uma QA privada envia `make_latest=false`.
 - [ ] Num repositório público, nenhum caminho do workflow gera ou carrega um candidato `NotSigned`; `workflow_dispatch` com `publish_release=false` falha no preflight, e a visibilidade live é consultada novamente pela API imediatamente antes do upload e antes/depois de publicar a prerelease.
-- [ ] Uma GitHub Release de produção contém apenas artefactos Authenticode `Signed`; a única exceção é uma prerelease `Private QA (NotSigned)` num repositório privado.
+- [ ] Uma GitHub Release de produção contém apenas artefactos Authenticode `Signed`; as prereleases históricas `Private QA (NotSigned)` não são promovidas, alteradas ou reutilizadas.
 - [ ] Checksums não são apresentados como substitutos de Authenticode nem como prova da identidade do publisher.
 - [ ] O artefacto foi testado com SmartScreen/Defender numa máquina sem histórico do produto.
-- [ ] Com gates incompletos, o push da tag conclui a QA privada; com gates completos, termina no preflight sem gerar payload `NotSigned` e a execução posterior com `publish_release=true` não apresenta `LNS-REL-001` a `LNS-REL-010`.
+- [ ] Com gates incompletos num repositório público, nenhuma tag nova é criada; com gates completos, a tag nova fica reservada ao caminho assinado e a execução com `publish_release=true` não apresenta `LNS-REL-001` a `LNS-REL-010`.
 - [ ] A tag corresponde à versão e aponta exatamente para o HEAD atual de `main`; o job de publicação volta a resolver pela API tags lightweight ou anotadas antes das mutações, imediatamente antes de publicar e após a publicação, exigindo sempre `GITHUB_SHA`.
-- [ ] Se a tag estiver reservada para publicação assinada, `ARTIFACT_SIGNING_ENABLED`, toda a configuração OIDC e `IEEE_REDISTRIBUTION_APPROVED` já estavam válidos antes do push; assim o workflow não cria primeiro uma prerelease `NotSigned` imutável na mesma tag.
+- [ ] Se a tag estiver reservada para publicação assinada, a configuração do backend escolhido e a autorização/licença IEEE já estavam válidas antes do push; assim o workflow não cria primeiro uma prerelease `NotSigned` imutável na mesma tag.
 
 Para uma release publicada:
 
-- [ ] A conta/perfil Microsoft Artifact Signing tem identidade válida e função mínima `Artifact Signing Certificate Profile Signer`.
-- [ ] O perfil consultado no Azure é explicitamente `PublicTrust`; perfis `PrivateTrust`/`PublicTrustTest` não satisfazem distribuição pública.
-- [ ] A credencial federada OIDC está limitada ao environment `release-signing`; não existe PFX/chave privada no GitHub.
+- [ ] Se for usada a SignPath, o projeto foi aceite, o GitHub App/trusted build system está ligado, origin verification passou, o input foi previamente guardado como GitHub Actions artifact e o pedido teve aprovação manual.
+- [ ] Se for usado Microsoft Artifact Signing, a conta/perfil tem identidade válida, função mínima `Artifact Signing Certificate Profile Signer`, tipo explícito `PublicTrust` e credencial OIDC limitada a `release-signing`.
+- [ ] Não existe PFX/chave privada no GitHub; tokens de integração estão limitados ao projeto, policy e environment necessários.
 - [ ] O environment `release-signing` restringe deployments a tags autorizadas e exige reviewer apenas quando essa proteção está efetivamente disponível no plano/repositório; a ausência dessa capacidade tem um gate externo documentado.
 - [ ] UI, CLI, diagnóstico PowerShell e instaladores são assinados antes de calcular checksums e criar a release.
 - [ ] O bootstrap do Inno Setup 6.7.3 corresponde ao SHA-256 fixado no workflow, anuncia `ProductVersion` 6.7.3 e tem Authenticode válido do publisher esperado antes de ser executado.
@@ -144,7 +149,7 @@ Para uma release publicada:
 - [ ] `signtool verify /pa /tw` e `Get-AuthenticodeSignature` devolvem sucesso/`Valid` para todos os executáveis finais.
 - [ ] O certificado é RSA, tem EKU Code Signing, cadeia válida para uma CA confiável e não é self-signed.
 - [ ] A chave permanece num HSM/serviço ou token compatível; nunca é exportada para PFX no runner hospedado.
-- [ ] Jobs privados de QA não recebem token OIDC; `id-token: write` existe apenas no caminho público de assinatura. `contents: write` fica limitado aos jobs que criam, leem, completam, publicam ou limpam a draft; nos validadores x64/ARM64 é necessário apenas porque a API exige push access até para `GET` de drafts, com `persist-credentials: false` e operação exclusiva `DownloadCandidate`.
+- [ ] Jobs de QA sem assinatura não recebem credenciais de assinatura; permissões `id-token`, `actions` e `contents: write` ficam limitadas aos jobs que realmente necessitam delas. No backend atual, os validadores usam `contents: write` apenas para ler a draft com `persist-credentials: false`; numa integração SignPath, `actions: read` permite ao conector validar o artifact indicado.
 - [ ] O ruleset de `main` exige o check agregado `CI gate`, que depende de x64 e ARM64.
 
 Uma distribuição que alegue identidade de publisher verificada exige estado `Valid`.
@@ -200,10 +205,11 @@ Se for usado outro instalador, documentar a ferramenta e versão, privilégios p
 - [ ] ZIP, checksum, changelog e instruções de instalação estão anexados à release correta.
 - [ ] A autorização escrita aplicável à redistribuição IEEE foi arquivada com a evidência da release e os avisos exigidos estão presentes no pacote.
 - [ ] A variável do repositório `IEEE_REDISTRIBUTION_APPROVED` foi definida como `true` apenas depois de arquivar essa autorização.
+- [ ] A página da release contém uma secção ou ligação visível chamada **Code signing policy**, sem alegar SignPath antes da aceitação/assinatura efetiva.
 - [ ] Os hashes e assinaturas foram novamente verificados depois do upload.
 - [ ] O job de publicação recebeu exatamente 12 assets pela draft privada, verificou nomes, estado, tamanhos, SHA-256 e os digests canónicos do candidato Pending, payload Validated e release final; voltou a validar checksums e, numa release pública, timestamps e um único signer antes de retirar o estado draft.
 - [ ] O materializador final aceitou o `SIGNING-STATE.txt` já validado do payload apenas através do opt-in do job Publish e confirmou-o contra o atestado; os restantes caminhos continuam a exigir evidência separada.
-- [ ] O workflow não criou artefactos de Actions; `VALIDATION-ATTESTATION.json` e o SBOM SPDX permanecem como assets da release, e qualquer cleanup atuou apenas sobre uma draft owned ainda não publicada.
+- [ ] No backend Microsoft atual, o workflow não criou artefactos de Actions; numa integração SignPath, o artifact de entrada obrigatório foi validado e recebeu retenção mínima/cleanup seguro depois da conclusão. `VALIDATION-ATTESTATION.json` e o SBOM SPDX permanecem como assets da release.
 - [ ] O gate terminal `Require an actually published release` terminou com sucesso e confirmou pela API `draft=false`, a tag, o modo de confiança, o marker e os 12 assets, recompondo também os digests canónicos do payload e da release; uma publicação elegível `skipped`, falhada ou cancelada não pode deixar o workflow verde.
 - [ ] Todos os blocos `shell: pwsh` do workflow passaram validação sintática, incluindo o resumo executado depois de `draft=false`.
 - [ ] `SIGNING-STATE.txt` e as notas da release publicada dizem explicitamente `Signed`; releases anteriores conhecidas como não assinadas permanecem documentadas como `NotSigned`.

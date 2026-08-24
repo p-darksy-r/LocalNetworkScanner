@@ -34,6 +34,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\check-copyright.ps1
 - associe novos erros públicos a um código e ação recomendada sem incluir credenciais ou inventário no contexto;
 - mantenha a lista como experiência principal e a topologia como visualização opcional;
 - atualize documentação e changelog quando o comportamento visível mudar;
+- atualize [PRIVACY.md](PRIVACY.md) antes de introduzir uma nova comunicação externa, dado local, retenção ou integração de terceiros;
+- preserve a exatidão da [Code signing policy](CODE_SIGNING_POLICY.md): nunca apresente uma candidatura, assinatura ou aprovação externa como concluída sem evidência;
 - confirme teclado, escala e alto contraste quando alterar a WPF.
 
 O CI verifica copyright, executa restore, `dotnet format --verify-no-changes`, build Release, o test harness determinístico e um smoke da CLI.
@@ -44,6 +46,8 @@ Não abra uma issue pública para uma vulnerabilidade explorável. Use um [GitHu
 
 ## Releases
 
-Uma tag `vX.Y.Z` só é aceite pelo workflow de release quando corresponde à versão de `Directory.Build.props`. Apenas o responsável pelo repositório deve criar tags de release. O workflow pode gerar candidatos privados `NotSigned`, mas recusa uma release pública até existir assinatura Authenticode Public Trust validada, testes nativos dos pacotes exatos e autorização de redistribuição aplicável; nunca adicione certificados, chaves ou secrets ao repositório.
+Uma tag `vX.Y.Z` só é aceite pelo workflow de release quando corresponde à versão de `Directory.Build.props`. Apenas o responsável pelo repositório deve criar tags de release. Como o repositório é público, o workflow atual recusa gerar ou publicar um novo candidato `PrivateQa/NotSigned`; as prereleases com esse título são históricas e continuam sem assinatura. Uma release de produção exige assinatura Authenticode Public Trust validada, testes nativos dos pacotes exatos e autorização/licença de redistribuição aplicável; nunca adicione certificados, chaves ou secrets ao repositório.
+
+A avaliação de elegibilidade para a SignPath Foundation está pendente e a integração ainda não existe. Contribuições não devem adicionar credenciais ou antecipar identificadores fornecidos pelo serviço. Alterações à lógica de enumeração de portas, Nmap, avaliação heurística de risco, dados IEEE ou pipeline de assinatura exigem revisão explícita contra [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md), [PRIVACY.md](PRIVACY.md) e [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

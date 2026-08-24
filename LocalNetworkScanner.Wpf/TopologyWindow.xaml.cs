@@ -3,10 +3,14 @@
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
 using LocalNetworkScanner.Core.Models;
 using LocalNetworkScanner.Wpf.Controls;
 using LocalNetworkScanner.Wpf.Infrastructure;
@@ -17,8 +21,12 @@ namespace LocalNetworkScanner.Wpf;
 
 public partial class TopologyWindow : Window
 {
+    private const uint MonitorDefaultToNearest = 2;
+
     private readonly MainViewModel _viewModel;
     private bool _isSynchronizingTableSelection;
+    private bool _hasLoaded;
+    private string? _lastSearchQuery;
 
     public TopologyWindow(MainViewModel viewModel)
     {
@@ -32,8 +40,15 @@ public partial class TopologyWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        if (!_hasLoaded)
+        {
+            _hasLoaded = true;
+            FitWindowToCurrentWorkArea();
+        }
+
         ApplyTopologyFilter();
         TopologyGraph.FitToView();
+        AnnounceSelectedTopologyNode();
         TopologyGraph.Focus();
     }
 
@@ -44,9 +59,70 @@ public partial class TopologyWindow : Window
         base.OnClosed(e);
     }
 
+    private void FitWindowToCurrentWorkArea()
+    {
+        Rect workArea = GetCurrentMonitorWorkArea();
+        if (workArea.Width <= 0 || workArea.Height <= 0)
+            return;
+
+        double currentWidth = ActualWidth > 0 ? ActualWidth : Width;
+        double currentHeight = ActualHeight > 0 ? ActualHeight : Height;
+        double centerX = double.IsFinite(Left)
+            ? Left + (currentWidth / 2)
+            : workArea.Left + (workArea.Width / 2);
+        double centerY = double.IsFinite(Top)
+            ? Top + (currentHeight / 2)
+            : workArea.Top + (workArea.Height / 2);
+
+        MinWidth = Math.Min(MinWidth, workArea.Width);
+        MinHeight = Math.Min(MinHeight, workArea.Height);
+        Width = Math.Min(Math.Max(MinWidth, Width), workArea.Width);
+        Height = Math.Min(Math.Max(MinHeight, Height), workArea.Height);
+
+        double maximumLeft = workArea.Right - Width;
+        double maximumTop = workArea.Bottom - Height;
+        Left = maximumLeft <= workArea.Left
+            ? workArea.Left
+            : Math.Clamp(centerX - (Width / 2), workArea.Left, maximumLeft);
+        Top = maximumTop <= workArea.Top
+            ? workArea.Top
+            : Math.Clamp(centerY - (Height / 2), workArea.Top, maximumTop);
+    }
+
+    private Rect GetCurrentMonitorWorkArea()
+    {
+        nint windowHandle = new WindowInteropHelper(this).Handle;
+        nint monitorHandle = windowHandle == 0
+            ? 0
+            : MonitorFromWindow(windowHandle, MonitorDefaultToNearest);
+        MonitorInfo monitorInfo = new()
+        {
+            Size = (uint)Marshal.SizeOf<MonitorInfo>()
+        };
+        if (monitorHandle == 0 || !GetMonitorInfo(monitorHandle, ref monitorInfo))
+            return SystemParameters.WorkArea;
+
+        Matrix fromDevice = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformFromDevice ??
+            Matrix.Identity;
+        Point topLeft = fromDevice.Transform(new Point(monitorInfo.WorkArea.Left, monitorInfo.WorkArea.Top));
+        Point bottomRight = fromDevice.Transform(new Point(monitorInfo.WorkArea.Right, monitorInfo.WorkArea.Bottom));
+        return new Rect(topLeft, bottomRight);
+    }
+
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Home &&
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.F)
+        {
+            TopologySearchTextBox.Focus();
+            TopologySearchTextBox.SelectAll();
+            e.Handled = true;
+        }
+        else if (Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.F3)
+        {
+            LocateTopologyNode();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Home &&
             Keyboard.Modifiers == ModifierKeys.None &&
             TopologyViews.SelectedIndex == 0)
         {
@@ -101,9 +177,7 @@ public partial class TopologyWindow : Window
             return;
 
         TopologyZoomText.Text = zoomText;
-        AutomationPeer? peer = UIElementAutomationPeer.FromElement(TopologyZoomText) ??
-            UIElementAutomationPeer.CreatePeerForElement(TopologyZoomText);
-        peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+        RaiseLiveRegionChanged(TopologyZoomText);
     }
 
     private void OnResetTopologyClick(object sender, RoutedEventArgs e)
@@ -119,6 +193,7 @@ public partial class TopologyWindow : Window
         if (!IsLoaded || TopologyGraph is null)
             return;
 
+        _lastSearchQuery = null;
         ApplyTopologyFilter();
     }
 
@@ -154,6 +229,7 @@ public partial class TopologyWindow : Window
         if (e.PropertyName == nameof(MainViewModel.SelectedTopologyNode))
         {
             SynchronizeTableSelection();
+            AnnounceSelectedTopologyNode();
         }
         else if (e.PropertyName == nameof(MainViewModel.TopologyMap))
         {
@@ -171,7 +247,7 @@ public partial class TopologyWindow : Window
         {
             TopologyNodesTable.ItemsSource = Array.Empty<TopologyNodeTableRow>();
             TopologyEdgesTable.ItemsSource = Array.Empty<TopologyEdgeTableRow>();
-            TopologySummaryText.Text = "Sem mapa disponível";
+            SetTopologySummary("Sem mapa disponível");
             return;
         }
 
@@ -215,12 +291,161 @@ public partial class TopologyWindow : Window
             node.RiskLevel.Equals("Alto", StringComparison.OrdinalIgnoreCase) ||
             node.RiskLevel.Equals("Médio", StringComparison.OrdinalIgnoreCase));
         int contextCount = visibleNodes.Length - matchingCount;
-        TopologySummaryText.Text = filterMode == TopologyFilterMode.All
+        SetTopologySummary(filterMode == TopologyFilterMode.All
             ? $"{visibleNodes.Length:N0} nós · {visibleEdges.Length:N0} ligações · {alertCount:N0} com alertas"
             : $"{matchingCount:N0} correspondências · {contextCount:N0} nós de contexto · " +
-              $"{visibleEdges.Length:N0} ligações · {alertCount:N0} com alertas";
+              $"{visibleEdges.Length:N0} ligações · {alertCount:N0} com alertas");
         SynchronizeTableSelection();
         Dispatcher.BeginInvoke(TopologyGraph.FitToView);
+    }
+
+    private void OnTopologySearchKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers != ModifierKeys.None)
+            return;
+
+        if (e.Key == Key.Enter)
+        {
+            LocateTopologyNode();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            if (!string.IsNullOrWhiteSpace(TopologySearchTextBox.Text))
+            {
+                ClearTopologySearch();
+                TopologySearchTextBox.Focus();
+            }
+            else
+            {
+                Close();
+            }
+
+            e.Handled = true;
+        }
+    }
+
+    private void OnFindTopologyNodeClick(object sender, RoutedEventArgs e) => LocateTopologyNode();
+
+    private void OnClearTopologySearchClick(object sender, RoutedEventArgs e)
+    {
+        ClearTopologySearch();
+        TopologySearchTextBox.Focus();
+    }
+
+    private void LocateTopologyNode()
+    {
+        string query = TopologySearchTextBox.Text.Trim();
+        if (query.Length == 0)
+        {
+            SetTopologySearchStatus("Introduz parte do nome, IP, MAC, tipo ou fabricante do nó.");
+            TopologySearchTextBox.Focus();
+            return;
+        }
+
+        NetworkMap? map = _viewModel.TopologyMap;
+        if (map is null)
+        {
+            SetTopologySearchStatus("Ainda não existe um mapa onde procurar.");
+            return;
+        }
+
+        TopologyFilterMode filterMode = GetSelectedFilterMode();
+        NetworkMapNode[] matches = NetworkTopologyControl
+            .GetVisibleNodes(map, filterMode, out _)
+            .Where(node => NodeMatchesSearch(node, query))
+            .OrderBy(node => NodeLayer(node))
+            .ThenBy(node => node.Label, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+        if (matches.Length == 0)
+        {
+            _lastSearchQuery = query;
+            SetTopologySearchStatus($"Nenhum nó visível corresponde a “{query}”. Revê também o filtro Mostrar.");
+            return;
+        }
+
+        int matchIndex = 0;
+        if (string.Equals(_lastSearchQuery, query, StringComparison.OrdinalIgnoreCase))
+        {
+            int selectedIndex = Array.FindIndex(matches, node =>
+                string.Equals(node.Id, _viewModel.SelectedTopologyNode?.Id, StringComparison.Ordinal));
+            if (selectedIndex >= 0)
+                matchIndex = (selectedIndex + 1) % matches.Length;
+        }
+
+        NetworkMapNode match = matches[matchIndex];
+        _lastSearchQuery = query;
+        _viewModel.SelectedTopologyNode = match;
+        TopologyViews.SelectedIndex = 0;
+        TopologyGraph.CenterOnNode(match.Id, focusKeyboard: true);
+
+        string address = match.IpAddress is null ? string.Empty : $" · {match.IpAddress}";
+        SetTopologySearchStatus(
+            $"Correspondência {matchIndex + 1:N0} de {matches.Length:N0}: {match.Label}{address}. " +
+            "Enter ou F3 mostra a próxima.");
+    }
+
+    private void ClearTopologySearch()
+    {
+        TopologySearchTextBox.Clear();
+        _lastSearchQuery = null;
+        TopologySearchStatusText.Text = string.Empty;
+        AutomationProperties.SetName(TopologySearchStatusText, "Estado da pesquisa na topologia");
+        TopologySearchStatusText.Visibility = Visibility.Collapsed;
+    }
+
+    private static bool NodeMatchesSearch(NetworkMapNode node, string query)
+    {
+        string searchable = string.Join(
+            ' ',
+            node.Label,
+            node.Subtitle,
+            node.IpAddress?.ToString(),
+            node.MacAddress,
+            node.DeviceType,
+            node.VlanId?.ToString(CultureInfo.InvariantCulture),
+            node.RiskLevel,
+            NodeKindText(node));
+        return query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .All(token => searchable.Contains(token, StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    private void SetTopologySummary(string message)
+    {
+        if (string.Equals(TopologySummaryText.Text, message, StringComparison.Ordinal))
+            return;
+
+        TopologySummaryText.Text = message;
+        AutomationProperties.SetName(TopologySummaryText, $"Resumo da topologia: {message}");
+        RaiseLiveRegionChanged(TopologySummaryText);
+    }
+
+    private void SetTopologySearchStatus(string message)
+    {
+        TopologySearchStatusText.Text = message;
+        TopologySearchStatusText.Visibility = Visibility.Visible;
+        AutomationProperties.SetName(TopologySearchStatusText, message);
+        RaiseLiveRegionChanged(TopologySearchStatusText);
+    }
+
+    private void AnnounceSelectedTopologyNode()
+    {
+        NetworkMapNode? node = _viewModel.SelectedTopologyNode;
+        string message = node is null
+            ? "Nenhum nó selecionado"
+            : $"Nó selecionado: {node.Label}. " +
+              $"{(node.IpAddress is null ? "Sem endereço IP." : $"IP {node.IpAddress}.")} " +
+              $"Risco {node.RiskLevel}. " +
+              $"{(node.VlanId is int vlan ? $"VLAN {vlan}." : "VLAN não confirmada.")}";
+        AutomationProperties.SetName(TopologySelectionRegion, message);
+        RaiseLiveRegionChanged(TopologySelectionRegion);
+    }
+
+    private static void RaiseLiveRegionChanged(UIElement element)
+    {
+        AutomationPeer? peer = UIElementAutomationPeer.FromElement(element) ??
+            UIElementAutomationPeer.CreatePeerForElement(element);
+        peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 
     private TopologyFilterMode GetSelectedFilterMode()
@@ -325,6 +550,31 @@ public partial class TopologyWindow : Window
             if (DataContext is MainViewModel viewModel)
                 viewModel.ReportException("Não foi possível guardar o mapa", exception, dialog.FileName);
         }
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern nint MonitorFromWindow(nint windowHandle, uint flags);
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(nint monitorHandle, ref MonitorInfo monitorInfo);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public uint Size;
+        public NativeRectangle MonitorArea;
+        public NativeRectangle WorkArea;
+        public uint Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRectangle
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
     }
 }
 

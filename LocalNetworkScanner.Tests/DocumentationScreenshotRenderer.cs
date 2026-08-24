@@ -56,6 +56,8 @@ internal static class DocumentationScreenshotRenderer
             viewModel.IsScanConfigurationExpanded = true;
             viewModel.IsCustomScanSettingsExpanded = false;
             viewModel.UseCustomScanSettings = false;
+            if (viewModel.IsOnboardingVisible)
+                viewModel.DismissOnboardingCommand.Execute(null);
 
             SetPrivateField(viewModel, "_lastResult", result);
             InvokePrivate(viewModel, "ReplaceDevices", result.Devices);

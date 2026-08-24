@@ -4,7 +4,7 @@
 
 As releases disponibilizam dois formatos para cada arquitetura suportada. A partir da linha 1.3.x, ambos incluem o runtime .NET e a snapshot offline MA-L/MA-M/MA-S/IAB da versão, sem exigir a instalação separada do SDK, do runtime ou de uma base de fabricantes.
 
-O primeiro arranque e a identificação de titulares de prefixos IEEE não exigem Internet. A aplicação só contacta as listagens públicas da IEEE quando o utilizador escolhe explicitamente a atualização opcional. Os pacotes incluem `THIRD_PARTY_NOTICES.md`; confirme os termos e a autorização aplicáveis antes de redistribuir publicamente uma build que contenha a snapshot.
+O primeiro arranque e a identificação de titulares de prefixos IEEE não exigem Internet. A aplicação só contacta as listagens públicas da IEEE quando o utilizador escolhe explicitamente a atualização opcional. Os pacotes incluem `THIRD_PARTY_NOTICES.md`. A snapshot não está sob MIT e o projeto ainda não arquivou uma clarificação/autorização escrita que resolva a sua redistribuição; a acessibilidade pública dos ficheiros não deve ser interpretada como licença.
 
 ## Escolher a arquitetura
 
@@ -30,6 +30,8 @@ O instalador:
 O bloqueio de downgrade protege a compatibilidade das preferências e dados locais, incluindo quando a instalação existente usa um diretório personalizado registado pelo instalador. Para regressar deliberadamente a uma versão anterior, exporte primeiro o que necessita, desinstale a versão atual e avalie a compatibilidade dos dados; não apague nem substitua o executável instalado manualmente para contornar a validação.
 
 Para apagar também os dados locais depois da desinstalação, elimine manualmente `%LOCALAPPDATA%\LocalNetworkScanner`. Reveja primeiro os snapshots: podem constituir um inventário sensível da rede.
+
+Consulte [PRIVACY.md](../PRIVACY.md) para a lista completa de comunicações iniciadas pelo utilizador, dados locais, retenção e eliminação.
 
 ## Versão portátil
 
@@ -60,13 +62,13 @@ Não desligue Smart App Control, App Control for Business/WDAC, AppLocker ou Mic
 
 ## Assinatura, App Control e SmartScreen
 
-Os artefactos históricos da release `v1.2.0` estão explicitamente marcados **`NotSigned`** e não são recomendados para instalação de produção. O Microsoft Defender SmartScreen ou uma política App Control podem recusá-los. Uma prerelease visível apenas no repositório privado pode continuar `Private QA (NotSigned)`; o workflow bloqueia qualquer publicação de produção que não esteja `Signed`. Confirme sempre `SIGNING-STATE.txt` e o resultado local de `Get-AuthenticodeSignature`.
+Os artefactos históricos da release `v1.2.0` estão explicitamente marcados **`NotSigned`** e não são recomendados para instalação de produção. O Microsoft Defender SmartScreen ou uma política App Control podem recusá-los. As prereleases `v1.3.x`/`v1.4.0` que conservam o título histórico `Private QA (NotSigned)` também não têm Authenticode; os seus assets estão agora publicamente acessíveis porque o repositório é público, mas continuam a ser apenas QA. Confirme sempre `SIGNING-STATE.txt` e o resultado local de `Get-AuthenticodeSignature`.
 
 O checksum deteta alterações no ficheiro relativamente à release publicada, mas não substitui uma assinatura de código nem confirma, sozinho, a identidade do publisher.
 
-O pipeline público assina UI, CLI, diagnóstico PowerShell, instalador e desinstalador através de Microsoft Artifact Signing por OIDC. A chave privada permanece no serviço/HSM e não é copiada para o GitHub. Se a identidade, o timestamp ou uma assinatura estiverem ausentes ou inválidos, o build falha em vez de publicar silenciosamente como assinado. Uma assinatura válida também não substitui uma regra de autorização da organização.
+O workflow versionado contém um caminho de produção para assinar UI, CLI, diagnóstico PowerShell, instalador e desinstalador através de Microsoft Artifact Signing por OIDC, mas esse backend não está configurado e não assinou os downloads atuais. A avaliação de elegibilidade para a SignPath Foundation está pendente; o projeto ainda não foi aceite nem integrado. Qualquer backend futuro deve manter a chave privada fora do GitHub e falhar se a identidade, o timestamp ou uma assinatura estiverem ausentes ou inválidos. Uma assinatura válida também não substitui uma regra de autorização da organização. Consulte a [Code signing policy](../CODE_SIGNING_POLICY.md).
 
-A validação de release deixou de depender apenas do build: os ZIPs e instaladores exatos são instalados, executados e removidos em runners Windows x64 e ARM64 nativos antes da publicação. Os dez ficheiros candidatos atravessam uma draft release privada sem consumir quota de artefactos de Actions; depois dos testes, o atestado e o SBOM são acrescentados ao contrato permanente de 12 assets. A configuração da identidade cloud/HSM, alternativas legítimas e códigos `LNS-REL-*` estão documentados em [Assinatura e prontidão de release](SIGNING.md).
+A validação de release deixou de depender apenas do build: os ZIPs e instaladores exatos são instalados, executados e removidos em runners Windows x64 e ARM64 nativos antes da publicação. No backend atual, os dez ficheiros candidatos atravessam uma draft release ainda não publicada; depois dos testes, o atestado e o SBOM são acrescentados ao contrato permanente de 12 assets. Uma integração SignPath futura terá de usar um GitHub Actions artifact verificável pelo conector antes da assinatura. O estado real, alternativas legítimas e códigos `LNS-REL-*` estão documentados em [Assinatura e prontidão de release](SIGNING.md).
 
 ## Compilar o instalador localmente
 
@@ -93,6 +95,6 @@ Para um laboratório/PKI privada ou runner próprio ligado a token/HSM, os scrip
   -TimestampServer 'http://timestamp.digicert.com'
 ```
 
-Este modo local exige RSA, chave privada protegida, EKU de Code Signing, cadeia confiável e timestamp. O thumbprint SHA-1 serve apenas para selecionar o certificado; não é o algoritmo usado na assinatura dos ficheiros. Não exporte uma chave pública de produção para PFX só para usar este exemplo: o workflow oficial usa Artifact Signing/OIDC.
+Este modo local exige RSA, chave privada protegida, EKU de Code Signing, cadeia confiável e timestamp. O thumbprint SHA-1 serve apenas para selecionar o certificado; não é o algoritmo usado na assinatura dos ficheiros. Não exporte uma chave pública de produção para PFX só para usar este exemplo: o backend cloud atualmente versionado usa Artifact Signing/OIDC e uma futura integração SignPath também deverá manter a chave fora do runner.
 
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

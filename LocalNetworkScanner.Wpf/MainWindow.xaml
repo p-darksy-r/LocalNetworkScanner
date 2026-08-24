@@ -46,6 +46,10 @@
         </Grid.RowDefinitions>
 
         <Grid Grid.Row="0" Margin="2,0,2,14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -92,14 +96,57 @@
                            Text="F5 iniciar · Esc cancelar · Ctrl+F procurar · Ctrl+E exportar"
                            TextTrimming="CharacterEllipsis" />
             </StackPanel>
+
+            <Border x:Name="OnboardingBanner"
+                    Grid.Row="1"
+                    Grid.ColumnSpan="2"
+                    Margin="0,12,0,0"
+                    Padding="13,11"
+                    Background="{DynamicResource SurfaceMutedBrush}"
+                    BorderBrush="{DynamicResource AccentBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Visibility="{Binding IsOnboardingVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                    AutomationProperties.Name="Introdução à utilização responsável"
+                    AutomationProperties.HelpText="Explica o âmbito autorizado do scan, o tráfego de rede e a ausência de telemetria.">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Margin="0,1,12,0"
+                               VerticalAlignment="Top"
+                               FontSize="20"
+                               Foreground="{DynamicResource AccentBrush}"
+                               Style="{StaticResource IconGlyphStyle}"
+                               Text="&#xE946;" />
+                    <StackPanel Grid.Column="1">
+                        <TextBlock FontWeight="SemiBold" Text="Antes do primeiro scan" />
+                        <TextBlock Margin="0,3,12,0"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   Text="Analisa apenas redes tuas ou que estás autorizado a administrar. O scan envia pedidos ativos à rede selecionada. A aplicação não envia telemetria nem o inventário; o histórico, quando ativo, permanece neste computador." />
+                    </StackPanel>
+                    <Button Grid.Column="2"
+                            MinWidth="76"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource CompactButtonStyle}"
+                            Command="{Binding DismissOnboardingCommand}"
+                            Content="Entendi"
+                            AutomationProperties.Name="Concluir introdução"
+                            AutomationProperties.HelpText="Oculta esta introdução nos próximos arranques." />
+                </Grid>
+            </Border>
         </Grid>
 
         <ScrollViewer x:Name="ScanConfigurationPanel"
                       Grid.Row="1"
-                      HorizontalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Disabled"
                       Visibility="{Binding IsScanConfigurationExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
-        <Border MinWidth="860" Style="{StaticResource CardBorderStyle}" Padding="16,14">
+        <Border Style="{StaticResource CardBorderStyle}" Padding="16,14">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -145,7 +192,8 @@
                         AutomationProperties.HelpText="Volta a detetar as interfaces de rede disponíveis.">
                     <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE72C;" />
                 </Button>
-                <Button Grid.Row="1"
+                <Button x:Name="ScanStartButton"
+                        Grid.Row="1"
                         Grid.Column="3"
                         Margin="12,0,0,0"
                         Style="{StaticResource PrimaryIconButtonStyle}"
@@ -156,7 +204,8 @@
                         AutomationProperties.HelpText="Inicia o scan da rede selecionada. Atalhos F5 e Alt+I.">
                     <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE768;" />
                 </Button>
-                <Button Grid.Row="1"
+                <Button x:Name="ScanCancelButton"
+                        Grid.Row="1"
                         Grid.Column="4"
                         Margin="8,0,0,0"
                         Style="{StaticResource DangerIconButtonStyle}"
@@ -190,10 +239,13 @@
                     <TextBlock FontSize="12"
                                FontWeight="SemiBold"
                                Text="Escolhe o tipo de scan" />
-                    <TextBlock Margin="0,2,0,7"
+                    <TextBlock x:Name="ScanProfileScopeExplanation"
+                               Margin="0,2,0,7"
                                FontSize="11"
                                Foreground="{DynamicResource TextSecondaryBrush}"
-                               Text="Podes começar pelo perfil Normal. O alcance real também depende do tamanho e da resposta da rede." />
+                               TextWrapping="Wrap"
+                               Text="Os três perfis visam os mesmos equipamentos e usam a mesma descoberta base: ICMP, TCP, ARP e multicast. Normal e Avançado dedicam mais tempo a portas e identidade; as contagens durante o scan, ou entre momentos diferentes, são transitórias e podem subir ou descer."
+                               AutomationProperties.HelpText="Rápido, Normal e Avançado procuram os mesmos equipamentos. Diferem sobretudo no tempo e no detalhe recolhido; as contagens temporárias podem variar." />
                     <ListBox ItemsSource="{Binding Profiles}"
                              SelectedItem="{Binding SelectedProfile, Mode=TwoWay}"
                              IsEnabled="{Binding CanEditScanSettings}"

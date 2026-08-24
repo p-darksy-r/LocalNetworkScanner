@@ -62,6 +62,7 @@ public sealed class UiSettings
     public string? LastInterfaceAddress { get; set; }
     public string? LastCidr { get; set; }
     public ScanProfile Profile { get; set; } = ScanProfile.Standard;
+    public bool HasCompletedOnboarding { get; set; }
     // Campo legado: nas versões anteriores controlava simultaneamente a expansão
     // do painel e a aplicação das definições personalizadas.
     public bool IsAdvancedMode { get; set; }
