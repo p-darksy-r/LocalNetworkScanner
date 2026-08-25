@@ -2508,6 +2508,68 @@ List<(string Name, Func<Task> Run)> tests =
         NotNull(multicastTask);
         Equal(true, multicastTask!.IsCompleted);
     }),
+    ("External scan cancellation is not replaced by a probe failure", async () =>
+    {
+        IPAddress target = IPAddress.Parse("192.168.1.21");
+        TaskCompletionSource pingStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource multicastStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releasePingFailure =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource multicastCancelled =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        NetworkScannerService scanner = new(
+            new MacAddressService(),
+            async (_, _, _, _) =>
+            {
+                pingStarted.TrySetResult();
+                await releasePingFailure.Task;
+                throw new InvalidOperationException("late-probe-failure");
+            },
+            (_, _, _, _, _) => Task.FromResult<int?>(null),
+            async (_, _, token) =>
+            {
+                multicastStarted.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                    return [];
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    multicastCancelled.TrySetResult();
+                    throw;
+                }
+            });
+        using CancellationTokenSource cancellation = new();
+        Task<NetworkScanResult> scanTask = scanner.ScanAsync(
+            [target],
+            CreateInterface(),
+            new ScanOptions
+            {
+                EnableIcmp = true,
+                EnableTcpDiscovery = false,
+                EnableArp = false,
+                EnableMulticastDiscovery = true,
+                EnableUpnpDescription = false,
+                EnableNetBiosDiscovery = false,
+                EnableServiceProbes = false,
+                Ports = [65_535],
+                DiscoveryPorts = [65_535]
+            },
+            cancellationToken: cancellation.Token);
+
+        await Task.WhenAll(pingStarted.Task, multicastStarted.Task)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+        releasePingFailure.TrySetResult();
+
+        await ThrowsAsync<OperationCanceledException>(async () =>
+            _ = await scanTask.WaitAsync(TimeSpan.FromSeconds(3)));
+        await multicastCancelled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    }),
     ("ARP scan session propagates cancellation", async () =>
     {
         int activeResolutions = 0;

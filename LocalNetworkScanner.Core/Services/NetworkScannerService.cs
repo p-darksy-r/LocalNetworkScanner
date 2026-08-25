@@ -2,6 +2,7 @@
 
 using System.Collections.Concurrent;
 using System.Net;
+using System.Runtime.ExceptionServices;
 using LocalNetworkScanner.Core.Models;
 using LocalNetworkScanner.Core.Utilities;
 
@@ -125,6 +126,18 @@ public sealed class NetworkScannerService
 
         int completedHosts = 0;
         int onlineHosts = 0;
+        ExceptionDispatchInfo? discoveryFailure = null;
+
+        void CaptureDiscoveryFailure(Exception exception)
+        {
+            if (exception is OperationCanceledException)
+                return;
+
+            Interlocked.CompareExchange(
+                ref discoveryFailure,
+                ExceptionDispatchInfo.Capture(exception),
+                null);
+        }
 
         Task<IReadOnlyList<DiscoveryObservation>> multicastTask = options.EnableMulticastDiscovery
             ? _multicastDiscovery(
@@ -166,7 +179,8 @@ public sealed class NetworkScannerService
                                     options.PingTimeoutMs,
                                     networkInterface.IpAddress,
                                     token),
-                                discoveryPhaseCancellation)
+                                discoveryPhaseCancellation,
+                                CaptureDiscoveryFailure)
                             : Task.FromResult(new PingProbeResult(false, null, null));
                         Task<int?> tcpTask = options.EnableTcpDiscovery
                             ? CancelPhaseOnFailureAsync(
@@ -176,12 +190,14 @@ public sealed class NetworkScannerService
                                     options.ConnectTimeoutMs,
                                     networkInterface.IpAddress,
                                     token),
-                                discoveryPhaseCancellation)
+                                discoveryPhaseCancellation,
+                                CaptureDiscoveryFailure)
                             : Task.FromResult<int?>(null);
                         Task<MacAddressResolution?> macTask = options.EnableArp
                             ? CancelPhaseOnFailureAsync(
                                 macScanSession!.ResolveForDiscoveryAsync(address, token),
-                                discoveryPhaseCancellation)
+                                discoveryPhaseCancellation,
+                                CaptureDiscoveryFailure)
                             : Task.FromResult<MacAddressResolution?>(null);
 
                         await Task.WhenAll(pingTask, tcpTask, macTask);
@@ -226,10 +242,11 @@ public sealed class NetworkScannerService
                             device));
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     // Interrompe imediatamente as restantes sondas desta fase; o
                     // catch exterior observa depois a descoberta multicast.
+                    CaptureDiscoveryFailure(exception);
                     TryCancel(discoveryPhaseCancellation);
                     throw;
                 }
@@ -242,6 +259,12 @@ public sealed class NetworkScannerService
             // falha original; assim não ficam sockets/probes órfãos em background.
             TryCancel(discoveryPhaseCancellation);
             await ObserveAfterCancellationAsync(multicastTask);
+
+            // Parallel.ForEachAsync recebe o token desta fase e pode materializar
+            // a falha global como cancelamento. Repõe a primeira exceção real da
+            // sonda para que o diagnóstico não seja substituído por esse detalhe.
+            if (!cancellationToken.IsCancellationRequested)
+                Volatile.Read(ref discoveryFailure)?.Throw();
             throw;
         }
 
@@ -898,16 +921,18 @@ public sealed class NetworkScannerService
 
     private static async Task<T> CancelPhaseOnFailureAsync<T>(
         Task<T> operation,
-        CancellationTokenSource phaseCancellation)
+        CancellationTokenSource phaseCancellation,
+        Action<Exception> captureFailure)
     {
         try
         {
             return await operation;
         }
-        catch
+        catch (Exception exception)
         {
             // Task.WhenAll só termina quando todas as sondas do mesmo IP acabam.
             // Cancelar aqui impede que uma falha fique presa atrás de uma irmã lenta.
+            captureFailure(exception);
             TryCancel(phaseCancellation);
             throw;
         }
