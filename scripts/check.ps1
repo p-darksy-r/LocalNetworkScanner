@@ -20,6 +20,7 @@ $coreProject = Join-Path $repoRoot "LocalNetworkScanner.Core\LocalNetworkScanner
 $cliProject = Join-Path $repoRoot "LocalNetworkScanner.Cli\LocalNetworkScanner.Cli.csproj"
 $wpfProject = Join-Path $repoRoot "LocalNetworkScanner.Wpf\LocalNetworkScanner.Wpf.csproj"
 $copyrightCheckScript = Join-Path $repoRoot "scripts\check-copyright.ps1"
+$appEntrypointTestScript = Join-Path $repoRoot "scripts\test-app-entrypoint-contract.ps1"
 $releaseEvidenceTestScript = Join-Path $repoRoot "scripts\test-release-evidence-contract.ps1"
 $testResults = Join-Path $repoRoot "artifacts\TestResults"
 
@@ -44,6 +45,9 @@ if (-not (Test-Path -LiteralPath $copyrightCheckScript -PathType Leaf)) {
 }
 if (-not (Test-Path -LiteralPath $releaseEvidenceTestScript -PathType Leaf)) {
     throw "The synthetic release evidence test script was not found: $releaseEvidenceTestScript"
+}
+if (-not (Test-Path -LiteralPath $appEntrypointTestScript -PathType Leaf)) {
+    throw "The synthetic app entrypoint test script was not found: $appEntrypointTestScript"
 }
 
 $projects = @($coreProject, $cliProject)
@@ -94,6 +98,9 @@ try {
         }
     }
     Write-Host "PowerShell syntax validation passed for $($scriptFiles.Count) script(s)."
+
+    Write-Host "> synthetic app entrypoint contract tests" -ForegroundColor DarkGray
+    & $appEntrypointTestScript
 
     Write-Host "> synthetic release evidence contract tests" -ForegroundColor DarkGray
     & $releaseEvidenceTestScript

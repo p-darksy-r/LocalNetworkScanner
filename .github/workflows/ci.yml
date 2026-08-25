@@ -37,6 +37,15 @@ jobs:
         shell: pwsh
         run: .\scripts\check.ps1 -Configuration Release -VerifyFormat
 
+      - name: Materialize and smoke the x64 root app entrypoint
+        shell: pwsh
+        run: |
+          .\scripts\update-local-app.ps1 -Force -SkipChecks
+          $changes = @(git status --porcelain --untracked-files=all)
+          if ($changes.Count -gt 0) {
+            throw "Root app materialization changed tracked or visible workspace files: $($changes -join '; ')"
+          }
+
   validate-arm64:
     name: Native Windows ARM64 validation
     runs-on: windows-11-arm
@@ -67,6 +76,15 @@ jobs:
       - name: Publish and smoke native ARM64 executables
         shell: pwsh
         run: .\scripts\publish-windows.ps1 -RuntimeIdentifier win-arm64 -SkipChecks
+
+      - name: Materialize and smoke the ARM64 root app entrypoint
+        shell: pwsh
+        run: |
+          .\scripts\update-local-app.ps1 -Force -SkipChecks
+          $changes = @(git status --porcelain --untracked-files=all)
+          if ($changes.Count -gt 0) {
+            throw "Root app materialization changed tracked or visible workspace files: $($changes -join '; ')"
+          }
 
   gate:
     name: CI gate

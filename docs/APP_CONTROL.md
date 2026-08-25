@@ -19,6 +19,8 @@ O instalador já não tenta iniciar automaticamente a aplicação na página fin
 
 Esta alteração não contorna a política: se o executável não for permitido, o Windows continuará corretamente a bloqueá-lo quando o utilizador o iniciar.
 
+O mesmo se aplica a `app\LocalNetworkScanner.exe` num checkout do código. A pasta `app` apenas evita procurar a build local entre diretórios de compilação; copiar ou reconstruir os mesmos bytes não cria confiança Authenticode, não remove a marca de origem e não altera Smart App Control/WDAC. O lançador apresenta `LNS-REL-007` quando consegue observar o erro `4551` e nunca desativa a política.
+
 ## Diagnóstico seguro
 
 Não desative Smart App Control, App Control for Business, AppLocker, Microsoft Defender ou outra política de segurança para executar a aplicação. Num computador gerido, envie as evidências ao administrador de TI.

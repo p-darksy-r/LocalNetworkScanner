@@ -15,7 +15,8 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 - onboarding inicial, não modal e persistente, explica redes autorizadas, tráfego ativo, histórico local e ausência de telemetria;
 - pesquisa de nós na topologia por nome, IP, MAC, tipo, VLAN ou identidade visível, com `Ctrl+F`, `Enter`/`F3`, centralização e anúncios acessíveis;
 - a janela Sobre liga diretamente às políticas de privacidade e assinatura;
-- workflow manual para renderizar, validar e disponibilizar as imagens sintéticas da documentação num runner Windows quando App Control impede a renderização local.
+- workflow manual para renderizar, validar e disponibilizar as imagens sintéticas da documentação num runner Windows quando App Control impede a renderização local;
+- pasta raiz `app` com lançador relativo e executável local gerado para a arquitetura nativa; versão, fontes, PE, SHA-256 e Authenticode são validados antes de uma substituição transacional, com lock entre processos, modo rápido para abrir, modo completo para QA local e publicação intermédia isolada dos artefactos de release.
 
 ### Changed
 
@@ -27,7 +28,8 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 - todas as páginas de releases existentes ligam agora a **Code signing policy** e à política de privacidade; a `v1.2.0` foi reclassificada como prerelease histórica `NotSigned`, deixando o projeto sem uma falsa release `Latest` enquanto não existir produção assinada;
 - metadados do produto e manifesto Windows avançam para `1.4.1`, sem criar uma release;
 - o job x64 do CI usa agora o mesmo `scripts/check.ps1 -VerifyFormat` da validação local, incluindo sintaxe PowerShell e os contratos sintéticos de release;
-- o workflow de release passa a ser exclusivamente manual, evitando que o simples push de uma tag termine verde sem produzir um candidato ou uma release.
+- o workflow de release passa a ser exclusivamente manual, evitando que o simples push de uma tag termine verde sem produzir um candidato ou uma release;
+- a política automática de copyright passa a reconhecer também scripts batch `.cmd` e `.bat` com marcadores `@REM`.
 
 ### Fixed
 

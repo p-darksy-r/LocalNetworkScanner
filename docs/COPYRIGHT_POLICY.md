@@ -18,7 +18,7 @@ Conteúdo do rodapé:
 Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
 ```
 
-O mesmo texto é usado no cabeçalho e no rodapé. O delimitador respeita o formato: `//` em C# e `global.json`, `#` em PowerShell/YAML e `<!-- -->` em XML/XAML/Markdown. Em Inno Setup, o cabeçalho usa `;`; quando o ficheiro termina dentro da secção Pascal `[Code]`, o rodapé usa `//`, que é válido nesse contexto. Uma declaração XML ou shebang pode legalmente anteceder o cabeçalho; o rodapé é sempre a última linha não vazia.
+O mesmo texto é usado no cabeçalho e no rodapé. O delimitador respeita o formato: `//` em C# e `global.json`, `#` em PowerShell/YAML, `@REM` em batch `.cmd`/`.bat` e `<!-- -->` em XML/XAML/Markdown. Em Inno Setup, o cabeçalho usa `;`; quando o ficheiro termina dentro da secção Pascal `[Code]`, o rodapé usa `//`, que é válido nesse contexto. Uma declaração XML ou shebang pode legalmente anteceder o cabeçalho; o rodapé é sempre a última linha não vazia.
 
 ## Aplicar e validar
 
@@ -39,7 +39,7 @@ Sem `-Path`, o checker percorre todo o repositório e falha se faltar qualquer m
 
 ## Formatos e exclusões
 
-São reconhecidos C#, projetos e propriedades MSBuild, XML, XAML, manifests, solução `.slnx`, Markdown, YAML, PowerShell, Python, shell, TOML, Inno Setup, `CODEOWNERS`, `.gitignore`, `.gitattributes` e `.editorconfig`. `global.json` também é abrangido porque o parser do .NET SDK suporta comentários nesse ficheiro.
+São reconhecidos C#, projetos e propriedades MSBuild, XML, XAML, manifests, solução `.slnx`, Markdown, YAML, PowerShell, batch `.cmd`/`.bat`, Python, shell, TOML, Inno Setup, `CODEOWNERS`, `.gitignore`, `.gitattributes` e `.editorconfig`. `global.json` também é abrangido porque o parser do .NET SDK suporta comentários nesse ficheiro.
 
 As exclusões são deliberadas:
 

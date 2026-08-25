@@ -39,6 +39,12 @@ Extraia `LocalNetworkScanner-<versão>-<arquitetura>.zip` para uma pasta em que 
 
 O pacote contém também `LocalNetworkScanner.Cli.exe` para automação. O histórico continua a ser guardado em `%LOCALAPPDATA%\LocalNetworkScanner`; “portátil” descreve apenas a distribuição sem instalador.
 
+## Atalho para a build de desenvolvimento
+
+Quem trabalha diretamente num checkout pode fazer duplo clique em `app\Abrir Local Network Scanner.cmd`. O lançador usa caminhos relativos, escolhe a arquitetura nativa do computador e materializa em `app\LocalNetworkScanner.exe` a publicação self-contained correspondente ao checkout atual; não atualiza o repositório a partir da Internet. Se a versão, os fontes, o runtime ou o hash já não coincidirem com `APP-BUILD.json`, compila no modo rápido e valida o novo payload antes de o abrir; uma falha não apaga a cópia anterior. Executar `scripts\update-local-app.ps1` sem `-Quick` mantém disponível o caminho com o gate local completo.
+
+Esta pasta requer o .NET SDK definido em `global.json` apenas quando precisa de reconstruir e é apenas uma conveniência de desenvolvimento. O executável gerado não é guardado no Git, não pertence ao contrato de assets de uma release e mantém o estado Authenticode real do publish — normalmente `NotSigned` enquanto a integração de assinatura estiver pendente. A publicação intermédia fica isolada em `artifacts\local-app` e não altera staging, ZIPs, instaladores ou candidatos de release.
+
 ## Verificar a integridade
 
 Compare o SHA-256 do ficheiro descarregado com `SHA256SUMS.txt` ou com o ficheiro `.sha256` adjacente na release:

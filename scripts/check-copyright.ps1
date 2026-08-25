@@ -54,6 +54,8 @@ function Get-CommentStyle {
         '.py'         { return @{ Prefix = '#'; Suffix = '' } }
         '.sh'         { return @{ Prefix = '#'; Suffix = '' } }
         '.toml'       { return @{ Prefix = '#'; Suffix = '' } }
+        '.cmd'        { return @{ Prefix = '@REM'; Suffix = '' } }
+        '.bat'        { return @{ Prefix = '@REM'; Suffix = '' } }
         '.iss'        { return @{ Prefix = ';'; Suffix = ''; FooterPrefix = '//'; FooterSuffix = '' } }
         default {
             if ($File.Name -in @('.gitignore', '.gitattributes', '.editorconfig', 'CODEOWNERS')) {

@@ -73,6 +73,18 @@ Abrir **Parâmetros técnicos personalizados** apenas mostra os valores. Estes s
 
 Comece com um intervalo pequeno e use o perfil **Avançado** apenas quando precisar de mais portas e detalhe. Utilize a aplicação somente numa rede própria ou explicitamente autorizada.
 
+### Abrir a build local sem procurar em `bin` ou `artifacts`
+
+Num checkout do projeto, abra a pasta [`app`](app) e faça duplo clique em **`Abrir Local Network Scanner.cmd`**. O ponto de entrada deteta x64/ARM64, valida versão, arquitetura, fontes e SHA-256 e mantém `app\LocalNetworkScanner.exe` sincronizado com o checkout atual. Não faz `git pull` nem procura versões remotas. A primeira utilização, ou uma alteração do código, compila no modo rápido e valida o payload antes de o abrir; as seguintes reutilizam imediatamente a cópia atual.
+
+Também pode atualizar a pasta sem abrir e executar primeiro o gate completo:
+
+```powershell
+.\scripts\update-local-app.ps1
+```
+
+O executável e o manifesto gerados são ignorados pelo Git: esta pasta é uma conveniência local, não uma release, e não cria nem simula uma assinatura Authenticode. A publicação self-contained desta conveniência usa apenas `artifacts\local-app` e nunca altera ZIPs, instaladores ou candidatos em `artifacts\release`; o modo completo continua a usar os diretórios normais do gate de build/teste. Se o Windows devolver `4551`, não desative a política; consulte o [guia de App Control](docs/APP_CONTROL.md).
+
 ## O que o diferencia
 
 - **Resultados honestos:** cada relação de topologia preserva origem, confiança e evidência.
@@ -325,6 +337,7 @@ LocalNetworkScanner.Core/   descoberta, modelos, análise e exportação
 LocalNetworkScanner.Cli/    interface de linha de comandos
 LocalNetworkScanner.Wpf/    aplicação gráfica Windows
 LocalNetworkScanner.Tests/  harness determinístico e smoke WPF
+app/                        entrada simples para a build local nativa mais recente
 .github/                    CI, release, propriedade e templates
 docs/                       instalação, diagnósticos e limites técnicos
 installer/                  instalador por utilizador com Inno Setup

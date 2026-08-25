@@ -12,6 +12,13 @@ coverage.*
 *.coverage
 *.coveragexml
 
+# Local root app entry (materialized by scripts/update-local-app.ps1)
+/app/LocalNetworkScanner.exe
+/app/LocalNetworkScanner.lnk
+/app/APP-BUILD.json
+/app/.update-*.tmp
+/app/.update.lock
+
 # Visual Studio, VS Code and JetBrains
 .vs/
 .vscode/
