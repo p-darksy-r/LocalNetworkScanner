@@ -40,7 +40,8 @@ Antes de descarregar, consulte a [Code signing policy](CODE_SIGNING_POLICY.md). 
 
 | Alvo | Estado |
 | --- | --- |
-| Windows 11 x64 | código 1.4.0: build Release, testes determinísticos e smoke UI/CLI obrigatórios; o workflow da tag instala, executa e remove o pacote self-contained exato antes de o marcar como validado |
+| Runner Windows hospedado x64 | CI executa a verificação integral; o sistema operativo exato fica registado em cada run e não é apresentado como prova de Windows 11 físico |
+| Windows 11 x64 | exige QA separado numa máquina ou VM Windows 11 real antes de uma release estável; build num runner Windows Server não substitui esta evidência |
 | Windows 11 ARM64 | CI e release exigem build, testes e smoke num runner Windows ARM64 nativo; o cross-build isolado deixou de contar como validação |
 | Windows 10 | o .NET 10 limita o suporte atual a edições LTSC/Enterprise compatíveis; consulte a [matriz oficial da Microsoft](https://learn.microsoft.com/dotnet/core/install/windows#supported-versions) |
 
@@ -274,7 +275,7 @@ Validação completa:
 powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1 -Configuration Release -VerifyFormat
 ```
 
-O gate verifica copyright, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.4.0`, a suite contém 95 testes. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
+O mesmo script é usado localmente e no job x64 do CI. O gate verifica copyright, sintaxe dos scripts PowerShell, contratos sintéticos de release, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.4.0`, a suite contém 95 testes; o número atual é validado pelo próprio harness. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
 
 O workflow CodeQL está configurado para analisar C# com consultas `security-extended` no repositório público; o resultado de cada execução deve ser verificado no GitHub e não é substituído por esta afirmação documental. A release restaura metadados de dependências para `win-x64` e `win-arm64`, exige ambos os runtimes e gera/valida um SBOM SPDX 2.2 como evidência separada, sem o confundir com os dez ficheiros instaláveis validados.
 
@@ -307,7 +308,7 @@ Instalador Inno Setup:
 powershell -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -RuntimeIdentifier win-x64
 ```
 
-Uma tag existente `vX.Y.Z` que corresponda à versão em `Directory.Build.props` inicia o preflight de release; o workflow recusa pedidos executados apenas sobre um branch. A publicação de produção continua a exigir `workflow_dispatch` explícito nessa tag com `publish_release=true`. Antes do build, o preflight confirma que tags lightweight ou anotadas resolvem para o HEAD atual de `main` e apresenta códigos `LNS-REL-*` para configurações ou autorizações ausentes.
+O workflow de release é exclusivamente manual: criar ou fazer push de uma tag não inicia uma execução vazia nem apresenta um falso sucesso. Depois de criar uma tag existente `vX.Y.Z` que corresponda à versão em `Directory.Build.props`, faça o dispatch explicitamente contra essa ref — por exemplo, `gh workflow run release.yml --ref vX.Y.Z -f publish_release=true` — apenas para produção assinada. O workflow recusa pedidos executados sobre um branch; antes do build, o preflight confirma que tags lightweight ou anotadas resolvem para o HEAD atual de `main` e apresenta códigos `LNS-REL-*` para configurações ou autorizações ausentes.
 
 O workflow versionado atualmente implementa apenas o backend **Microsoft Artifact Signing por OIDC**. Esse backend não está configurado neste repositório e não deve ser confundido com a candidatura SignPath pendente. O repositório ainda não contém o transporte por GitHub Actions artifact, a ação de submissão, os identificadores nem a política de origin verification necessários à SignPath; essa integração só será implementada depois de uma decisão de elegibilidade e da configuração fornecida pelo serviço. Em qualquer backend aceite, a chave privada permanece fora do repositório.
 

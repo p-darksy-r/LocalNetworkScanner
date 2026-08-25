@@ -17,17 +17,13 @@ concurrency:
 
 jobs:
   validate:
-    name: Restore, format, build and test
+    name: Windows hosted x64 validation
     runs-on: windows-latest
     timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Verify copyright markers
-        shell: pwsh
-        run: .\scripts\check-copyright.ps1
 
       - name: Install .NET SDK from global.json
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -37,20 +33,9 @@ jobs:
       - name: Show SDK information
         run: dotnet --info
 
-      - name: Restore
-        run: dotnet restore .\LocalNetworkScanner.slnx --nologo
-
-      - name: Verify formatting
-        run: dotnet format .\LocalNetworkScanner.slnx --verify-no-changes --no-restore --verbosity minimal
-
-      - name: Build Release
-        run: dotnet build .\LocalNetworkScanner.slnx --configuration Release --no-restore --nologo
-
-      - name: Run deterministic test harness
-        run: dotnet run --project .\LocalNetworkScanner.Tests\LocalNetworkScanner.Tests.csproj --configuration Release --no-build
-
-      - name: CLI smoke test
-        run: dotnet run --project .\LocalNetworkScanner.Cli\LocalNetworkScanner.Cli.csproj --configuration Release --no-build -- --help
+      - name: Run complete x64 validation
+        shell: pwsh
+        run: .\scripts\check.ps1 -Configuration Release -VerifyFormat
 
   validate-arm64:
     name: Native Windows ARM64 validation

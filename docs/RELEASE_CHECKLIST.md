@@ -106,7 +106,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeI
 - [ ] Os jobs de release instalaram, executaram e removeram os ZIPs e instaladores exatos em x64 e ARM64; o binário testado é o mesmo cujo hash será publicado.
 - [ ] O job `Require successful native Windows validation` terminou com sucesso; a draft privada recebeu os dez ficheiros candidatos exatos, a evidência ARM64 atravessou apenas outputs limitados/hashados e `SIGNING-STATE.txt` contém exatamente as sete linhas canónicas, sem marcadores duplicados ou contraditórios.
 - [ ] O payload final foi materializado substituindo apenas o `SIGNING-STATE.txt` pendente pela versão validada atestada; os quatro binários, quatro checksums e `SHA256SUMS.txt` são byte a byte os mesmos do candidato imutável.
-- [ ] O grupo de concorrência global de release impediu dois payloads grandes de serem produzidos em paralelo; uma tag reservada à produção executou apenas o preflight até ao pedido assinado explícito.
+- [ ] O grupo de concorrência global de release impediu dois payloads grandes de serem produzidos em paralelo; criar/fazer push da tag não iniciou um workflow e só o `workflow_dispatch` explícito contra essa tag iniciou o preflight e o candidato assinado.
 - [ ] O SBOM SPDX 2.2 foi gerado a partir desse payload exato e dos metadados restaurados para `win-x64` e `win-arm64`; a cobertura dos dois runtimes foi validada e o manifesto faz parte do contrato final de 12 assets sem alterar os dez ficheiros instaláveis.
 - [ ] A UI arranca, inicia e cancela um scan de laboratório e fecha sem processo residual.
 - [ ] O ZIP inclui UI, CLI, README, licença, changelog, limites técnicos, `docs/VENDOR_DATABASE.md` e `THIRD_PARTY_NOTICES.md`.
@@ -134,7 +134,7 @@ if ($actual -ne $expected) { throw 'SHA-256 invalido.' }
 - [ ] O artefacto foi testado com SmartScreen/Defender numa máquina sem histórico do produto.
 - [ ] Com gates incompletos num repositório público, nenhuma tag nova é criada; com gates completos, a tag nova fica reservada ao caminho assinado e a execução com `publish_release=true` não apresenta `LNS-REL-001` a `LNS-REL-010`.
 - [ ] A tag corresponde à versão e aponta exatamente para o HEAD atual de `main`; o job de publicação volta a resolver pela API tags lightweight ou anotadas antes das mutações, imediatamente antes de publicar e após a publicação, exigindo sempre `GITHUB_SHA`.
-- [ ] Se a tag estiver reservada para publicação assinada, a configuração do backend escolhido e a autorização/licença IEEE já estavam válidas antes do push; assim o workflow não cria primeiro uma prerelease `NotSigned` imutável na mesma tag.
+- [ ] Se a tag estiver reservada para publicação assinada, a configuração do backend escolhido e a autorização/licença IEEE já estavam válidas antes de executar manualmente o workflow nessa tag; o push da tag, por si só, não inicia a release.
 
 Para uma release publicada:
 
@@ -150,7 +150,7 @@ Para uma release publicada:
 - [ ] O certificado é RSA, tem EKU Code Signing, cadeia válida para uma CA confiável e não é self-signed.
 - [ ] A chave permanece num HSM/serviço ou token compatível; nunca é exportada para PFX no runner hospedado.
 - [ ] Jobs de QA sem assinatura não recebem credenciais de assinatura; permissões `id-token`, `actions` e `contents: write` ficam limitadas aos jobs que realmente necessitam delas. No backend atual, os validadores usam `contents: write` apenas para ler a draft com `persist-credentials: false`; numa integração SignPath, `actions: read` permite ao conector validar o artifact indicado.
-- [ ] O ruleset de `main` exige o check agregado `CI gate`, que depende de x64 e ARM64.
+- [ ] Os rulesets ativos impedem apagar/reescrever `main` e tags `v*`; no modelo atual de branch único com push direto, confirme manualmente o `CI gate` x64/ARM64 após cada push. Antes de abandonar esse modelo e aceitar alterações por PR, torne o check agregado obrigatório no ruleset.
 
 Uma distribuição que alegue identidade de publisher verificada exige estado `Valid`.
 

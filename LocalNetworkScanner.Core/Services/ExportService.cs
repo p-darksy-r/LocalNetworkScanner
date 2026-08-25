@@ -24,7 +24,7 @@ public sealed class ExportService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(result);
-        EnsureDirectory(path);
+        using AtomicExportDestination destination = new(path, cancellationToken);
 
         DiscoveryMethod[] discoveryMethods = Enum.GetValues<DiscoveryMethod>()
             .Where(method => method != DiscoveryMethod.None)
@@ -140,12 +140,15 @@ public sealed class ExportService
                 })
         };
 
-        await using FileStream stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(
-            stream,
-            payload,
-            IndentedJsonOptions,
-            cancellationToken);
+        await using (FileStream stream = File.Create(destination.TemporaryPath))
+        {
+            await JsonSerializer.SerializeAsync(
+                stream,
+                payload,
+                IndentedJsonOptions,
+                cancellationToken);
+        }
+        destination.Commit(cancellationToken);
     }
 
     public async Task ExportJsonAsync(
@@ -153,7 +156,8 @@ public sealed class ExportService
         string path,
         CancellationToken cancellationToken = default)
     {
-        EnsureDirectory(path);
+        ArgumentNullException.ThrowIfNull(result);
+        using AtomicExportDestination destination = new(path, cancellationToken);
         NetworkMap topologyMap = new NetworkTopologyMapService().Build(result);
         object payload = new
         {
@@ -293,12 +297,15 @@ public sealed class ExportService
             })
         };
 
-        await using FileStream stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(
-            stream,
-            payload,
-            IndentedJsonOptions,
-            cancellationToken);
+        await using (FileStream stream = File.Create(destination.TemporaryPath))
+        {
+            await JsonSerializer.SerializeAsync(
+                stream,
+                payload,
+                IndentedJsonOptions,
+                cancellationToken);
+        }
+        destination.Commit(cancellationToken);
     }
 
     public async Task ExportGraphMlAsync(
@@ -307,7 +314,7 @@ public sealed class ExportService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(result);
-        EnsureDirectory(path);
+        using AtomicExportDestination destination = new(path, cancellationToken);
         NetworkMap map = new NetworkTopologyMapService().Build(result);
 
         FileStreamOptions fileOptions = new()
@@ -317,107 +324,110 @@ public sealed class ExportService
             Share = FileShare.None,
             Options = FileOptions.Asynchronous
         };
-        await using FileStream stream = new(path, fileOptions);
-        XmlWriterSettings settings = new()
+        await using (FileStream stream = new(destination.TemporaryPath, fileOptions))
         {
-            Async = true,
-            Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-            Indent = true,
-            CloseOutput = false
-        };
-        using XmlWriter writer = XmlWriter.Create(stream, settings);
+            XmlWriterSettings settings = new()
+            {
+                Async = true,
+                Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                Indent = true,
+                CloseOutput = false
+            };
+            using XmlWriter writer = XmlWriter.Create(stream, settings);
 
-        const string graphMlNamespace = "http://graphml.graphdrawing.org/xmlns";
-        await writer.WriteStartDocumentAsync();
-        await writer.WriteStartElementAsync(null, "graphml", graphMlNamespace);
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "g_network", "graph", "network_cidr", "string");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "g_generated", "graph", "generated_at", "string");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "g_warnings", "graph", "warnings", "string");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "g_diagnostics", "graph", "diagnostics", "string");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_label", "node", "label", "string");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_kind", "node", "kind", "string");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_subtitle", "node", "subtitle", "string");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_ip", "node", "ip_address", "string");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_mac", "node", "mac_address", "string");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_vlan", "node", "vlan_id", "int");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_risk", "node", "risk_level", "string");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_online", "node", "is_online", "boolean");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "e_label", "edge", "label", "string");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "e_kind", "edge", "kind", "string");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "e_evidence", "edge", "evidence", "string");
-        await WriteGraphMlKeyAsync(writer, graphMlNamespace, "e_confidence", "edge", "confidence", "string");
+            const string graphMlNamespace = "http://graphml.graphdrawing.org/xmlns";
+            await writer.WriteStartDocumentAsync();
+            await writer.WriteStartElementAsync(null, "graphml", graphMlNamespace);
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "g_network", "graph", "network_cidr", "string");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "g_generated", "graph", "generated_at", "string");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "g_warnings", "graph", "warnings", "string");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "g_diagnostics", "graph", "diagnostics", "string");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_label", "node", "label", "string");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_kind", "node", "kind", "string");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_subtitle", "node", "subtitle", "string");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_ip", "node", "ip_address", "string");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_mac", "node", "mac_address", "string");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_vlan", "node", "vlan_id", "int");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_risk", "node", "risk_level", "string");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "n_online", "node", "is_online", "boolean");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "e_label", "edge", "label", "string");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "e_kind", "edge", "kind", "string");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "e_evidence", "edge", "evidence", "string");
+            await WriteGraphMlKeyAsync(writer, graphMlNamespace, "e_confidence", "edge", "confidence", "string");
 
-        await writer.WriteStartElementAsync(null, "graph", graphMlNamespace);
-        await writer.WriteAttributeStringAsync(null, "id", null, "network-topology");
-        await writer.WriteAttributeStringAsync(null, "edgedefault", null, "directed");
-        await WriteGraphMlDataAsync(writer, graphMlNamespace, "g_network", map.NetworkCidr);
-        await WriteGraphMlDataAsync(
-            writer,
-            graphMlNamespace,
-            "g_generated",
-            map.GeneratedAt.ToString("O", CultureInfo.InvariantCulture));
-        await WriteGraphMlDataAsync(
-            writer,
-            graphMlNamespace,
-            "g_warnings",
-            string.Join(Environment.NewLine, map.Warnings));
-        await WriteGraphMlDataAsync(
-            writer,
-            graphMlNamespace,
-            "g_diagnostics",
-            string.Join(Environment.NewLine, result.Diagnostics.Select(FormatDiagnostic)));
-
-        foreach (NetworkMapNode node in map.Nodes)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            await writer.WriteStartElementAsync(null, "node", graphMlNamespace);
-            await writer.WriteAttributeStringAsync(null, "id", null, EncodeGraphMlId(node.Id));
-            await WriteGraphMlDataAsync(writer, graphMlNamespace, "n_label", node.Label);
-            await WriteGraphMlDataAsync(writer, graphMlNamespace, "n_kind", node.Kind.ToString());
-            await WriteGraphMlDataAsync(writer, graphMlNamespace, "n_subtitle", node.Subtitle);
-            await WriteGraphMlDataAsync(writer, graphMlNamespace, "n_ip", node.IpAddress?.ToString());
-            await WriteGraphMlDataAsync(writer, graphMlNamespace, "n_mac", node.MacAddress);
+            await writer.WriteStartElementAsync(null, "graph", graphMlNamespace);
+            await writer.WriteAttributeStringAsync(null, "id", null, "network-topology");
+            await writer.WriteAttributeStringAsync(null, "edgedefault", null, "directed");
+            await WriteGraphMlDataAsync(writer, graphMlNamespace, "g_network", map.NetworkCidr);
             await WriteGraphMlDataAsync(
                 writer,
                 graphMlNamespace,
-                "n_vlan",
-                node.VlanId?.ToString(CultureInfo.InvariantCulture));
-            await WriteGraphMlDataAsync(writer, graphMlNamespace, "n_risk", node.RiskLevel);
+                "g_generated",
+                map.GeneratedAt.ToString("O", CultureInfo.InvariantCulture));
             await WriteGraphMlDataAsync(
                 writer,
                 graphMlNamespace,
-                "n_online",
-                node.IsOnline ? "true" : "false");
+                "g_warnings",
+                string.Join(Environment.NewLine, map.Warnings));
+            await WriteGraphMlDataAsync(
+                writer,
+                graphMlNamespace,
+                "g_diagnostics",
+                string.Join(Environment.NewLine, result.Diagnostics.Select(FormatDiagnostic)));
+
+            foreach (NetworkMapNode node in map.Nodes)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await writer.WriteStartElementAsync(null, "node", graphMlNamespace);
+                await writer.WriteAttributeStringAsync(null, "id", null, EncodeGraphMlId(node.Id));
+                await WriteGraphMlDataAsync(writer, graphMlNamespace, "n_label", node.Label);
+                await WriteGraphMlDataAsync(writer, graphMlNamespace, "n_kind", node.Kind.ToString());
+                await WriteGraphMlDataAsync(writer, graphMlNamespace, "n_subtitle", node.Subtitle);
+                await WriteGraphMlDataAsync(writer, graphMlNamespace, "n_ip", node.IpAddress?.ToString());
+                await WriteGraphMlDataAsync(writer, graphMlNamespace, "n_mac", node.MacAddress);
+                await WriteGraphMlDataAsync(
+                    writer,
+                    graphMlNamespace,
+                    "n_vlan",
+                    node.VlanId?.ToString(CultureInfo.InvariantCulture));
+                await WriteGraphMlDataAsync(writer, graphMlNamespace, "n_risk", node.RiskLevel);
+                await WriteGraphMlDataAsync(
+                    writer,
+                    graphMlNamespace,
+                    "n_online",
+                    node.IsOnline ? "true" : "false");
+                await writer.WriteEndElementAsync();
+            }
+
+            for (int index = 0; index < map.Edges.Count; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                NetworkMapEdge edge = map.Edges[index];
+                await writer.WriteStartElementAsync(null, "edge", graphMlNamespace);
+                await writer.WriteAttributeStringAsync(
+                    null,
+                    "id",
+                    null,
+                    $"edge-{index.ToString(CultureInfo.InvariantCulture)}");
+                await writer.WriteAttributeStringAsync(null, "source", null, EncodeGraphMlId(edge.SourceId));
+                await writer.WriteAttributeStringAsync(null, "target", null, EncodeGraphMlId(edge.TargetId));
+                await WriteGraphMlDataAsync(writer, graphMlNamespace, "e_label", edge.Label);
+                await WriteGraphMlDataAsync(writer, graphMlNamespace, "e_kind", edge.Kind.ToString());
+                await WriteGraphMlDataAsync(writer, graphMlNamespace, "e_evidence", edge.Evidence);
+                await WriteGraphMlDataAsync(
+                    writer,
+                    graphMlNamespace,
+                    "e_confidence",
+                    edge.Confidence.ToString());
+                await writer.WriteEndElementAsync();
+            }
+
             await writer.WriteEndElementAsync();
-        }
-
-        for (int index = 0; index < map.Edges.Count; index++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            NetworkMapEdge edge = map.Edges[index];
-            await writer.WriteStartElementAsync(null, "edge", graphMlNamespace);
-            await writer.WriteAttributeStringAsync(
-                null,
-                "id",
-                null,
-                $"edge-{index.ToString(CultureInfo.InvariantCulture)}");
-            await writer.WriteAttributeStringAsync(null, "source", null, EncodeGraphMlId(edge.SourceId));
-            await writer.WriteAttributeStringAsync(null, "target", null, EncodeGraphMlId(edge.TargetId));
-            await WriteGraphMlDataAsync(writer, graphMlNamespace, "e_label", edge.Label);
-            await WriteGraphMlDataAsync(writer, graphMlNamespace, "e_kind", edge.Kind.ToString());
-            await WriteGraphMlDataAsync(writer, graphMlNamespace, "e_evidence", edge.Evidence);
-            await WriteGraphMlDataAsync(
-                writer,
-                graphMlNamespace,
-                "e_confidence",
-                edge.Confidence.ToString());
             await writer.WriteEndElementAsync();
+            await writer.WriteEndDocumentAsync();
+            await writer.FlushAsync();
         }
-
-        await writer.WriteEndElementAsync();
-        await writer.WriteEndElementAsync();
-        await writer.WriteEndDocumentAsync();
-        await writer.FlushAsync();
+        destination.Commit(cancellationToken);
     }
 
     public async Task ExportCsvAsync(
@@ -425,12 +435,14 @@ public sealed class ExportService
         string path,
         CancellationToken cancellationToken = default)
     {
-        EnsureDirectory(path);
+        ArgumentNullException.ThrowIfNull(result);
+        cancellationToken.ThrowIfCancellationRequested();
         StringBuilder csv = new();
         csv.AppendLine("Resultado parcial;Favorito;Alias;Notas;IP;Hostname;NetBIOS;Grupo de trabalho;MAC;Evidência MAC;Titular IEEE;Fabricante;Modelo;Nome anunciado;Firmware;Confiança identidade;Fontes identidade;PingMs;Descoberta;Portas;Tipo;SO provável;Protocolos;Risco;Pontuação;Topologia;Histórico");
 
         foreach (NetworkDevice device in result.Devices)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string[] values =
             [
                 result.IsPartial ? "Sim" : "Não",
@@ -464,7 +476,13 @@ public sealed class ExportService
             csv.AppendLine(string.Join(';', values.Select(EscapeCsv)));
         }
 
-        await File.WriteAllTextAsync(path, csv.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true), cancellationToken);
+        using AtomicExportDestination destination = new(path, cancellationToken);
+        await File.WriteAllTextAsync(
+            destination.TemporaryPath,
+            csv.ToString(),
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+            cancellationToken);
+        destination.Commit(cancellationToken);
     }
 
     public async Task ExportHtmlAsync(
@@ -473,7 +491,8 @@ public sealed class ExportService
         CancellationToken cancellationToken = default)
     {
 #pragma warning disable CA1305 // The human-readable report intentionally follows the user's locale.
-        EnsureDirectory(path);
+        ArgumentNullException.ThrowIfNull(result);
+        cancellationToken.ThrowIfCancellationRequested();
         static string H(string? value) => System.Net.WebUtility.HtmlEncode(value ?? "—");
 
         StringBuilder html = new();
@@ -507,6 +526,7 @@ public sealed class ExportService
 
         foreach (NetworkDevice device in result.Devices)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string riskClass = device.RiskLevel.ToLowerInvariant() switch
             {
                 "alto" => "high",
@@ -551,11 +571,13 @@ public sealed class ExportService
         }
 
         html.Append("</body></html>");
+        using AtomicExportDestination destination = new(path, cancellationToken);
         await File.WriteAllTextAsync(
-            path,
+            destination.TemporaryPath,
             html.ToString(),
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
             cancellationToken);
+        destination.Commit(cancellationToken);
 
         void AddCard(string label, string value) =>
             html.Append($"<article class=\"card\"><div class=\"value\">{H(value)}</div><div class=\"label\">{H(label)}</div></article>");
@@ -644,6 +666,68 @@ public sealed class ExportService
         DiagnosticCategory.Device => "Dispositivo/dados",
         _ => "Aplicação"
     };
+
+    internal sealed class AtomicExportDestination : IDisposable
+    {
+        private readonly string _destinationPath;
+        private bool _committed;
+
+        public AtomicExportDestination(string path, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _destinationPath = Path.GetFullPath(path);
+            EnsureDirectory(_destinationPath);
+
+            string directory = Path.GetDirectoryName(_destinationPath)
+                ?? throw new InvalidOperationException("O destino da exportação não tem uma pasta válida.");
+            string fileName = Path.GetFileName(_destinationPath);
+            TemporaryPath = Path.Combine(
+                directory,
+                $".{fileName}.tmp-{Guid.NewGuid():N}");
+        }
+
+        public string TemporaryPath { get; }
+
+        public void Commit(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (File.Exists(_destinationPath))
+            {
+                // ReplaceFile preserva DACL, cifragem, compressão, creation time e
+                // outros metadados do destino. Não ignoramos erros de merge: um
+                // relatório sensível nunca deve perder silenciosamente a proteção.
+                File.Replace(
+                    TemporaryPath,
+                    _destinationPath,
+                    destinationBackupFileName: null,
+                    ignoreMetadataErrors: false);
+            }
+            else
+            {
+                // Sem destino anterior não existe metadata a preservar. Não usamos
+                // overwrite para que uma criação concorrente faça a operação falhar.
+                File.Move(TemporaryPath, _destinationPath);
+            }
+            _committed = true;
+        }
+
+        public void Dispose()
+        {
+            if (_committed)
+                return;
+
+            try
+            {
+                if (File.Exists(TemporaryPath))
+                    File.Delete(TemporaryPath);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                // Uma falha de limpeza nunca deve esconder a causa original.
+            }
+        }
+    }
 
     private static void EnsureDirectory(string path)
     {

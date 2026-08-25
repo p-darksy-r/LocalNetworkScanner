@@ -247,6 +247,7 @@ public partial class TopologyWindow : Window
         {
             TopologyNodesTable.ItemsSource = Array.Empty<TopologyNodeTableRow>();
             TopologyEdgesTable.ItemsSource = Array.Empty<TopologyEdgeTableRow>();
+            ClearTopologySelectionIfNotVisible(new HashSet<string>(StringComparer.Ordinal));
             SetTopologySummary("Sem mapa disponível");
             return;
         }
@@ -286,6 +287,7 @@ public partial class TopologyWindow : Window
                 ConfidenceText(edge.Confidence),
                 $"{edge.Label}. {edge.Evidence}"))
             .ToArray();
+        ClearTopologySelectionIfNotVisible(visibleIds);
 
         int alertCount = visibleNodes.Count(node =>
             node.RiskLevel.Equals("Alto", StringComparison.OrdinalIgnoreCase) ||
@@ -297,6 +299,21 @@ public partial class TopologyWindow : Window
               $"{visibleEdges.Length:N0} ligações · {alertCount:N0} com alertas");
         SynchronizeTableSelection();
         Dispatcher.BeginInvoke(TopologyGraph.FitToView);
+    }
+
+    private void ClearTopologySelectionIfNotVisible(IReadOnlySet<string> visibleNodeIds)
+    {
+        NetworkMapNode? selectedNode = _viewModel.SelectedTopologyNode;
+        if (selectedNode is null || visibleNodeIds.Contains(selectedNode.Id))
+            return;
+
+        // O ViewModel partilhado é a fonte de verdade. A alteração também atualiza
+        // a live region através de OnViewModelPropertyChanged; SetCurrentValue
+        // preserva a ligação TwoWay enquanto garante que o controlo não mantém
+        // temporariamente um nó que o filtro já retirou do mapa.
+        _viewModel.SelectedTopologyNode = null;
+        TopologyGraph.SetCurrentValue(NetworkTopologyControl.SelectedNodeProperty, null);
+        TopologyNodesTable.SelectedItem = null;
     }
 
     private void OnTopologySearchKeyDown(object sender, KeyEventArgs e)

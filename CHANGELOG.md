@@ -25,7 +25,16 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 - resumo, pesquisa e seleção da topologia passam a emitir eventos live-region para leitores de ecrã;
 - README, segurança, instalação, assinatura, App Control, checklist e documentação IEEE distinguem corretamente repositório público, prereleases históricas `Private QA (NotSigned)` e candidatura SignPath ainda não aprovada;
 - todas as páginas de releases existentes ligam agora a **Code signing policy** e à política de privacidade; a `v1.2.0` foi reclassificada como prerelease histórica `NotSigned`, deixando o projeto sem uma falsa release `Latest` enquanto não existir produção assinada;
-- metadados do produto e manifesto Windows avançam para `1.4.1`, sem criar uma release.
+- metadados do produto e manifesto Windows avançam para `1.4.1`, sem criar uma release;
+- o job x64 do CI usa agora o mesmo `scripts/check.ps1 -VerifyFormat` da validação local, incluindo sintaxe PowerShell e os contratos sintéticos de release;
+- o workflow de release passa a ser exclusivamente manual, evitando que o simples push de uma tag termine verde sem produzir um candidato ou uma release.
+
+### Fixed
+
+- uma falha numa sonda por host cancela e observa a descoberta multicast paralela antes de propagar o erro original, evitando sockets e tráfego órfãos em background;
+- uma configuração personalizada que desativa simultaneamente ICMP, TCP, ARP e multicast é recusada como `LNS-USR-008`, em vez de terminar com um falso problema de rede e zero descobertas possíveis;
+- mudar o filtro da topologia limpa uma seleção que deixou de estar visível e anuncia corretamente que nenhum nó está selecionado;
+- exportações JSON, relatório de suporte, GraphML, CSV e HTML são escritas num ficheiro temporário da mesma pasta e só substituem o destino depois de concluírem; cancelamento ou falha preservam o relatório anterior.
 
 ### Security
 

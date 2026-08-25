@@ -40,6 +40,16 @@ public static class ScanRequestValidator
         ValidateRange(options.ConnectTimeoutMs, 50, 30_000, nameof(options.ConnectTimeoutMs));
         ValidateRange(options.DiscoveryTimeoutMs, 100, 60_000, nameof(options.DiscoveryTimeoutMs));
 
+        if (!options.EnableIcmp &&
+            !options.EnableTcpDiscovery &&
+            !options.EnableArp &&
+            !options.EnableMulticastDiscovery)
+        {
+            throw new ScanInputException(
+                DiagnosticCatalog.InvalidScanConfiguration("métodos de descoberta"),
+                nameof(options));
+        }
+
         if (options.EnableSnmpTopology || options.EnableSnmpDeviceDiscovery)
         {
             if (options.EnableSnmpTopology &&

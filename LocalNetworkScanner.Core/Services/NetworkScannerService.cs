@@ -31,6 +31,8 @@ public sealed class NetworkScannerService
     private readonly Func<IPAddress, int, IPAddress?, CancellationToken, Task<PingProbeResult>> _pingProbe;
     private readonly Func<IPAddress, IReadOnlyList<int>, int, IPAddress?, CancellationToken, Task<int?>>
         _tcpDiscoveryProbe;
+    private readonly Func<int, IPAddress, CancellationToken, Task<IReadOnlyList<DiscoveryObservation>>>
+        _multicastDiscovery;
 
     public NetworkScannerService(
         PingScannerService? pingScanner = null,
@@ -73,13 +75,17 @@ public sealed class NetworkScannerService
                 timeoutMs,
                 localAddress,
                 cancellationToken);
+        _multicastDiscovery = (timeoutMs, localAddress, cancellationToken) =>
+            _localDiscoveryService.DiscoverAsync(timeoutMs, localAddress, cancellationToken);
     }
 
     internal NetworkScannerService(
         MacAddressService macAddressService,
         Func<IPAddress, int, IPAddress?, CancellationToken, Task<PingProbeResult>> pingProbe,
         Func<IPAddress, IReadOnlyList<int>, int, IPAddress?, CancellationToken, Task<int?>>
-            tcpDiscoveryProbe)
+            tcpDiscoveryProbe,
+        Func<int, IPAddress, CancellationToken, Task<IReadOnlyList<DiscoveryObservation>>>?
+            multicastDiscovery = null)
         : this(macAddressService: macAddressService)
     {
         ArgumentNullException.ThrowIfNull(pingProbe);
@@ -87,6 +93,8 @@ public sealed class NetworkScannerService
 
         _pingProbe = pingProbe;
         _tcpDiscoveryProbe = tcpDiscoveryProbe;
+        if (multicastDiscovery is not null)
+            _multicastDiscovery = multicastDiscovery;
     }
 
     public async Task<NetworkScanResult> ScanAsync(
@@ -105,8 +113,12 @@ public sealed class NetworkScannerService
         ConcurrentDictionary<IPAddress, NetworkDevice> devices = [];
         ConcurrentDictionary<IPAddress, string> invalidMacAddresses = [];
         HashSet<IPAddress> allowedAddresses = addresses.ToHashSet();
+        using CancellationTokenSource discoveryPhaseCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         await using MacAddressService.ScanSession? macScanSession = options.EnableArp
-            ? _macAddressService.CreateScanSession(networkInterface, cancellationToken)
+            ? _macAddressService.CreateScanSession(
+                networkInterface,
+                discoveryPhaseCancellation.Token)
             : null;
         if (macScanSession is not null)
             await macScanSession.InitializeAsync(cancellationToken);
@@ -115,93 +127,123 @@ public sealed class NetworkScannerService
         int onlineHosts = 0;
 
         Task<IReadOnlyList<DiscoveryObservation>> multicastTask = options.EnableMulticastDiscovery
-            ? _localDiscoveryService.DiscoverAsync(
+            ? _multicastDiscovery(
                 options.DiscoveryTimeoutMs,
                 networkInterface.IpAddress,
-                cancellationToken)
+                discoveryPhaseCancellation.Token)
             : Task.FromResult<IReadOnlyList<DiscoveryObservation>>([]);
 
         ParallelOptions discoveryOptions = new()
         {
             MaxDegreeOfParallelism = Math.Max(1, options.MaximumHostConcurrency),
-            CancellationToken = cancellationToken
+            CancellationToken = discoveryPhaseCancellation.Token
         };
 
-        progress?.Report(new ScanProgress(
-            "Descoberta",
-            0,
-            addresses.Count,
-            0,
-            "A combinar ICMP, TCP, ARP, mDNS e SSDP..."));
-
-        await Parallel.ForEachAsync(addresses, discoveryOptions, async (address, token) =>
+        try
         {
-            NetworkDevice? device = null;
-            if (address.Equals(networkInterface.IpAddress))
-            {
-                device = CreateOnlineDevice(address, DiscoveryMethod.LocalHost);
-            }
-            else
-            {
-                Task<PingProbeResult> pingTask = options.EnableIcmp
-                    ? _pingProbe(
-                        address,
-                        options.PingTimeoutMs,
-                        networkInterface.IpAddress,
-                        token)
-                    : Task.FromResult(new PingProbeResult(false, null, null));
-                Task<int?> tcpTask = options.EnableTcpDiscovery
-                    ? _tcpDiscoveryProbe(
-                        address,
-                        options.DiscoveryPorts,
-                        options.ConnectTimeoutMs,
-                        networkInterface.IpAddress,
-                        token)
-                    : Task.FromResult<int?>(null);
-                Task<MacAddressResolution?> macTask = options.EnableArp
-                    ? macScanSession!.ResolveForDiscoveryAsync(address, token)
-                    : Task.FromResult<MacAddressResolution?>(null);
+            progress?.Report(new ScanProgress(
+                "Descoberta",
+                0,
+                addresses.Count,
+                0,
+                "A combinar ICMP, TCP, ARP, mDNS e SSDP..."));
 
-                await Task.WhenAll(pingTask, tcpTask, macTask);
-                PingProbeResult ping = await pingTask;
-                int? discoveryPort = await tcpTask;
-                bool confirmedByProbe = ping.Success || discoveryPort.HasValue;
-                MacAddressResolution? macResolution = await macTask;
-                bool confirmedByArp = macResolution?.ConfirmsReachability == true;
-
-                if (confirmedByProbe || confirmedByArp)
+            await Parallel.ForEachAsync(addresses, discoveryOptions, async (address, token) =>
+            {
+                try
                 {
-                    DiscoveryMethod methods = DiscoveryMethod.None;
-                    if (ping.Success)
-                        methods |= DiscoveryMethod.Icmp;
-                    if (discoveryPort.HasValue)
-                        methods |= DiscoveryMethod.Tcp;
-                    if (confirmedByArp)
-                        methods |= DiscoveryMethod.Arp;
+                    NetworkDevice? device = null;
+                    if (address.Equals(networkInterface.IpAddress))
+                    {
+                        device = CreateOnlineDevice(address, DiscoveryMethod.LocalHost);
+                    }
+                    else
+                    {
+                        Task<PingProbeResult> pingTask = options.EnableIcmp
+                            ? CancelPhaseOnFailureAsync(
+                                _pingProbe(
+                                    address,
+                                    options.PingTimeoutMs,
+                                    networkInterface.IpAddress,
+                                    token),
+                                discoveryPhaseCancellation)
+                            : Task.FromResult(new PingProbeResult(false, null, null));
+                        Task<int?> tcpTask = options.EnableTcpDiscovery
+                            ? CancelPhaseOnFailureAsync(
+                                _tcpDiscoveryProbe(
+                                    address,
+                                    options.DiscoveryPorts,
+                                    options.ConnectTimeoutMs,
+                                    networkInterface.IpAddress,
+                                    token),
+                                discoveryPhaseCancellation)
+                            : Task.FromResult<int?>(null);
+                        Task<MacAddressResolution?> macTask = options.EnableArp
+                            ? CancelPhaseOnFailureAsync(
+                                macScanSession!.ResolveForDiscoveryAsync(address, token),
+                                discoveryPhaseCancellation)
+                            : Task.FromResult<MacAddressResolution?>(null);
 
-                    device = CreateOnlineDevice(address, methods);
-                    device.ResponseTimeMs = ping.RoundtripTimeMs;
-                    device.ReplyTtl = ping.ReplyTtl;
-                    device.MacAddress = macResolution?.MacAddress;
-                    device.MacAddressSource = macResolution?.Source;
+                        await Task.WhenAll(pingTask, tcpTask, macTask);
+                        PingProbeResult ping = await pingTask;
+                        int? discoveryPort = await tcpTask;
+                        bool confirmedByProbe = ping.Success || discoveryPort.HasValue;
+                        MacAddressResolution? macResolution = await macTask;
+                        bool confirmedByArp = macResolution?.ConfirmsReachability == true;
+
+                        if (confirmedByProbe || confirmedByArp)
+                        {
+                            DiscoveryMethod methods = DiscoveryMethod.None;
+                            if (ping.Success)
+                                methods |= DiscoveryMethod.Icmp;
+                            if (discoveryPort.HasValue)
+                                methods |= DiscoveryMethod.Tcp;
+                            if (confirmedByArp)
+                                methods |= DiscoveryMethod.Arp;
+
+                            device = CreateOnlineDevice(address, methods);
+                            device.ResponseTimeMs = ping.RoundtripTimeMs;
+                            device.ReplyTtl = ping.ReplyTtl;
+                            device.MacAddress = macResolution?.MacAddress;
+                            device.MacAddressSource = macResolution?.Source;
+                        }
+                    }
+
+                    if (device is not null && devices.TryAdd(address, device))
+                        Interlocked.Increment(ref onlineHosts);
+
+                    int completed = Interlocked.Increment(ref completedHosts);
+                    if (device is not null ||
+                        completed == addresses.Count ||
+                        completed % Math.Max(1, addresses.Count / 100) == 0)
+                    {
+                        progress?.Report(new ScanProgress(
+                            "Descoberta",
+                            completed,
+                            addresses.Count,
+                            Volatile.Read(ref onlineHosts),
+                            device is null ? $"A analisar {address}" : $"Encontrado {address}",
+                            device));
+                    }
                 }
-            }
-
-            if (device is not null && devices.TryAdd(address, device))
-                Interlocked.Increment(ref onlineHosts);
-
-            int completed = Interlocked.Increment(ref completedHosts);
-            if (device is not null || completed == addresses.Count || completed % Math.Max(1, addresses.Count / 100) == 0)
-            {
-                progress?.Report(new ScanProgress(
-                    "Descoberta",
-                    completed,
-                    addresses.Count,
-                    Volatile.Read(ref onlineHosts),
-                    device is null ? $"A analisar {address}" : $"Encontrado {address}",
-                    device));
-            }
-        });
+                catch
+                {
+                    // Interrompe imediatamente as restantes sondas desta fase; o
+                    // catch exterior observa depois a descoberta multicast.
+                    TryCancel(discoveryPhaseCancellation);
+                    throw;
+                }
+            });
+        }
+        catch
+        {
+            // A descoberta multicast decorre em paralelo. Se uma sonda por host
+            // falhar, termina e observa sempre essa tarefa antes de propagar a
+            // falha original; assim não ficam sockets/probes órfãos em background.
+            TryCancel(discoveryPhaseCancellation);
+            await ObserveAfterCancellationAsync(multicastTask);
+            throw;
+        }
 
         IReadOnlyList<DiscoveryObservation> multicastObservations = (await multicastTask)
             .Where(observation => allowedAddresses.Contains(observation.IpAddress))
@@ -839,6 +881,49 @@ public sealed class NetworkScannerService
         }
 
         return protocols.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static async Task ObserveAfterCancellationAsync(Task task)
+    {
+        try
+        {
+            await task;
+        }
+        catch
+        {
+            // A exceção da fase principal deve continuar a ser a falha observável.
+            // Esta espera existe apenas para terminar e observar a tarefa paralela.
+        }
+    }
+
+    private static async Task<T> CancelPhaseOnFailureAsync<T>(
+        Task<T> operation,
+        CancellationTokenSource phaseCancellation)
+    {
+        try
+        {
+            return await operation;
+        }
+        catch
+        {
+            // Task.WhenAll só termina quando todas as sondas do mesmo IP acabam.
+            // Cancelar aqui impede que uma falha fique presa atrás de uma irmã lenta.
+            TryCancel(phaseCancellation);
+            throw;
+        }
+    }
+
+    private static void TryCancel(CancellationTokenSource cancellation)
+    {
+        try
+        {
+            cancellation.Cancel();
+        }
+        catch (AggregateException)
+        {
+            // Callbacks de cancelamento externos não podem substituir a exceção
+            // original da sonda. As tarefas continuam a observar o token cancelado.
+        }
     }
 
     private static IReadOnlyList<ScanDiagnostic> BuildDiagnostics(

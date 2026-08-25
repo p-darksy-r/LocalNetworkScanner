@@ -344,6 +344,14 @@ try {
     $passed++
 
     $releaseWorkflow = Get-Content -LiteralPath (Join-Path $repoRoot ".github\workflows\release.yml") -Raw
+    $releaseTriggers = [regex]::Match(
+        $releaseWorkflow,
+        '(?ms)^on:\r?\n(?<body>.*?)(?=^[a-zA-Z][a-zA-Z0-9_-]*:)')
+    Assert-True `
+        -Condition ($releaseTriggers.Success -and
+            $releaseTriggers.Groups["body"].Value -match '(?m)^  workflow_dispatch:\r?$' -and
+            $releaseTriggers.Groups["body"].Value -notmatch '(?m)^  push:\r?$') `
+        -Message "release must be manual-only so a tag push cannot produce an empty successful run"
     $validatorJobs = [regex]::Matches(
         $releaseWorkflow,
         '(?ms)^  validate-(?:x64|arm64):\r?\n(?<body>.*?)(?=^  [a-zA-Z0-9_-]+:)')

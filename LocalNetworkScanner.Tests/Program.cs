@@ -1254,6 +1254,16 @@ List<(string Name, Func<Task> Run)> tests =
             addresses,
             new ScanOptions
             {
+                EnableIcmp = false,
+                EnableTcpDiscovery = false,
+                EnableArp = false,
+                EnableMulticastDiscovery = false
+            }));
+
+        Throws<ScanInputException>(() => ScanRequestValidator.Validate(
+            addresses,
+            new ScanOptions
+            {
                 Profile = ScanProfile.Standard,
                 EnableNmapDiscovery = true
             }));
@@ -2406,6 +2416,97 @@ List<(string Name, Func<Task> Run)> tests =
         Equal<bool?>(null, device.Topology.SameLayer2Segment);
         Equal(false, device.ObservedProtocols.Contains("ARP"));
         Equal(1, Volatile.Read(ref activeResolutions));
+    }),
+    ("Host discovery failure cancels and observes multicast discovery", async () =>
+    {
+        const string failureMessage = "controlled-host-probe-failure";
+        IPAddress blockedTarget = IPAddress.Parse("192.168.1.20");
+        TaskCompletionSource multicastStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource multicastCancelled =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource arpStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource arpCancelled =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<IReadOnlyList<DiscoveryObservation>>? multicastTask = null;
+
+        async Task<IReadOnlyList<DiscoveryObservation>> RunMulticastAsync(
+            int _,
+            IPAddress __,
+            CancellationToken token)
+        {
+            multicastStarted.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return [];
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                multicastCancelled.TrySetResult();
+                throw;
+            }
+        }
+
+        MacAddressService macAddressService = new(
+            (_, _) => Task.FromResult<string?>(string.Empty),
+            async (address, _, token) =>
+            {
+                if (!address.Equals(blockedTarget))
+                    return null;
+
+                arpStarted.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                    return null;
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    arpCancelled.TrySetResult();
+                    throw;
+                }
+            },
+            maximumActiveConcurrency: 2);
+        NetworkScannerService scanner = new(
+            macAddressService,
+            async (_, _, _, token) =>
+            {
+                await Task.WhenAll(multicastStarted.Task, arpStarted.Task)
+                    .WaitAsync(TimeSpan.FromSeconds(2), token);
+                throw new InvalidOperationException(failureMessage);
+            },
+            (_, _, _, _, _) => Task.FromResult<int?>(null),
+            (timeout, address, token) =>
+            {
+                multicastTask = RunMulticastAsync(timeout, address, token);
+                return multicastTask;
+            });
+
+        Task<NetworkScanResult> scanTask = scanner.ScanAsync(
+            [blockedTarget],
+            CreateInterface(),
+            new ScanOptions
+            {
+                EnableIcmp = true,
+                EnableTcpDiscovery = false,
+                EnableArp = true,
+                EnableMulticastDiscovery = true,
+                EnableUpnpDescription = false,
+                EnableNetBiosDiscovery = false,
+                EnableServiceProbes = false,
+                Ports = [65_535],
+                DiscoveryPorts = [65_535]
+            });
+
+        InvalidOperationException exception = await ThrowsAsync<InvalidOperationException>(async () =>
+            _ = await scanTask.WaitAsync(TimeSpan.FromSeconds(3)));
+        Equal(failureMessage, exception.Message);
+        await multicastCancelled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await arpCancelled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        NotNull(multicastTask);
+        Equal(true, multicastTask!.IsCompleted);
     }),
     ("ARP scan session propagates cancellation", async () =>
     {
@@ -4063,6 +4164,80 @@ List<(string Name, Func<Task> Run)> tests =
                 Directory.Delete(directory, recursive: true);
         }
     }),
+    ("Cancelled exports preserve an existing destination", async () =>
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            "LocalNetworkScanner.Tests",
+            Guid.NewGuid().ToString("N"));
+        const string sentinel = "existing-report-must-survive-cancellation";
+        try
+        {
+            Directory.CreateDirectory(directory);
+            NetworkScanResult result = CreateTopologyExportResult();
+            ExportService service = new();
+            IReadOnlyList<(string Extension, Func<string, CancellationToken, Task> Export)> exporters =
+            [
+                ("json", (path, token) => service.ExportJsonAsync(result, path, token)),
+                ("support.json", (path, token) => service.ExportSupportJsonAsync(result, path, token)),
+                ("graphml", (path, token) => service.ExportGraphMlAsync(result, path, token)),
+                ("csv", (path, token) => service.ExportCsvAsync(result, path, token)),
+                ("html", (path, token) => service.ExportHtmlAsync(result, path, token))
+            ];
+
+            foreach ((string extension, Func<string, CancellationToken, Task> export) in exporters)
+            {
+                string path = Path.Combine(directory, $"report.{extension}");
+                await File.WriteAllTextAsync(path, sentinel);
+                using CancellationTokenSource cancellation = new();
+                cancellation.Cancel();
+
+                await ThrowsAsync<OperationCanceledException>(() => export(path, cancellation.Token));
+                Equal(sentinel, await File.ReadAllTextAsync(path));
+                Equal(
+                    0,
+                    Directory.GetFiles(
+                        directory,
+                        $".{Path.GetFileName(path)}.tmp-*",
+                        SearchOption.TopDirectoryOnly).Length);
+            }
+
+            string interruptedPath = Path.Combine(directory, "interrupted.json");
+            await File.WriteAllTextAsync(interruptedPath, sentinel);
+            string interruptedTemporaryPath;
+            using (ExportService.AtomicExportDestination destination = new(
+                       interruptedPath,
+                       CancellationToken.None))
+            {
+                interruptedTemporaryPath = destination.TemporaryPath;
+                await File.WriteAllTextAsync(interruptedTemporaryPath, "partial-new-report");
+                using CancellationTokenSource cancellation = new();
+                cancellation.Cancel();
+                Throws<OperationCanceledException>(() => destination.Commit(cancellation.Token));
+            }
+            Equal(sentinel, await File.ReadAllTextAsync(interruptedPath));
+            Equal(false, File.Exists(interruptedTemporaryPath));
+
+            string successfulPath = Path.Combine(directory, "replace-existing.csv");
+            await File.WriteAllTextAsync(successfulPath, sentinel);
+            File.SetCreationTimeUtc(
+                successfulPath,
+                new DateTime(2024, 2, 3, 4, 5, 6, DateTimeKind.Utc));
+            DateTime originalCreationTime = File.GetCreationTimeUtc(successfulPath);
+            await service.ExportCsvAsync(result, successfulPath);
+            string replacement = await File.ReadAllTextAsync(successfulPath);
+            True(!replacement.Contains(sentinel, StringComparison.Ordinal),
+                "Uma exportação concluída deve substituir o destino anterior.");
+            True(replacement.Contains("Resultado parcial", StringComparison.Ordinal),
+                "A substituição concluída deve conter o relatório esperado.");
+            Equal(originalCreationTime, File.GetCreationTimeUtc(successfulPath));
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    }),
     ("WPF selected-device and topology rendering smoke", () => RunOnSta(() =>
     {
         string directory = Path.Combine(Path.GetTempPath(), "LocalNetworkScanner.Tests", Guid.NewGuid().ToString("N"));
@@ -4451,6 +4626,10 @@ List<(string Name, Func<Task> Run)> tests =
             Equal(window.ViewModel, topologyWindow.DataContext);
             NetworkTopologyControl? optionalTopology =
                 topologyWindow.FindName("TopologyGraph") as NetworkTopologyControl;
+            ComboBox? topologyFilterComboBox =
+                topologyWindow.FindName("TopologyFilterComboBox") as ComboBox;
+            DataGrid? topologyNodesTable =
+                topologyWindow.FindName("TopologyNodesTable") as DataGrid;
             TextBlock? topologyZoomText =
                 topologyWindow.FindName("TopologyZoomText") as TextBlock;
             TextBlock? topologySummaryText =
@@ -4466,6 +4645,8 @@ List<(string Name, Func<Task> Run)> tests =
             Button? clearTopologySearchButton =
                 topologyWindow.FindName("ClearTopologySearchButton") as Button;
             NotNull(optionalTopology);
+            NotNull(topologyFilterComboBox);
+            NotNull(topologyNodesTable);
             NotNull(topologyZoomText);
             NotNull(topologySummaryText);
             NotNull(topologySelectionRegion);
@@ -4495,6 +4676,19 @@ List<(string Name, Func<Task> Run)> tests =
             clearTopologySearchButton!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Equal(string.Empty, topologySearchTextBox.Text);
             Equal(Visibility.Collapsed, topologySearchStatusText.Visibility);
+
+            Equal(searchableNode.Id, window.ViewModel.SelectedTopologyNode?.Id);
+            topologyFilterComboBox!.SelectedIndex = 3;
+            topologyWindow.UpdateLayout();
+            Equal(null, window.ViewModel.SelectedTopologyNode);
+            Equal(null, optionalTopology.SelectedNode);
+            Equal(null, topologyNodesTable!.SelectedItem);
+            Equal(
+                "Nenhum nó selecionado",
+                AutomationProperties.GetName(topologySelectionRegion));
+            topologyFilterComboBox.SelectedIndex = 0;
+            topologyWindow.UpdateLayout();
+
             Equal(false, optionalTopology.CenterOnNode("node-that-does-not-exist"));
             Equal(true, optionalTopology.CenterOnNode(searchableNode.Id));
 
