@@ -38,6 +38,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private LocalNetworkInterface? _selectedNetworkInterface;
     private ScanProfileOption _selectedProfile;
+    private ThemeModeOption _selectedTheme;
     private DeviceFilterOption _selectedFilter;
     private DeviceRowViewModel? _selectedDevice;
     private NetworkMapNode? _selectedTopologyNode;
@@ -133,6 +134,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 "Mais demorado",
                 "ANÁLISE PROFUNDA")
         ];
+        ThemeModes =
+        [
+            new ThemeModeOption(
+                AppThemeMode.Light,
+                "Claro",
+                "Usa a paleta clara da aplicação.",
+                "\uE793"),
+            new ThemeModeOption(
+                AppThemeMode.Dark,
+                "Escuro",
+                "Usa uma paleta escura com contraste adaptado.",
+                "\uE708")
+        ];
         Filters =
         [
             new DeviceFilterOption("all", "Todos os dispositivos"),
@@ -145,6 +159,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ];
 
         _selectedProfile = Profiles.FirstOrDefault(item => item.Value == _loadedSettings.Profile) ?? Profiles[1];
+        AppThemeMode savedTheme = Enum.IsDefined(_loadedSettings.Theme)
+            ? _loadedSettings.Theme
+            : AppThemeMode.Light;
+        _selectedTheme = ThemeModes.First(item => item.Value == savedTheme);
         _selectedFilter = Filters[0];
         ApplyLoadedSettings();
 
@@ -227,6 +245,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<DiagnosticRowViewModel> Diagnostics { get; } = [];
     public ObservableCollection<string> Warnings { get; } = [];
     public IReadOnlyList<ScanProfileOption> Profiles { get; }
+    public IReadOnlyList<ThemeModeOption> ThemeModes { get; }
     public IReadOnlyList<DeviceFilterOption> Filters { get; }
     public ICollectionView DevicesView { get; }
 
@@ -293,6 +312,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(InputValidationMessage));
             NotifyCustomOverridesChanged();
             RaiseScanCanExecuteChanged();
+        }
+    }
+
+    public ThemeModeOption SelectedTheme
+    {
+        get => _selectedTheme;
+        set
+        {
+            if (value is null || !SetProperty(ref _selectedTheme, value))
+                return;
+
+            OnPropertyChanged(nameof(SelectedThemeDescription));
         }
     }
 
@@ -817,6 +848,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string SelectedProfileDescription => UseCustomScanSettings
         ? $"{SelectedProfile.Description}. As definições personalizadas ativas podem substituir este perfil."
         : $"{SelectedProfile.Description}. Este perfil comanda o scan.";
+    public string SelectedThemeDescription => SelectedTheme.Description;
     public string SelectedInterfaceSummary => SelectedNetworkInterface is null
         ? "Nenhuma interface selecionada"
         : $"{SelectedNetworkInterface.IpAddress}/{SelectedNetworkInterface.PrefixLength}  ·  " +
@@ -853,6 +885,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         _settingsService.Save(new UiSettings
         {
+            Theme = SelectedTheme.Value,
             LastInterfaceId = SelectedNetworkInterface?.Id,
             LastInterfaceAddress = SelectedNetworkInterface?.IpAddress.ToString(),
             LastCidr = NetworkCidr,

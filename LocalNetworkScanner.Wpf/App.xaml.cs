@@ -16,6 +16,10 @@ public partial class App : Application
     private readonly LocalDiagnosticLogService _diagnosticLog = new();
     private int _fatalDialogShown;
 
+    public AppThemeMode CurrentTheme { get; private set; } = AppThemeMode.Light;
+
+    public event EventHandler? ThemeChanged;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -24,7 +28,8 @@ public partial class App : Application
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
         SystemParameters.StaticPropertyChanged += OnSystemParametersChanged;
         CaptureDefaultPalette();
-        ApplyAccessibilityPalette();
+        AppThemeMode startupTheme = new UiSettingsService().Load().Theme;
+        ApplyTheme(startupTheme, notify: false);
 
         MainWindow window = new();
         MainWindow = window;
@@ -118,6 +123,17 @@ public partial class App : Application
             ApplyAccessibilityPalette();
     }
 
+    public void ApplyTheme(AppThemeMode theme, bool notify = true)
+    {
+        if (_defaultPalette.Count == 0)
+            CaptureDefaultPalette();
+
+        CurrentTheme = Enum.IsDefined(theme) ? theme : AppThemeMode.Light;
+        ApplyAccessibilityPalette();
+        if (notify)
+            ThemeChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     private void CaptureDefaultPalette()
     {
         foreach (string key in PaletteKeys)
@@ -129,6 +145,12 @@ public partial class App : Application
 
     private void ApplyAccessibilityPalette()
     {
+        if (!SystemParameters.HighContrast && CurrentTheme == AppThemeMode.Dark)
+        {
+            ApplyDarkPalette();
+            return;
+        }
+
         if (!SystemParameters.HighContrast)
         {
             foreach ((string key, object value) in _defaultPalette)
@@ -157,6 +179,38 @@ public partial class App : Application
         Resources["RiskHighForegroundBrush"] = SystemColors.ControlTextBrush;
         Resources["RiskMediumForegroundBrush"] = SystemColors.ControlTextBrush;
         Resources["RiskLowForegroundBrush"] = SystemColors.ControlTextBrush;
+    }
+
+    private void ApplyDarkPalette()
+    {
+        SetPaletteBrush("WindowBackgroundBrush", 0x11, 0x16, 0x1D);
+        SetPaletteBrush("SurfaceBrush", 0x1A, 0x21, 0x2B);
+        SetPaletteBrush("SurfaceMutedBrush", 0x22, 0x2C, 0x38);
+        SetPaletteBrush("BorderBrush", 0x3A, 0x47, 0x57);
+        SetPaletteBrush("TextPrimaryBrush", 0xF4, 0xF7, 0xFB);
+        SetPaletteBrush("TextSecondaryBrush", 0xAA, 0xB7, 0xC8);
+        SetPaletteBrush("AccentBrush", 0x66, 0xA8, 0xFF);
+        SetPaletteBrush("AccentDarkBrush", 0x9C, 0xC5, 0xFF);
+        SetPaletteBrush("AccentForegroundBrush", 0x08, 0x11, 0x1E);
+        SetPaletteBrush("SuccessBrush", 0x63, 0xD7, 0xA0);
+        SetPaletteBrush("WarningBrush", 0xFF, 0xC6, 0x6B);
+        SetPaletteBrush("DangerBrush", 0xFF, 0x93, 0x88);
+        SetPaletteBrush("DangerForegroundBrush", 0x2B, 0x0C, 0x09);
+        SetPaletteBrush("SelectionBrush", 0x29, 0x4A, 0x72);
+        SetPaletteBrush("SelectionForegroundBrush", 0xF4, 0xF8, 0xFF);
+        SetPaletteBrush("RiskHighBrush", 0x57, 0x2A, 0x2E);
+        SetPaletteBrush("RiskHighForegroundBrush", 0xFF, 0xB8, 0xB1);
+        SetPaletteBrush("RiskMediumBrush", 0x57, 0x42, 0x1F);
+        SetPaletteBrush("RiskMediumForegroundBrush", 0xFF, 0xD5, 0x8A);
+        SetPaletteBrush("RiskLowBrush", 0x21, 0x4C, 0x39);
+        SetPaletteBrush("RiskLowForegroundBrush", 0xA9, 0xF3, 0xC9);
+    }
+
+    private void SetPaletteBrush(string key, byte red, byte green, byte blue)
+    {
+        SolidColorBrush brush = new(Color.FromRgb(red, green, blue));
+        brush.Freeze();
+        Resources[key] = brush;
     }
 
     private static IReadOnlyList<string> PaletteKeys { get; } =

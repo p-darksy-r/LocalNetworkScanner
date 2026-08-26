@@ -6,6 +6,12 @@ using LocalNetworkScanner.Core.Models;
 
 namespace LocalNetworkScanner.Wpf.Services;
 
+public enum AppThemeMode
+{
+    Light,
+    Dark
+}
+
 public sealed class UiSettingsService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
@@ -58,6 +64,7 @@ public sealed class UiSettingsService
 
 public sealed class UiSettings
 {
+    public AppThemeMode Theme { get; set; } = AppThemeMode.Light;
     public string? LastInterfaceId { get; set; }
     public string? LastInterfaceAddress { get; set; }
     public string? LastCidr { get; set; }

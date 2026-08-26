@@ -70,6 +70,28 @@
                                   Content="{Binding ScanConfigurationToggleLabel}"
                                   AutomationProperties.Name="Mostrar ou ocultar configuração do scan"
                                   AutomationProperties.HelpText="Recolhe a configuração para dar mais espaço aos resultados. Pode ser reaberta a qualquer momento." />
+                    <ComboBox x:Name="ThemeSelector"
+                              Width="118"
+                              Margin="8,0,0,0"
+                              ItemsSource="{Binding ThemeModes}"
+                              SelectedItem="{Binding SelectedTheme, Mode=TwoWay}"
+                              ToolTip="{Binding SelectedThemeDescription}"
+                              AutomationProperties.Name="Tema da aplicação"
+                              AutomationProperties.HelpText="Escolhe livremente entre o tema claro e o tema escuro. A escolha é guardada localmente.">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Margin="0,0,7,0"
+                                               VerticalAlignment="Center"
+                                               FontFamily="Segoe MDL2 Assets"
+                                               FontSize="14"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Text="{Binding Glyph}" />
+                                    <TextBlock VerticalAlignment="Center" Text="{Binding DisplayName}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
                     <Button x:Name="AboutButton"
                             Margin="8,0,0,0"
                             Style="{StaticResource IconButtonStyle}"
@@ -1479,7 +1501,8 @@
                                             </GridView>
                                         </ListView.View>
                                         <ListView.ItemContainerStyle>
-                                            <Style TargetType="{x:Type ListViewItem}">
+                                            <Style TargetType="{x:Type ListViewItem}"
+                                                   BasedOn="{StaticResource {x:Type ListViewItem}}">
                                                 <Setter Property="ToolTip" Value="{Binding Banner}" />
                                                 <Setter Property="Padding" Value="3" />
                                             </Style>
@@ -1567,6 +1590,8 @@
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
                                             </Grid.RowDefinitions>
                                             <TextBlock Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Segmento L2" />
                                             <TextBlock Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.Layer2}" TextWrapping="Wrap" />
@@ -1588,6 +1613,12 @@
                                             <TextBlock Grid.Row="7" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.WsDiscovery}" TextWrapping="Wrap" />
                                             <TextBlock Grid.Row="8" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Wi-Fi local" />
                                             <TextBlock Grid.Row="8" Grid.Column="1" Margin="0,4" Text="{Binding SelectedInterfaceWifi}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="9" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Infraestrutura" />
+                                            <TextBlock Grid.Row="9" Grid.Column="1" Margin="0,4" Text="{Binding SelectedDevice.Infrastructure}" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="10" Margin="0,4" Foreground="{DynamicResource TextSecondaryBrush}" Text="Wi-Fi do dispositivo" />
+                                            <TextBlock Grid.Row="10" Grid.Column="1" Margin="0,4">
+                                                <Run Text="{Binding SelectedDevice.WifiAccessPoint, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding SelectedDevice.WifiSignal, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding SelectedDevice.WifiRadio, Mode=OneWay}" />
+                                            </TextBlock>
                                         </Grid>
                                         <Border Margin="0,12,0,0" Padding="10" Background="{DynamicResource SurfaceMutedBrush}" CornerRadius="6">
                                             <TextBlock Text="{Binding SelectedDevice.SwitchEvidence}" TextWrapping="Wrap" />

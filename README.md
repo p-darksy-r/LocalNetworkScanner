@@ -68,7 +68,7 @@ Um checksum deteta alterações relativamente ao ficheiro publicado, mas não su
 
 1. Abra `LocalNetworkScanner.exe`.
 2. Escolha a interface IPv4 e confirme o intervalo CIDR.
-3. Use **Rápido** para uma primeira passagem ou **Normal** para o inventário recomendado e inicie com o ícone de reprodução (`Alt+I`).
+3. Use **Rápido** para uma primeira passagem ou **Normal** para o inventário recomendado e inicie com o ícone de reprodução (`Alt+I`). No seletor **Tema**, escolhe **Claro** ou **Escuro**; a alteração é imediata e fica guardada localmente.
 4. Analise a lista de dispositivos; abra **Topologia** apenas quando quiser explorar o mapa do mesmo scan. O ícone de informação abre **Sobre** (`F1`) e o ícone de saída fecha a aplicação através das mesmas confirmações do `Alt+F4`. `F5` também inicia o scan, `Alt+C` cancela-o e `Esc` limpa a pesquisa focada ou cancela um scan ativo; na janela da topologia, `Esc` fecha apenas essa janela.
 
 Abrir **Parâmetros técnicos personalizados** apenas mostra os valores. Estes só substituem o perfil depois de ativar explicitamente **Usar definições personalizadas**; o contador indica quantas substituições estão efetivamente ativas.
@@ -91,6 +91,7 @@ O executável e o manifesto gerados são ignorados pelo Git: esta pasta é uma c
 
 - **Resultados honestos:** cada relação de topologia preserva origem, confiança e evidência.
 - **UI acessível e adaptável:** comandos óbvios usam ícones compactos, mas preservam tooltip, nome de automação, navegação por teclado, alvos de 40 px e feedback para leitores de ecrã; a configuração recolhe durante o scan e os painéis ajustam-se ao espaço disponível.
+- **Tema à escolha:** o seletor do cabeçalho alterna entre **Claro** e **Escuro** sem reiniciar a aplicação; a paleta escura é aplicada também à topologia e a escolha é guardada nas preferências locais. O Alto Contraste do Windows mantém prioridade.
 - **Informação transparente:** a janela Sobre apresenta versão, autoria, copyright, runtime, arquitetura, licença e limites de confiança sem obrigar o utilizador a procurar esses dados nos ficheiros.
 - **Lista primeiro:** o inventário continua a ser a vista principal depois do scan.
 - **Topologia a pedido:** o mapa abre numa janela separada sem repetir ou alterar o scan.
@@ -139,7 +140,8 @@ Os três perfis começam pela mesma combinação de ICMP, TCP, ARP e descoberta 
 | Camada 2 | alcance direto quando existe evidência ARP ativa ou um vizinho atual/revalidado em estado `Reachable` | uma entrada passiva/`Stale` não basta e o resultado não confirma o switch físico |
 | Histórico | novo, alterado, visto anteriormente, favorito, alias e notas | snapshots locais; MACs aleatórios podem mudar a identidade |
 | Ações | copiar dados, abrir endpoints e Wake-on-LAN | execute apenas ações autorizadas e confirme o alvo |
-| Exportações | JSON schema v7, CSV UTF-8, HTML, GraphML e relatório de suporte agregado | JSON/CSV/HTML preservam a origem da evidência MAC; os relatórios de inventário incluem identidade e endpoints mDNS/DNS-SD e são sensíveis, enquanto o relatório de suporte exclui identificadores |
+| Infraestrutura | switch/AP, porta, interface, VLAN/PVID, AP e RSSI por cliente quando o controlador os fornece | a evidência é opcional, associada por IP/MAC e conserva confiança/proveniência; sem telemetria permanece indeterminada |
+| Exportações | JSON schema v8, CSV UTF-8, HTML, GraphML e relatório de suporte agregado | JSON/CSV/HTML preservam a origem da evidência MAC e a telemetria de infraestrutura; os relatórios de inventário incluem identidade e endpoints mDNS/DNS-SD e são sensíveis, enquanto o relatório de suporte exclui identificadores |
 
 ### Base IEEE incorporada e offline
 
@@ -164,6 +166,10 @@ O scan termina sempre na lista de dispositivos. Quando existe um mapa, o botão 
 A integração de topologia SNMP v2c é opt-in e consulta somente o switch gerido indicado pelo utilizador. Pode recolher identidade do switch, FDB Bridge/Q-BRIDGE, porta/interface, mapeamento VLAN→FDB, PVID e vizinhos LLDP. Uma opção separada pode consultar MIB-II/ENTITY-MIB nos dispositivos encontrados para obter fabricante, modelo, revisões e serial; não tenta communities e não guarda a community fornecida.
 
 Uma entrada FDB confirma apenas que a bridge aprendeu o MAC. Não prova ligação física direta: a porta pode ser de acesso, uplink, trunk, access point, stack ou bridge remota. Observações ambíguas são preservadas em vez de serem reduzidas a uma conclusão falsa. SNMPv3, descoberta automática de switches e topologias multi-switch ainda não são suportados.
+
+O núcleo inclui um contrato de provedores somente leitura (`IInfrastructureProvider`) para integrar controladores como UniFi sem acoplar credenciais ou endpoints à aplicação. Nesta versão, a FDB SNMP existente é materializada automaticamente como evidência e a integração UniFi fica preparada, mas não é apresentada como suportada até existir um endpoint/API testado. Nenhuma credencial é persistida ou incluída por este contrato; uma implementação futura deve usar armazenamento seguro do Windows e TLS validado.
+
+Consulte o [contrato de provedores de infraestrutura](docs/INFRASTRUCTURE_PROVIDERS.md) para os limites e requisitos de uma integração futura.
 
 Leia os [limites técnicos completos](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/TECHNICAL_LIMITS.md) antes de interpretar ou partilhar o mapa.
 

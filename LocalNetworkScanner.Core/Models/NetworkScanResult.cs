@@ -10,6 +10,7 @@ public sealed class NetworkScanResult
     public required int AddressesScanned { get; init; }
     public required IReadOnlyList<NetworkDevice> Devices { get; init; }
     public SnmpTopologySnapshot? SnmpTopology { get; init; }
+    public InfrastructureSnapshot? Infrastructure { get; init; }
     public bool IsPartial { get; init; }
     public IReadOnlyList<ScanDiagnostic> Diagnostics { get; init; } = [];
     public IReadOnlyList<string> Warnings { get; init; } = [];
@@ -26,6 +27,7 @@ public sealed class NetworkScanResult
             AddressesScanned = AddressesScanned,
             Devices = Devices,
             SnmpTopology = SnmpTopology,
+            Infrastructure = Infrastructure,
             IsPartial = IsPartial,
             Diagnostics = Diagnostics.Append(diagnostic).ToArray(),
             Warnings = Warnings

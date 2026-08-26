@@ -36,6 +36,9 @@ public partial class MainWindow : Window
             settingsService);
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         DataContext = ViewModel;
+
+        if (Application.Current is App application)
+            application.ApplyTheme(ViewModel.SelectedTheme.Value, notify: false);
     }
 
     public MainViewModel ViewModel { get; }
@@ -143,6 +146,12 @@ public partial class MainWindow : Window
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(MainViewModel.SelectedTheme) &&
+            Application.Current is App application)
+        {
+            application.ApplyTheme(ViewModel.SelectedTheme.Value);
+        }
+
         if (e.PropertyName == nameof(MainViewModel.SnmpCommunity) &&
             string.IsNullOrEmpty(ViewModel.SnmpCommunity) &&
             SnmpCommunityPasswordBox.Password.Length > 0)

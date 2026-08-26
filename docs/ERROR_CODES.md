@@ -54,6 +54,7 @@ A categoria indica a origem mais provável, não atribui culpa. Uma firewall, po
 | `LNS-NET-009` | Information | Nmap opcional não encontrado ou não validado | Instale-o separadamente a partir da origem oficial ou indique um `nmap.exe` local; `PATH`, UNC e device paths não são usados. |
 | `LNS-NET-010` | Warning | O enriquecimento Nmap falhou ou excedeu os limites | Confirme executável, permissões, firewall, intervalo e timeout; o inventário nativo continua válido. |
 | `LNS-NET-011` | Warning | O baseline da tabela ARP não ficou disponível e a confirmação ARP ativa foi desativada para esse scan | Os alvos confirmados por ICMP, TCP ou multicast continuam válidos; atualize as interfaces ou repita sem contornar políticas do Windows. |
+| `LNS-NET-012` | Warning | Um provedor opcional de infraestrutura falhou sem invalidar o scan base | Confirme endpoint, autorização, TLS e permissões de leitura; repita a consulta quando a infraestrutura estiver disponível. |
 
 ## Dispositivo — `LNS-DEV-*`
 
@@ -131,7 +132,7 @@ A CLI mostra código, categoria, severidade, mensagem, ação, alvo e contexto d
 | `4` | falha fatal associada a dispositivo (`LNS-DEV-*`) |
 | `130` | operação cancelada (`LNS-USR-009`) |
 
-O JSON schema v7 inclui os diagnósticos, as evidências de identidade, os endpoints mDNS/DNS-SD e a proveniência MAC de forma estruturada em `scan.diagnostics`, `devices[].identityEvidence`, `devices[].mdnsServices` e `devices[].macAddressSource`. HTML apresenta os diagnósticos numa secção própria e GraphML usa o atributo de grafo `g_diagnostics`. Consumidores automáticos devem decidir pelo código/categoria e não fazer parsing do texto em pt-PT.
+O JSON schema v8 inclui os diagnósticos, as evidências de identidade, os endpoints mDNS/DNS-SD, a proveniência MAC e a infraestrutura opcional de forma estruturada em `scan.diagnostics`, `devices[].identityEvidence`, `devices[].mdnsServices`, `devices[].macAddressSource`, `infrastructure` e `devices[].infrastructureEvidence`. HTML apresenta os diagnósticos e o resumo de infraestrutura; GraphML usa o atributo de grafo `g_diagnostics`. Consumidores automáticos devem decidir pelo código/categoria e não fazer parsing do texto em pt-PT.
 
 ## Pedir suporte
 

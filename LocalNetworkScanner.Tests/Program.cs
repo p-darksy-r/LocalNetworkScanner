@@ -21,6 +21,7 @@ using System.Windows.Automation;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 using LocalNetworkScanner.Core.Models;
 using LocalNetworkScanner.Core.Services;
 using LocalNetworkScanner.Core.Utilities;
@@ -595,7 +596,7 @@ List<(string Name, Func<Task> Run)> tests =
             .Select(field => (string)field.GetRawConstantValue()!)
             .ToArray();
 
-        Equal(32, codes.Length);
+        Equal(33, codes.Length);
         Equal(codes.Length, codes.Distinct(StringComparer.Ordinal).Count());
         True(codes.All(code => code.Length == 11 && code.StartsWith("LNS-", StringComparison.Ordinal)),
             "Todos os códigos públicos devem seguir o contrato LNS-CAT-NNN.");
@@ -3619,6 +3620,82 @@ List<(string Name, Func<Task> Run)> tests =
         Equal(20, device.Topology.VlanId);
         Equal(1, device.Topology.SwitchPortPvid);
     })),
+    ("Infrastructure evidence correlates by MAC without claiming physical certainty", () => Sync(() =>
+    {
+        NetworkDevice device = new()
+        {
+            IpAddress = IPAddress.Parse("192.168.1.31"),
+            MacAddress = "00:11:22:33:44:88",
+            IsOnline = true,
+            DiscoveryMethods = DiscoveryMethod.Arp
+        };
+        InfrastructureSnapshot snapshot = new()
+        {
+            Provider = InfrastructureProviderKind.UniFi,
+            ProviderName = "UniFi Network",
+            CollectedAt = DateTimeOffset.UtcNow,
+            IsAvailable = true,
+            Observations =
+            [
+                new InfrastructureObservation
+                {
+                    Provider = InfrastructureProviderKind.UniFi,
+                    Source = "UniFi Network API",
+                    MacAddress = "00-11-22-33-44-88",
+                    SwitchAddress = "192.168.1.2",
+                    SwitchName = "core-switch",
+                    SwitchPort = 7,
+                    SwitchInterface = "Gi1/0/7",
+                    VlanId = 20,
+                    AccessPointName = "AP-01",
+                    SignalDbm = -54,
+                    Confidence = ConfidenceLevel.High,
+                    Evidence = "Cliente associado e porta de uplink reportados pelo controlador."
+                }
+            ]
+        };
+
+        new InfrastructureEvidenceService().Apply(snapshot, [device]);
+
+        True(
+            device.DiscoveryMethods.HasFlag(DiscoveryMethod.Infrastructure),
+            "A observação deveria ficar marcada como evidência de infraestrutura.");
+        Equal(1, device.InfrastructureEvidence.Count);
+        Equal("core-switch", device.Topology.SwitchName);
+        Equal(7, device.Topology.SwitchPort);
+        Equal(20, device.Topology.VlanId);
+        Equal("AP-01", device.WifiAccessPoint);
+        Equal(-54, device.WifiSignalDbm);
+        Equal(null, device.Topology.SamePhysicalSwitch);
+
+        NetworkDevice other = new()
+        {
+            IpAddress = IPAddress.Parse("192.168.1.32"),
+            MacAddress = "00:11:22:33:44:99"
+        };
+        InfrastructureSnapshot conflicting = new()
+        {
+            Provider = InfrastructureProviderKind.UniFi,
+            ProviderName = "UniFi Network",
+            CollectedAt = DateTimeOffset.UtcNow,
+            IsAvailable = true,
+            Observations =
+            [
+                new InfrastructureObservation
+                {
+                    Provider = InfrastructureProviderKind.UniFi,
+                    Source = "UniFi Network API",
+                    IpAddress = other.IpAddress,
+                    MacAddress = device.MacAddress,
+                    SwitchPort = 99,
+                    Confidence = ConfidenceLevel.High
+                }
+            ]
+        };
+        new InfrastructureEvidenceService().Apply(conflicting, [other]);
+        Equal(0, other.InfrastructureEvidence.Count);
+        Equal(null, other.Topology.SwitchPort);
+    })),
     ("Network map preserves evidence semantics", () => Sync(() =>
     {
         LocalNetworkInterface network = CreateInterface();
@@ -4098,7 +4175,7 @@ List<(string Name, Func<Task> Run)> tests =
             await using FileStream stream = File.OpenRead(path);
             using JsonDocument document = await JsonDocument.ParseAsync(stream);
             JsonElement root = document.RootElement;
-            Equal(7, root.GetProperty("schemaVersion").GetInt32());
+            Equal(8, root.GetProperty("schemaVersion").GetInt32());
             JsonElement diagnostics = root.GetProperty("scan").GetProperty("diagnostics");
             Equal(1, diagnostics.GetArrayLength());
             Equal(DiagnosticCatalog.InvalidMacAddressCode,
@@ -4390,6 +4467,7 @@ List<(string Name, Func<Task> Run)> tests =
                 window.FindName("DeviceNotesTextBox") as TextBox;
             Button? aboutButton = window.FindName("AboutButton") as Button;
             Button? exitButton = window.FindName("ExitButton") as Button;
+            ComboBox? themeSelector = window.FindName("ThemeSelector") as ComboBox;
             Border? onboardingBanner = window.FindName("OnboardingBanner") as Border;
             Button? scanStartButton = window.FindName("ScanStartButton") as Button;
             Button? scanCancelButton = window.FindName("ScanCancelButton") as Button;
@@ -4410,12 +4488,34 @@ List<(string Name, Func<Task> Run)> tests =
             NotNull(deviceNotesTextBox);
             NotNull(aboutButton);
             NotNull(exitButton);
+            NotNull(themeSelector);
             NotNull(onboardingBanner);
             NotNull(scanStartButton);
             NotNull(scanCancelButton);
             NotNull(scanProfileScopeExplanation);
             Equal("Abrir informação sobre a aplicação", AutomationProperties.GetName(aboutButton));
             Equal("Sair da aplicação", AutomationProperties.GetName(exitButton));
+            Equal("Tema da aplicação", AutomationProperties.GetName(themeSelector));
+            Equal(AppThemeMode.Light, window.ViewModel.SelectedTheme.Value);
+            Equal(AppThemeMode.Light, application.CurrentTheme);
+
+            window.ViewModel.SelectedTheme = window.ViewModel.ThemeModes.Single(item => item.Value == AppThemeMode.Dark);
+            Equal(AppThemeMode.Dark, application.CurrentTheme);
+            if (!SystemParameters.HighContrast)
+            {
+                Equal(Color.FromRgb(0x11, 0x16, 0x1D),
+                    ((SolidColorBrush)application.Resources["WindowBackgroundBrush"]).Color);
+            }
+            window.ViewModel.SaveSettings();
+            Equal(AppThemeMode.Dark, new UiSettingsService(settingsPath).Load().Theme);
+
+            window.ViewModel.SelectedTheme = window.ViewModel.ThemeModes.Single(item => item.Value == AppThemeMode.Light);
+            Equal(AppThemeMode.Light, application.CurrentTheme);
+            if (!SystemParameters.HighContrast)
+            {
+                Equal(Color.FromRgb(0xF3, 0xF6, 0xFA),
+                    ((SolidColorBrush)application.Resources["WindowBackgroundBrush"]).Color);
+            }
             Equal(true, window.ViewModel.IsOnboardingVisible);
             Equal(Visibility.Visible, onboardingBanner!.Visibility);
             True(

@@ -29,6 +29,8 @@ public sealed class NetworkScannerService
     private readonly UpnpDescriptionService _upnpDescriptionService;
     private readonly DeviceIdentityService _deviceIdentityService;
     private readonly NmapDiscoveryService _nmapDiscoveryService;
+    private readonly IInfrastructureProvider? _infrastructureProvider;
+    private readonly InfrastructureEvidenceService _infrastructureEvidenceService;
     private readonly Func<IPAddress, int, IPAddress?, CancellationToken, Task<PingProbeResult>> _pingProbe;
     private readonly Func<IPAddress, IReadOnlyList<int>, int, IPAddress?, CancellationToken, Task<int?>>
         _tcpDiscoveryProbe;
@@ -50,7 +52,9 @@ public sealed class NetworkScannerService
         SnmpDeviceDiscoveryService? snmpDeviceDiscoveryService = null,
         UpnpDescriptionService? upnpDescriptionService = null,
         DeviceIdentityService? deviceIdentityService = null,
-        NmapDiscoveryService? nmapDiscoveryService = null)
+        NmapDiscoveryService? nmapDiscoveryService = null,
+        IInfrastructureProvider? infrastructureProvider = null,
+        InfrastructureEvidenceService? infrastructureEvidenceService = null)
     {
         _pingScanner = pingScanner ?? new PingScannerService();
         _hostnameResolver = hostnameResolver ?? new HostnameResolverService();
@@ -67,6 +71,8 @@ public sealed class NetworkScannerService
         _upnpDescriptionService = upnpDescriptionService ?? new UpnpDescriptionService();
         _deviceIdentityService = deviceIdentityService ?? new DeviceIdentityService();
         _nmapDiscoveryService = nmapDiscoveryService ?? new NmapDiscoveryService();
+        _infrastructureProvider = infrastructureProvider;
+        _infrastructureEvidenceService = infrastructureEvidenceService ?? new InfrastructureEvidenceService();
         _pingProbe = (address, timeoutMs, sourceAddress, cancellationToken) =>
             _pingScanner.ProbeAsync(address, timeoutMs, sourceAddress, cancellationToken);
         _tcpDiscoveryProbe = (address, ports, timeoutMs, localAddress, cancellationToken) =>
@@ -569,6 +575,87 @@ public sealed class NetworkScannerService
             }
         }
 
+        List<NetworkDevice> ordered = onlineDevices
+            .OrderBy(device => IpAddressHelper.ToUInt32(device.IpAddress))
+            .ToList();
+
+        DateTimeOffset completedAt = DateTimeOffset.UtcNow;
+        InfrastructureSnapshot? infrastructure = null;
+        if (_infrastructureProvider is not null)
+        {
+            progress?.Report(new ScanProgress(
+                "Infraestrutura",
+                0,
+                1,
+                ordered.Count,
+                $"A consultar {_infrastructureProvider.DisplayName} em modo somente leitura..."));
+            try
+            {
+                infrastructure = await _infrastructureProvider.CollectAsync(
+                    networkInterface,
+                    ordered,
+                    cancellationToken);
+                _infrastructureEvidenceService.Apply(infrastructure, ordered);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                infrastructure = new InfrastructureSnapshot
+                {
+                    Provider = _infrastructureProvider.Kind,
+                    ProviderName = _infrastructureProvider.DisplayName,
+                    CollectedAt = DateTimeOffset.UtcNow,
+                    IsAvailable = false,
+                    Diagnostics =
+                    [
+                        DiagnosticCatalog.InfrastructureQueryFailed(
+                            _infrastructureProvider.DisplayName,
+                            exception.GetType().Name)
+                    ]
+                };
+            }
+            progress?.Report(new ScanProgress(
+                "Infraestrutura",
+                1,
+                1,
+                ordered.Count,
+                infrastructure.IsAvailable
+                    ? $"Telemetria recebida: {infrastructure.Observations.Count:N0} evidências."
+                    : "Sem telemetria aplicável; o scan base foi preservado."));
+        }
+
+        if (snmpTopology is not null)
+        {
+            InfrastructureSnapshot snmpInfrastructure = new()
+            {
+                Provider = InfrastructureProviderKind.GenericSnmp,
+                ProviderName = "SNMP bridge/FDB",
+                CollectedAt = DateTimeOffset.UtcNow,
+                IsAvailable = true,
+                Observations = InfrastructureEvidenceService.FromSnmp(snmpTopology)
+            };
+            _infrastructureEvidenceService.Apply(snmpInfrastructure, ordered);
+            if (infrastructure is null)
+            {
+                infrastructure = snmpInfrastructure;
+            }
+            else
+            {
+                infrastructure = new InfrastructureSnapshot
+                {
+                    Provider = infrastructure.Provider,
+                    ProviderName = $"{infrastructure.ProviderName} + SNMP bridge/FDB",
+                    CollectedAt = infrastructure.CollectedAt,
+                    IsAvailable = infrastructure.IsAvailable || snmpInfrastructure.IsAvailable,
+                    Observations = [.. infrastructure.Observations, .. snmpInfrastructure.Observations],
+                    Diagnostics = [.. infrastructure.Diagnostics, .. snmpInfrastructure.Diagnostics]
+                };
+            }
+        }
+
         foreach (NetworkDevice device in onlineDevices)
         {
             _deviceClassifierService.Classify(device, networkInterface);
@@ -576,11 +663,7 @@ public sealed class NetworkScannerService
             device.ObservedProtocols = GetObservedProtocols(device);
         }
 
-        List<NetworkDevice> ordered = onlineDevices
-            .OrderBy(device => IpAddressHelper.ToUInt32(device.IpAddress))
-            .ToList();
-
-        DateTimeOffset completedAt = DateTimeOffset.UtcNow;
+        completedAt = DateTimeOffset.UtcNow;
         progress?.Report(new ScanProgress(
             "Concluído",
             addresses.Count,
@@ -588,7 +671,9 @@ public sealed class NetworkScannerService
             ordered.Count,
             $"Scan concluído: {ordered.Count} dispositivos."));
 
-        IReadOnlyList<ScanDiagnostic> diagnostics = BuildDiagnostics(
+        List<ScanDiagnostic> diagnostics =
+        [
+            .. BuildDiagnostics(
             networkInterface,
             ordered,
             options.EnableArp && macScanSession is not null && !macScanSession.IsNeighborBaselineAvailable,
@@ -598,7 +683,10 @@ public sealed class NetworkScannerService
             snmpIdentityResponders,
             nmapStatus,
             nmapStatusMessage,
-            invalidMacAddresses);
+            invalidMacAddresses)
+        ];
+        if (infrastructure is not null)
+            diagnostics.AddRange(infrastructure.Diagnostics);
 
         return new NetworkScanResult
         {
@@ -608,6 +696,7 @@ public sealed class NetworkScannerService
             AddressesScanned = addresses.Count,
             Devices = ordered,
             SnmpTopology = snmpTopology,
+            Infrastructure = infrastructure,
             Diagnostics = diagnostics,
             Warnings = diagnostics.Select(item => item.Message).ToArray()
         };
@@ -895,6 +984,8 @@ public sealed class NetworkScannerService
             protocols.Add("SNMP");
         if (device.DiscoveryMethods.HasFlag(DiscoveryMethod.Nmap))
             protocols.Add("Nmap");
+        if (device.DiscoveryMethods.HasFlag(DiscoveryMethod.Infrastructure))
+            protocols.Add("INFRA");
 
         foreach (string service in device.Ports
                      .Select(port => port.ServiceName)

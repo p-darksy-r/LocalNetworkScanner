@@ -29,7 +29,7 @@ Esses destinos aplicam as suas próprias políticas de privacidade aos pedidos q
 
 A aplicação pode guardar sob `%LOCALAPPDATA%\LocalNetworkScanner`:
 
-- `settings.json`, com preferências da UI, último âmbito e opções técnicas, sem guardar a community SNMP;
+- `settings.json`, com preferências da UI (incluindo o tema claro/escuro), último âmbito e opções técnicas, sem guardar a community SNMP;
 - `snapshots\`, com o histórico de inventários quando essa opção está ativa;
 - `devices.json`, com aliases, notas e favoritos introduzidos pelo utilizador;
 - `logs\app.log` e `logs\app.previous.log`, com metadados técnicos limitados de falhas fatais;

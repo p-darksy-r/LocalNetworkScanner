@@ -15,7 +15,8 @@ public enum DiscoveryMethod
     NetBios = 64,
     WsDiscovery = 128,
     Snmp = 256,
-    Nmap = 512
+    Nmap = 512,
+    Infrastructure = 1024
 }
 
 // Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

@@ -77,7 +77,9 @@ public sealed class ExportService
                 wifiSignalAvailable = result.NetworkInterface.WifiSignalPercent.HasValue,
                 wifiChannelAvailable = result.NetworkInterface.WifiChannel.HasValue,
                 vlanReportedByWindows = result.NetworkInterface.VlanId.HasValue,
-                snmpTopologyCollected = result.SnmpTopology is not null
+                snmpTopologyCollected = result.SnmpTopology is not null,
+                infrastructureCollected = result.Infrastructure?.IsAvailable == true,
+                infrastructureObservationCount = result.Infrastructure?.Observations.Count ?? 0
             },
             devices = new
             {
@@ -161,7 +163,7 @@ public sealed class ExportService
         NetworkMap topologyMap = new NetworkTopologyMapService().Build(result);
         object payload = new
         {
-            schemaVersion = 7,
+            schemaVersion = 8,
             generatedAt = DateTimeOffset.UtcNow,
             network = new
             {
@@ -200,6 +202,42 @@ public sealed class ExportService
                     isFatal = diagnostic.IsFatal
                 })
             },
+            infrastructure = result.Infrastructure is null
+                ? null
+                : new
+                {
+                    provider = result.Infrastructure.Provider.ToString(),
+                    result.Infrastructure.ProviderName,
+                    result.Infrastructure.CollectedAt,
+                    result.Infrastructure.IsAvailable,
+                    observationCount = result.Infrastructure.Observations.Count,
+                    diagnostics = result.Infrastructure.Diagnostics.Select(diagnostic => new
+                    {
+                        code = diagnostic.Code,
+                        severity = diagnostic.Severity.ToString(),
+                        message = diagnostic.Message
+                    }),
+                    observations = result.Infrastructure.Observations.Select(observation => new
+                    {
+                        provider = observation.Provider.ToString(),
+                        observation.Source,
+                        ipAddress = observation.IpAddress?.ToString(),
+                        observation.MacAddress,
+                        observation.SwitchAddress,
+                        observation.SwitchName,
+                        observation.SwitchPort,
+                        observation.SwitchInterface,
+                        observation.VlanId,
+                        observation.PortPvid,
+                        observation.AccessPointName,
+                        observation.AccessPointMacAddress,
+                        observation.SignalDbm,
+                        observation.WifiChannel,
+                        observation.WifiRadio,
+                        confidence = observation.Confidence.ToString(),
+                        observation.Evidence
+                    })
+                },
             topologyMap = new
             {
                 topologyMap.NetworkCidr,
@@ -289,6 +327,34 @@ public sealed class ExportService
                 nmap = device.NmapSummary,
                 netbios = new { device.NetBiosName, device.Workgroup },
                 wsDiscovery = new { device.WsDiscoveryTypes, device.WsDiscoveryAddresses },
+                wifi = new
+                {
+                    device.WifiAccessPoint,
+                    device.WifiAccessPointMacAddress,
+                    device.WifiSignalDbm,
+                    device.WifiChannel,
+                    device.WifiRadio
+                },
+                infrastructureEvidence = device.InfrastructureEvidence.Select(observation => new
+                {
+                    provider = observation.Provider.ToString(),
+                    observation.Source,
+                    ipAddress = observation.IpAddress?.ToString(),
+                    observation.MacAddress,
+                    observation.SwitchAddress,
+                    observation.SwitchName,
+                    observation.SwitchPort,
+                    observation.SwitchInterface,
+                    observation.VlanId,
+                    observation.PortPvid,
+                    observation.AccessPointName,
+                    observation.AccessPointMacAddress,
+                    observation.SignalDbm,
+                    observation.WifiChannel,
+                    observation.WifiRadio,
+                    confidence = observation.Confidence.ToString(),
+                    observation.Evidence
+                }),
                 device.FirstSeen,
                 device.LastSeen,
                 device.HistoryCompared,
@@ -438,7 +504,7 @@ public sealed class ExportService
         ArgumentNullException.ThrowIfNull(result);
         cancellationToken.ThrowIfCancellationRequested();
         StringBuilder csv = new();
-        csv.AppendLine("Resultado parcial;Favorito;Alias;Notas;IP;Hostname;NetBIOS;Grupo de trabalho;MAC;Evidência MAC;Titular IEEE;Fabricante;Modelo;Nome anunciado;Firmware;Confiança identidade;Fontes identidade;PingMs;Descoberta;Portas;Tipo;SO provável;Protocolos;Risco;Pontuação;Topologia;Histórico");
+        csv.AppendLine("Resultado parcial;Favorito;Alias;Notas;IP;Hostname;NetBIOS;Grupo de trabalho;MAC;Evidência MAC;Titular IEEE;Fabricante;Modelo;Nome anunciado;Firmware;Confiança identidade;Fontes identidade;PingMs;Descoberta;Portas;Tipo;SO provável;Protocolos;Risco;Pontuação;Topologia;Infraestrutura;AP Wi-Fi;Sinal Wi-Fi dBm;Histórico");
 
         foreach (NetworkDevice device in result.Devices)
         {
@@ -471,6 +537,9 @@ public sealed class ExportService
                 device.RiskLevel,
                 device.RiskScore.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 device.TopologyText,
+                device.InfrastructureSummary,
+                device.WifiAccessPoint ?? string.Empty,
+                device.WifiSignalDbm?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
                 device.HistoryText
             ];
             csv.AppendLine(string.Join(';', values.Select(EscapeCsv)));
@@ -541,7 +610,7 @@ public sealed class ExportService
             html.Append($"<td>{H(device.ResponseTimeDisplay)}</td>");
             html.Append($"<td>{H(device.OpenPortsText)}<br>{H(device.ProtocolsText)}</td>");
             html.Append($"<td class=\"{riskClass}\">{H(device.RiskLevel)} · {device.RiskScore}/100</td>");
-            html.Append($"<td>{H(device.TopologyText)}</td>");
+            html.Append($"<td>{H(device.TopologyText)}<br>{H(device.InfrastructureSummary)}</td>");
             html.Append($"<td>{H(device.HistoryText)}</td></tr>");
         }
 

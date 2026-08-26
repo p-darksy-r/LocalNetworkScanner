@@ -90,6 +90,12 @@ public sealed class DeviceRowViewModel : ObservableObject
     public string Layer2Confidence => ConfidenceToText(_device.Topology.Layer2Confidence);
     public string VlanConfidence => ConfidenceToText(_device.Topology.VlanConfidence);
     public string SwitchEvidence => _device.Topology.SwitchEvidence;
+    public string Infrastructure => _device.InfrastructureSummary;
+    public string WifiSignal => _device.WifiSignalDbm.HasValue
+        ? $"{_device.WifiSignalDbm} dBm"
+        : "—";
+    public string WifiAccessPoint => ValueOrDash(_device.WifiAccessPoint);
+    public string WifiRadio => ValueOrDash(_device.WifiRadio);
     public string RandomizedMac => _device.IsRandomizedMac ? "Sim" : "Não";
 
     public IReadOnlyList<PortScanResult> Ports => _device.Ports;

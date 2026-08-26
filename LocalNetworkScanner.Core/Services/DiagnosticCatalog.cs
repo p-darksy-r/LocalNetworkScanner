@@ -29,6 +29,7 @@ public static class DiagnosticCatalog
     public const string NmapUnavailableCode = "LNS-NET-009";
     public const string NmapScanFailedCode = "LNS-NET-010";
     public const string ArpBaselineUnavailableCode = "LNS-NET-011";
+    public const string InfrastructureQueryFailedCode = "LNS-NET-012";
 
     public const string InvalidMacAddressCode = "LNS-DEV-001";
     public const string UnknownManufacturerCode = "LNS-DEV-002";
@@ -216,6 +217,17 @@ public static class DiagnosticCatalog
         "O Windows não disponibilizou o baseline da tabela ARP; a confirmação ARP ativa foi desativada neste scan.",
         "Os resultados confirmados por ICMP, TCP ou multicast continuam válidos. Atualiza as interfaces ou repete o scan; não desatives controlos de segurança.",
         interfaceName);
+
+    public static ScanDiagnostic InfrastructureQueryFailed(
+        string provider,
+        string? exceptionType = null) => new(
+        InfrastructureQueryFailedCode,
+        DiagnosticCategory.Network,
+        DiagnosticSeverity.Warning,
+        $"A integração opcional de infraestrutura ({provider}) não respondeu com dados válidos.",
+        "Confirma o endpoint, autorização, TLS e permissões de leitura; o scan base continua válido sem esta telemetria.",
+        provider,
+        Context(("exceptionType", exceptionType)));
 
     public static ScanDiagnostic InvalidMacAddress(string target, string? observedValue = null) => new(
         InvalidMacAddressCode,

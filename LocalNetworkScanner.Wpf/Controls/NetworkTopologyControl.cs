@@ -71,6 +71,7 @@ public sealed class NetworkTopologyControl : Grid
     private bool _isPanning;
     private bool _isAutoFitEnabled = true;
     private bool _isSystemParametersSubscribed;
+    private bool _isThemeSubscribed;
     private bool _paletteRefreshQueued;
 
     public NetworkTopologyControl()
@@ -767,6 +768,12 @@ public sealed class NetworkTopologyControl : Grid
 
         SystemParameters.StaticPropertyChanged += OnSystemParametersChanged;
         _isSystemParametersSubscribed = true;
+
+        if (Application.Current is App application && !_isThemeSubscribed)
+        {
+            application.ThemeChanged += OnThemeChanged;
+            _isThemeSubscribed = true;
+        }
     }
 
     private void OnControlUnloaded(object sender, RoutedEventArgs e)
@@ -776,16 +783,31 @@ public sealed class NetworkTopologyControl : Grid
 
         SystemParameters.StaticPropertyChanged -= OnSystemParametersChanged;
         _isSystemParametersSubscribed = false;
+
+        if (Application.Current is App application && _isThemeSubscribed)
+        {
+            application.ThemeChanged -= OnThemeChanged;
+            _isThemeSubscribed = false;
+        }
     }
 
     private void OnSystemParametersChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (_paletteRefreshQueued ||
-            !string.IsNullOrEmpty(e.PropertyName) &&
+        if (!string.IsNullOrEmpty(e.PropertyName) &&
             !e.PropertyName.Equals(nameof(SystemParameters.HighContrast), StringComparison.Ordinal))
         {
             return;
         }
+
+        QueuePaletteRefresh();
+    }
+
+    private void OnThemeChanged(object? sender, EventArgs e) => QueuePaletteRefresh();
+
+    private void QueuePaletteRefresh()
+    {
+        if (_paletteRefreshQueued)
+            return;
 
         _paletteRefreshQueued = true;
         _ = Dispatcher.BeginInvoke(

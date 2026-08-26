@@ -110,7 +110,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -RuntimeI
 - [ ] O SBOM SPDX 2.2 foi gerado a partir desse payload exato e dos metadados restaurados para `win-x64` e `win-arm64`; a cobertura dos dois runtimes foi validada e o manifesto faz parte do contrato final de 12 assets sem alterar os dez ficheiros instaláveis.
 - [ ] A UI arranca, inicia e cancela um scan de laboratório e fecha sem processo residual.
 - [ ] O ZIP inclui UI, CLI, README, licença, changelog, limites técnicos, `docs/VENDOR_DATABASE.md` e `THIRD_PARTY_NOTICES.md`.
-- [ ] Exports JSON schema v7 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações, identidade, serviços mDNS/DNS-SD, diagnósticos ou estado TLS documentados; JSON/CSV/HTML preservam `macAddressSource`/evidência MAC.
+- [ ] Exports JSON schema v8 e GraphML abrem sem perda do tipo, origem, confiança e evidência das ligações, identidade, serviços mDNS/DNS-SD, diagnósticos, estado TLS ou infraestrutura documentados; JSON/CSV/HTML preservam `macAddressSource`/evidência MAC e o resumo de infraestrutura.
 - [ ] As opções CLI `--html` e `--graphml` foram verificadas com dados sintéticos ou de laboratório.
 - [ ] O SHA-256 publicado corresponde exatamente ao ZIP.
 

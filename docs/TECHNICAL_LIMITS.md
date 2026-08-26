@@ -135,6 +135,8 @@ O switch autorizado pode fornecer vizinhos LLDP, incluindo chassis, porta e iden
 
 SNMP v2c não protege os dados de acesso ao nível do protocolo. A opção deve ser usada apenas numa rede de gestão confiável, com autorização e uma community dedicada apenas de leitura; a UI pede confirmação antes de a enviar a cada dispositivo online consultado. Os dados de acesso não devem aparecer em exports, logs ou documentação partilhada. A consulta de identidade usa somente a community indicada, MIB-II e ENTITY-MIB; não tenta valores comuns, não persiste a community e não usa texto de `sysDescr` como prova forte quando o chassis não publica campos próprios.
 
+O núcleo também expõe `IInfrastructureProvider`, um contrato assíncrono e somente leitura para controladores externos. As observações são correlacionadas por IP ou MAC, recebem uma confiança explícita e são exportadas com a sua origem. O contrato não define autenticação nem guarda segredos; cada integração deve exigir autorização explícita, validar TLS, limitar tempo/tamanho e remover credenciais de mensagens, logs e exports. A implementação UniFi está apenas preparada para uma futura integração testada; não se deve inferir suporte a uma API concreta a partir do contrato.
+
 ## Grafo de topologia e GraphML
 
 O grafo combina entidades observadas pelo scan com relações fornecidas pela infraestrutura ou inferidas. Cada ligação preserva o seu tipo, a origem, a confiança e um resumo da evidência; a aparência visual não transforma uma inferência em facto.
@@ -143,7 +145,7 @@ A lista de dispositivos é a vista principal do resultado. O grafo só é criado
 
 A exportação GraphML transporta estes atributos para ferramentas externas. Uma ferramenta que ignore os atributos ou aplique o seu próprio layout pode fazer relações fracas parecerem tão fortes como relações confirmadas. Ao analisar ou partilhar o ficheiro, mantenha visíveis a origem e a confiança e consulte a evidência textual.
 
-O JSON schema v7 inclui a topologia, os diagnósticos estruturados, o estado TLS triestado, evidências de identidade, endpoints mDNS/DNS-SD e `devices[].macAddressSource`. CSV e HTML também mostram a proveniência MAC. Consumidores automáticos devem verificar `schemaVersion` e não assumir compatibilidade estrutural com exports de versões anteriores. HTML e GraphML podem incluir diagnósticos relevantes, mas não substituem o contexto completo do JSON.
+O JSON schema v8 inclui a topologia, os diagnósticos estruturados, o estado TLS triestado, evidências de identidade, endpoints mDNS/DNS-SD, `devices[].macAddressSource` e a snapshot opcional `infrastructure`. CSV e HTML também mostram a proveniência MAC e um resumo de infraestrutura. Consumidores automáticos devem verificar `schemaVersion` e não assumir compatibilidade estrutural com exports de versões anteriores. HTML e GraphML podem incluir diagnósticos relevantes, mas não substituem o contexto completo do JSON.
 
 LLDP descreve aquilo que um equipamento participante anuncia e o switch autorizado expõe. Pode revelar vizinhos de infraestrutura e portas, mas não garante um caminho completo de extremo a extremo: dispositivos finais frequentemente não anunciam LLDP, tabelas podem estar incompletas e equipamentos intermédios não consultados continuam desconhecidos.
 

@@ -325,6 +325,11 @@ static void PrintResult(NetworkScanResult result)
             Console.WriteLine(
                 $"                   Titular IEEE: {device.MacAssigneeDisplay} · " +
                 $"{device.DeviceType} · {device.DiscoveryText} · {device.TopologyText}");
+            if (device.InfrastructureEvidence.Count > 0)
+            {
+                Console.WriteLine(
+                    $"                   Infraestrutura: {device.InfrastructureSummary}");
+            }
             foreach (DeviceIdentityEvidence evidence in device.IdentityEvidence.Take(3))
             {
                 Console.WriteLine(

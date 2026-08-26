@@ -10,6 +10,8 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 
 ### Added
 
+- contrato `IInfrastructureProvider` e snapshot de evidência para integrações de controladores somente leitura; a FDB SNMP existente é exportada como infraestrutura correlacionada por MAC sem afirmar ligação física, com VLAN/porta/AP/RSSI quando disponíveis;
+- infraestrutura de dados por dispositivo e no JSON schema v8, incluindo proveniência, confiança e diagnóstico `LNS-NET-012` quando uma integração opcional falha sem invalidar o scan base;
 - infraestrutura MSIX separa rigorosamente `PrivateTest` e `Store`, gera pacotes x64/ARM64 e bundle, valida manifesto, payload, arquitetura PE, assinatura, hashes e identidade e nunca toca nos artefactos de release existentes;
 - certificado público `crt/LocalNetworkScanner-PrivateTest.crt`, com chave RSA 3072/SHA-256 não exportável mantida apenas em `CurrentUser\My`, mais scripts explícitos para geração, confiança restrita a `LocalMachine\TrustedPeople` e remoção segura;
 - manifesto WPF `packagedClassicApp`/`mediumIL`, assets MSIX determinísticos e documentação passo a passo para sideload interno e futura submissão no Partner Center;
@@ -18,6 +20,7 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 - onboarding inicial, não modal e persistente, explica redes autorizadas, tráfego ativo, histórico local e ausência de telemetria;
 - pesquisa de nós na topologia por nome, IP, MAC, tipo, VLAN ou identidade visível, com `Ctrl+F`, `Enter`/`F3`, centralização e anúncios acessíveis;
 - a janela Sobre liga diretamente às políticas de privacidade e assinatura;
+- seletor de tema claro/escuro no cabeçalho, com aplicação imediata, persistência local e atualização coerente da janela de topologia;
 - workflow manual para renderizar, validar e disponibilizar as imagens sintéticas da documentação num runner Windows quando App Control impede a renderização local;
 - pasta raiz `app` com lançador relativo e executável local gerado para a arquitetura nativa; versão, fontes, PE, SHA-256 e Authenticode são validados antes de uma substituição transacional, com lock entre processos, modo rápido para abrir, modo completo para QA local e publicação intermédia isolada dos artefactos de release.
 
@@ -34,6 +37,7 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 - o job x64 do CI usa agora o mesmo `scripts/check.ps1 -VerifyFormat` da validação local, incluindo sintaxe PowerShell e os contratos sintéticos de release;
 - o workflow de release passa a ser exclusivamente manual, evitando que o simples push de uma tag termine verde sem produzir um candidato ou uma release;
 - a política automática de copyright passa a reconhecer também scripts batch `.cmd` e `.bat` com marcadores `@REM`.
+- a paleta escura usa cores com contraste dedicado para superfícies, texto, seleção, estados de risco e ações, enquanto o Alto Contraste do Windows continua a ter prioridade;
 
 ### Fixed
 

@@ -102,6 +102,44 @@ public sealed class NetworkDevice
 
     public TopologyAssessment Topology { get; set; } = new();
 
+    /// <summary>Evidência opcional recebida de um switch, AP ou controlador.</summary>
+    public List<InfrastructureObservation> InfrastructureEvidence { get; set; } = [];
+
+    public string? WifiAccessPoint { get; set; }
+
+    public string? WifiAccessPointMacAddress { get; set; }
+
+    public int? WifiSignalDbm { get; set; }
+
+    public int? WifiChannel { get; set; }
+
+    public string? WifiRadio { get; set; }
+
+    public string InfrastructureSummary
+    {
+        get
+        {
+            List<string> parts = [];
+            if (!string.IsNullOrWhiteSpace(WifiAccessPoint))
+                parts.Add($"AP {WifiAccessPoint}");
+            if (WifiSignalDbm.HasValue)
+                parts.Add($"{WifiSignalDbm} dBm");
+            if (WifiChannel.HasValue)
+                parts.Add($"canal {WifiChannel}");
+            if (!string.IsNullOrWhiteSpace(Topology.SwitchName))
+                parts.Add($"switch {Topology.SwitchName}");
+            else if (!string.IsNullOrWhiteSpace(Topology.SwitchAddress))
+                parts.Add($"switch {Topology.SwitchAddress}");
+            if (!string.IsNullOrWhiteSpace(Topology.SwitchInterface))
+                parts.Add(Topology.SwitchInterface);
+            else if (Topology.SwitchPort.HasValue)
+                parts.Add($"porta {Topology.SwitchPort}");
+            if (Topology.VlanId.HasValue)
+                parts.Add($"VLAN {Topology.VlanId}");
+            return parts.Count == 0 ? "Sem telemetria de infraestrutura" : string.Join(" · ", parts);
+        }
+    }
+
     public DateTimeOffset FirstSeen { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset LastSeen { get; set; } = DateTimeOffset.UtcNow;
@@ -154,7 +192,7 @@ public sealed class NetworkDevice
         ? "—"
         : string.Join(" + ", Enum.GetValues<DiscoveryMethod>()
             .Where(method => method != DiscoveryMethod.None && DiscoveryMethods.HasFlag(method))
-            .Select(method => method.ToString().ToUpperInvariant()));
+            .Select(GetDiscoveryMethodLabel));
 
     public string ProtocolsText => ObservedProtocols.Count == 0
         ? "—"
@@ -175,6 +213,11 @@ public sealed class NetworkDevice
         : string.IsNullOrWhiteSpace(Hostname)
             ? string.IsNullOrWhiteSpace(NetBiosName) ? IpAddressText : NetBiosName
             : Hostname;
+
+    private static string GetDiscoveryMethodLabel(DiscoveryMethod method) =>
+        method == DiscoveryMethod.Infrastructure
+            ? "INFRA"
+            : method.ToString().ToUpperInvariant();
 }
 
 // Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.
