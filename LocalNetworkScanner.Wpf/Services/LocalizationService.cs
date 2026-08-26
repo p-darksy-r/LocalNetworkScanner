@@ -906,6 +906,16 @@ public static class LocalizationService
             ["Inicia e conclui um scan com resultados antes de abrir o mapa."] = "Complete a scan with results before opening the map."
             ,
             ["Topologia ainda vazia"] = "Topology is empty"
+            ,
+            [" nós "] = " nodes "
+            ,
+            [" ligações "] = " links "
+            ,
+            [" com alertas"] = " with alerts"
+            ,
+            [" correspondências "] = " matches "
+            ,
+            [" nós de contexto "] = " context nodes "
         };
 
     private static readonly ConditionalWeakTable<DependencyObject, OriginalValues> OriginalValuesByElement = new();
