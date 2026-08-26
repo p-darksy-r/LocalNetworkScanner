@@ -30,6 +30,12 @@ Uma release só poderá declarar `Signed` quando:
 
 Como as tags e os assets existentes são imutáveis, a primeira eventual release assinada terá de usar uma versão e tag novas; a `v1.4.0` não será convertida retroativamente numa release assinada.
 
+## Microsoft Store e certificado PrivateTest
+
+O projeto dispõe de uma segunda via, isolada, para preparar um pacote MSIX. Um build `PrivateTest` é assinado por uma chave autoassinada, não exportável e guardada apenas no `CurrentUser\My` do computador de QA. O repositório contém somente o `.crt` público; cada administrador decide se o confia em `LocalMachine\TrustedPeople`. Esse pacote nunca é uma release pública confiável e não satisfaz os gates Authenticode desta política.
+
+Um build `Store` recusa a chave de teste e só aceita a identidade exata atribuída pelo Partner Center. O candidato permanece sem assinatura local e só adquire uma assinatura distribuível depois de passar a certificação e ser reassinado pela Microsoft Store. Esta regra aplica-se ao pacote entregue pela Store, não aos EXE, ZIP ou instaladores GitHub. O canal Store continua sujeito a validação x64/ARM64, `runFullTrust`, privacidade, comportamento de scan e direitos de redistribuição da base IEEE. Consulte [docs/MSIX.md](docs/MSIX.md).
+
 ## Origem e aprovação
 
 A integração proposta usará GitHub Actions em runners alojados pelo GitHub, um artefacto unsigned produzido pelo workflow e origin verification da SignPath. Cada pedido de assinatura de produção deverá exigir aprovação manual na SignPath. Estes mecanismos ainda não estão configurados no workflow atual e não devem ser descritos como ativos.

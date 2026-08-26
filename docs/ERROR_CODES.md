@@ -103,6 +103,21 @@ Os significados abaixo descrevem o backend Microsoft Artifact Signing atualmente
 
 Consulte [Assinatura e prontidão de release](SIGNING.md) para o procedimento completo.
 
+## Empacotamento MSIX — `LNS-MSX-*`
+
+Estes códigos pertencem apenas aos scripts de preparação MSIX. Um erro `MSX` não altera nem publica uma release GitHub e não é um diagnóstico da rede analisada.
+
+| Código | Severidade | Significado | Ação recomendada |
+| --- | --- | --- | --- |
+| `LNS-MSX-001` | Error | Modo, identidade, revisão ou parâmetros `PrivateTest`/`Store` incompatíveis | Não misture identidades. Em `PrivateTest`, use os valores isolados automáticos; em `Store`, copie os três valores exatos do Partner Center e mantenha a revisão em zero. |
+| `LNS-MSX-002` | Error | Certificado privado de QA ausente, expirado, exportável, fraco ou incompatível | Execute `new-private-test-certificate.ps1`, mantenha a chave não exportável em `CurrentUser\My` e passe o thumbprint devolvido. Nunca adicione PFX/chaves ao repositório. |
+| `LNS-MSX-003` | Error | Versão ou template de manifesto inválido/incompleto | Preserve os tokens e namespaces versionados; use uma versão de quatro componentes dentro de `0..65535`. |
+| `LNS-MSX-004` | Error | Publish, executável ou estado de build esperado não foi produzido | Confirme o SDK .NET/Windows, RID e diretórios sob `artifacts\msix`; repita sem copiar manualmente um payload incompleto. |
+| `LNS-MSX-005` | Error | Manifesto, capability, payload, arquitetura PE, segredo, hash, assinatura ou bundle falhou validação | Não instale nem submeta o pacote. Corrija a divergência e gere novamente todas as arquiteturas e o bundle. |
+| `LNS-MSX-006` | Error | Smoke da aplicação WPF publicada falhou antes do empacotamento | Recolha o bloqueio/exit code no host nativo; se for 4551, peça autorização ao administrador e não desative a política. |
+
+Consulte [MSIX: testes PrivateTest e Microsoft Store](MSIX.md) para os comandos completos.
+
 ## CLI e exportações
 
 A CLI mostra código, categoria, severidade, mensagem, ação, alvo e contexto disponível. Os exit codes são:

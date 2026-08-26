@@ -55,6 +55,13 @@ packages/
 *.snk
 secrets.json
 
+# Private test certificate material (only the public .crt is versioned)
+/crt/*.pfx
+/crt/*.p12
+/crt/*.pem
+/crt/*.key
+/crt/*.pvk
+
 # Operating-system files
 Thumbs.db
 Desktop.ini

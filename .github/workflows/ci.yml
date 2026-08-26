@@ -37,6 +37,34 @@ jobs:
         shell: pwsh
         run: .\scripts\check.ps1 -Configuration Release -VerifyFormat
 
+      - name: Build and validate ephemeral x64 plus ARM64 PrivateTest MSIX bundle
+        shell: pwsh
+        run: |
+          $certificate = .\scripts\new-private-test-certificate.ps1 `
+            -OutputPath .\artifacts\ci-private-test-x64.crt `
+            -ValidityDays 90
+          try {
+            .\scripts\build-msix-bundle.ps1 `
+              -Mode PrivateTest `
+              -SigningCertificateThumbprint $certificate.Thumbprint `
+              -PublicCertificatePath $certificate.PublicCertificatePath `
+              -SkipChecks
+          }
+          finally {
+            if ($certificate.Created) {
+              Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          .\scripts\build-msix.ps1 `
+            -Mode Store `
+            -RuntimeIdentifier win-x64 `
+            -IdentityName 'p-darksy-r.LocalNetworkScanner.CiStoreContract' `
+            -Publisher 'CN=00000000-0000-0000-0000-000000000000' `
+            -PublisherDisplayName 'p-darksy-r CI' `
+            -SkipChecks `
+            -SkipWpfSmoke
+
       - name: Materialize and smoke the x64 root app entrypoint
         shell: pwsh
         run: |
@@ -72,6 +100,27 @@ jobs:
       - name: Build and test natively
         shell: pwsh
         run: .\scripts\check.ps1 -Configuration Release
+
+      - name: Build and validate ephemeral ARM64 PrivateTest MSIX
+        shell: pwsh
+        run: |
+          $certificate = .\scripts\new-private-test-certificate.ps1 `
+            -OutputPath .\artifacts\ci-private-test-arm64.crt `
+            -ValidityDays 90
+          try {
+            .\scripts\build-msix.ps1 `
+              -Mode PrivateTest `
+              -RuntimeIdentifier win-arm64 `
+              -SigningCertificateThumbprint $certificate.Thumbprint `
+              -PublicCertificatePath $certificate.PublicCertificatePath `
+              -SkipChecks `
+              -SkipWpfSmoke
+          }
+          finally {
+            if ($certificate.Created) {
+              Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Force -ErrorAction SilentlyContinue
+            }
+          }
 
       - name: Publish and smoke native ARM64 executables
         shell: pwsh

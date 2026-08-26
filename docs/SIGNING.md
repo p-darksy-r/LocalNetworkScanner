@@ -16,6 +16,14 @@ O projeto consegue produzir, assinar, verificar e diagnosticar os ficheiros. Nã
 
 Uma chave autoassinada só é útil num laboratório onde a raiz foi instalada deliberadamente. Não substitui uma identidade de Code Signing publicamente confiável e não resolve a distribuição geral.
 
+## Canal MSIX da Microsoft Store
+
+O `main` inclui agora um pipeline MSIX independente do pipeline Authenticode/Inno das releases GitHub. No modo `PrivateTest`, uma chave RSA 3072 não exportável permanece em `CurrentUser\My`, apenas o certificado público é versionado em `crt`, e o pacote é assinado com SHA-256. O administrador de cada PC de QA tem de confiar explicitamente esse CRT em `LocalMachine\TrustedPeople`; ele nunca deve ser instalado como uma autoridade em `Trusted Root` nem apresentado como identidade pública.
+
+No modo `Store`, o script recusa o certificado de testes e exige `IdentityName`, `Publisher` e `PublisherDisplayName` copiados exatamente da identidade reservada no Partner Center. O candidato fica `UnsignedForMicrosoftStore`: não é instalável localmente, não é uma release e não pode usar a identidade isolada `PrivateTest`. Depois de aprovar uma submissão MSIX/AppX, a Microsoft Store substitui a assinatura do pacote e gere a sua distribuição. Esta assinatura de pacote não se transfere para o `LocalNetworkScanner.exe`, ZIP, MSI ou instalador Inno distribuído fora da Store.
+
+O manifesto declara somente `rescap:runFullTrust`, necessário para a aplicação WPF `packagedClassicApp`/`mediumIL`. Essa capacidade restrita terá de ser justificada no Partner Center com o comportamento real de ICMP, sockets, ARP/NDP, enumeração autorizada, ferramentas Windows iniciadas no contexto do utilizador e Nmap local opcional; não são pedidos elevação, drivers, serviços ou acesso amplo ao sistema de ficheiros. Consulte [o guia MSIX](MSIX.md).
+
 ## Backend Microsoft implementado, mas não configurado
 
 O workflow versionado contém um caminho de produção para **Microsoft Artifact Signing com OIDC**, sem PFX ou chave privada guardada no GitHub. As variáveis e a identidade externas necessárias não estão configuradas neste repositório; por isso este caminho não assinou nenhuma release. Quando integralmente configurado, o desenho é:

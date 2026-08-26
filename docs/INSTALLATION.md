@@ -45,6 +45,33 @@ Quem trabalha diretamente num checkout pode fazer duplo clique em `app\Abrir Loc
 
 Esta pasta requer o .NET SDK definido em `global.json` apenas quando precisa de reconstruir e é apenas uma conveniência de desenvolvimento. O executável gerado não é guardado no Git, não pertence ao contrato de assets de uma release e mantém o estado Authenticode real do publish — normalmente `NotSigned` enquanto a integração de assinatura estiver pendente. A publicação intermédia fica isolada em `artifacts\local-app` e não altera staging, ZIPs, instaladores ou candidatos de release.
 
+## MSIX PrivateTest para laboratório
+
+O repositório inclui um caminho MSIX separado para testes internos. Não é um formato atualmente publicado nas releases GitHub. Na raiz do checkout, crie/reutilize a chave não exportável e gere o pacote x64:
+
+```powershell
+.\scripts\new-private-test-certificate.ps1
+.\scripts\build-msix.ps1 -Mode PrivateTest -RuntimeIdentifier win-x64
+```
+
+O `.crt` versionado contém apenas a chave pública. Para o Windows aceitar o sideload, abra **PowerShell como administrador** e confie-o explicitamente apenas em `LocalMachine\TrustedPeople`:
+
+```powershell
+.\scripts\install-private-test-certificate.ps1 -Action Install -Confirm:$false
+Add-AppxPackage .\artifacts\msix\private-test\win-x64\LocalNetworkScanner-1.4.1.0-PrivateTest-x64.msix
+```
+
+Depois dos testes, remova o pacote e a confiança:
+
+```powershell
+Get-AppxPackage p-darksy-r.LocalNetworkScanner.PrivateTest | Remove-AppxPackage
+.\scripts\install-private-test-certificate.ps1 -Action Remove -Confirm:$false
+```
+
+O script nunca usa `Trusted Root Certification Authorities`. Confiar o CRT apenas autoriza a validação criptográfica nessa máquina; não cria reputação SmartScreen, não verifica publicamente o autor e uma política WDAC/AppLocker pode continuar a bloquear o pacote. A chave privada permanece em `CurrentUser\My` no computador que compila e pode ser removida manualmente pelo thumbprint quando deixar de ser necessária. Consulte [MSIX: PrivateTest e Microsoft Store](MSIX.md) para o procedimento integral e para o bundle x64+ARM64.
+
+O modo `Store` é diferente: recebe os valores exatos de identidade do Partner Center, fica sem assinatura local e não deve ser instalado por sideload. Depois da certificação, a Microsoft Store substitui a assinatura e distribui o pacote; isto não assina o EXE, ZIP ou instalador Inno quando descarregado separadamente.
+
 ## Verificar a integridade
 
 Compare o SHA-256 do ficheiro descarregado com `SHA256SUMS.txt` ou com o ficheiro `.sha256` adjacente na release:

@@ -10,6 +10,9 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 
 ### Added
 
+- infraestrutura MSIX separa rigorosamente `PrivateTest` e `Store`, gera pacotes x64/ARM64 e bundle, valida manifesto, payload, arquitetura PE, assinatura, hashes e identidade e nunca toca nos artefactos de release existentes;
+- certificado público `crt/LocalNetworkScanner-PrivateTest.crt`, com chave RSA 3072/SHA-256 não exportável mantida apenas em `CurrentUser\My`, mais scripts explícitos para geração, confiança restrita a `LocalMachine\TrustedPeople` e remoção segura;
+- manifesto WPF `packagedClassicApp`/`mediumIL`, assets MSIX determinísticos e documentação passo a passo para sideload interno e futura submissão no Partner Center;
 - `PRIVACY.md` documenta comunicações iniciadas pelo utilizador, dados locais, terceiros, retenção e eliminação;
 - `CODE_SIGNING_POLICY.md` regista o estado pendente da SignPath, funções da equipa, âmbito proposto, aprovação manual e gates que impedem alegações prematuras de assinatura;
 - onboarding inicial, não modal e persistente, explica redes autorizadas, tráfego ativo, histórico local e ausência de telemetria;
@@ -20,6 +23,7 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 
 ### Changed
 
+- CI x64 cria e valida o bundle `PrivateTest` x64+ARM64, o runner ARM64 valida adicionalmente o pacote nativo, e ambos removem as chaves efémeras no fim sem publicar estes artefactos;
 - os perfis Rápido, Normal e Avançado explicam agora que partilham o mesmo objetivo de descoberta, diferindo sobretudo no tempo e detalhe, e que as contagens são retratos transitórios;
 - o cabeçalho de configuração deixa de impor uma largura mínima superior à janela e mantém Iniciar/Cancelar acessíveis a 760 DIPs;
 - a topologia ajusta-se à work area do monitor atual, permite scroll horizontal da toolbar, realça apenas o nó selecionado e as suas ligações e preserva o zoom ao atualizar a paleta de Alto Contraste;
@@ -40,6 +44,7 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 
 ### Security
 
+- candidatos Store permanecem obrigatoriamente `UnsignedForMicrosoftStore` e exigem a identidade externa exata do Partner Center; os gates fixam `PrivateTest` ao CRT versionado e rejeitam chaves privadas, payloads/ativações adicionais, capabilities além de `runFullTrust`, mistura de identidades e um pacote Store assinado pelo certificado de QA;
 - secret scanning, push protection, relatórios privados de vulnerabilidade e fixação obrigatória das GitHub Actions por SHA foram ativados no repositório público;
 - nenhuma funcionalidade de enumeração de portas, Nmap ou avaliação heurística de risco foi removida ou escondida enquanto se aguarda a resposta de elegibilidade da SignPath;
 - a documentação deixa explícito que a exposição pública dos dados IEEE não constitui autorização e bloqueia uma nova release assinada/estável até existir clarificação escrita aplicável.

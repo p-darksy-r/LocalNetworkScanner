@@ -22,6 +22,7 @@ $wpfProject = Join-Path $repoRoot "LocalNetworkScanner.Wpf\LocalNetworkScanner.W
 $copyrightCheckScript = Join-Path $repoRoot "scripts\check-copyright.ps1"
 $appEntrypointTestScript = Join-Path $repoRoot "scripts\test-app-entrypoint-contract.ps1"
 $releaseEvidenceTestScript = Join-Path $repoRoot "scripts\test-release-evidence-contract.ps1"
+$msixContractTestScript = Join-Path $repoRoot "scripts\test-msix-contract.ps1"
 $testResults = Join-Path $repoRoot "artifacts\TestResults"
 
 function Invoke-DotNet {
@@ -48,6 +49,9 @@ if (-not (Test-Path -LiteralPath $releaseEvidenceTestScript -PathType Leaf)) {
 }
 if (-not (Test-Path -LiteralPath $appEntrypointTestScript -PathType Leaf)) {
     throw "The synthetic app entrypoint test script was not found: $appEntrypointTestScript"
+}
+if (-not (Test-Path -LiteralPath $msixContractTestScript -PathType Leaf)) {
+    throw "The MSIX contract test script was not found: $msixContractTestScript"
 }
 
 $projects = @($coreProject, $cliProject)
@@ -104,6 +108,9 @@ try {
 
     Write-Host "> synthetic release evidence contract tests" -ForegroundColor DarkGray
     & $releaseEvidenceTestScript
+
+    Write-Host "> MSIX packaging contract tests" -ForegroundColor DarkGray
+    & $msixContractTestScript
 
     foreach ($project in $projects) {
         Invoke-DotNet @("restore", $project)

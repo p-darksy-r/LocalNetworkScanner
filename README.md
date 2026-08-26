@@ -7,13 +7,15 @@
 ![Windows](https://img.shields.io/badge/Windows-x64%20%7C%20ARM64-0078d4)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/LICENSE)
 
-[CI](https://github.com/p-darksy-r/LocalNetworkScanner/actions/workflows/ci.yml) · [Releases](https://github.com/p-darksy-r/LocalNetworkScanner/releases) · [Instalação](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/INSTALLATION.md) · [Privacidade](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/PRIVACY.md) · [Segurança](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/SECURITY.md) · [Code signing policy](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/CODE_SIGNING_POLICY.md) · [Limites técnicos](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/TECHNICAL_LIMITS.md)
+[CI](https://github.com/p-darksy-r/LocalNetworkScanner/actions/workflows/ci.yml) · [Releases](https://github.com/p-darksy-r/LocalNetworkScanner/releases) · [Instalação](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/INSTALLATION.md) · [MSIX/Store](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/MSIX.md) · [Privacidade](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/PRIVACY.md) · [Segurança](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/SECURITY.md) · [Code signing policy](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/CODE_SIGNING_POLICY.md) · [Limites técnicos](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/TECHNICAL_LIMITS.md)
 
 Scanner de redes locais para Windows com uma UI WPF simples, uma CLI para automação, diagnósticos acionáveis e topologia opcional. O programa separa observações diretas, dados fornecidos pela infraestrutura e inferências, para que um resultado provável nunca seja apresentado como facto confirmado.
 
 > **Estado de distribuição:** o repositório é público, mas todos os binários publicados atualmente continuam sem assinatura Authenticode. A `v1.2.0` foi reclassificada como prerelease histórica e não é recomendada para instalação; atualmente nenhuma release está marcada como `Latest`. A `v1.4.0` é o candidato de código e QA mais recente; a sua prerelease conserva o título histórico `Private QA (NotSigned)`, mas os assets são agora publicamente acessíveis e não constituem uma distribuição de produção.
 >
 > O `main` prepara a versão `1.4.1`, ainda sem tag nem release. A avaliação de elegibilidade para o programa gratuito da SignPath Foundation está pendente. O projeto ainda não foi aceite, não tem integração SignPath configurada e não possui uma release assinada pela SignPath Foundation. Uma eventual primeira release assinada terá de usar uma versão/tag nova e só poderá tornar-se estável/`Latest` depois dos gates de assinatura, validação x64/ARM64, política e redistribuição. Consulte a [Code signing policy](CODE_SIGNING_POLICY.md) e o [guia técnico de assinatura](docs/SIGNING.md).
+>
+> O `main` também contém agora uma infraestrutura **MSIX em preparação**, separada das releases GitHub: `PrivateTest` usa um certificado autoassinado apenas para sideload interno autorizado; `Store` gera um candidato sem assinatura com a identidade que vier a ser atribuída pelo Partner Center. Ainda não existe uma publicação Microsoft Store, e o certificado de teste não torna os EXE/ZIP/instaladores publicamente confiáveis.
 
 ![Janela principal com inventário de dispositivos demonstrativos](docs/images/main-window-current.png)
 
@@ -175,8 +177,10 @@ Um diagnóstico inclui código, categoria, severidade, mensagem em pt-PT, ação
 | `LNS-NET-*` | interface, conectividade, firewall ou política da rede |
 | `LNS-DEV-*` | resposta ou identidade inválida/desconhecida de um dispositivo |
 | `LNS-APP-*` | ficheiro, acesso ou falha inesperada da aplicação |
+| `LNS-REL-*` | build, assinatura e publicação das releases GitHub |
+| `LNS-MSX-*` | certificado, manifesto, pacote ou bundle MSIX |
 
-Um aviso de fabricante ou dispositivo desconhecido não significa que o scan falhou. O catálogo público documenta 32 códigos da aplicação/scan, 10 códigos de release e os exit codes da CLI: [Códigos de erro e diagnóstico](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/ERROR_CODES.md).
+Um aviso de fabricante ou dispositivo desconhecido não significa que o scan falhou. O catálogo público documenta 32 códigos da aplicação/scan, 10 códigos de release, 6 códigos MSIX e os exit codes da CLI: [Códigos de erro e diagnóstico](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/docs/ERROR_CODES.md).
 
 Ao pedir suporte, partilhe o código, a versão, a arquitetura e passos mínimos de reprodução. A CLI pode criar um relatório agregado concebido para esse fim:
 
@@ -287,7 +291,7 @@ Validação completa:
 powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1 -Configuration Release -VerifyFormat
 ```
 
-O mesmo script é usado localmente e no job x64 do CI. O gate verifica copyright, sintaxe dos scripts PowerShell, contratos sintéticos de release, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.4.0`, a suite contém 95 testes; o número atual é validado pelo próprio harness. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI.
+O mesmo script é usado localmente e no job x64 do CI. O gate verifica copyright, sintaxe dos scripts PowerShell, contratos sintéticos de release e MSIX, ausência de material de chave privada, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.4.0`, a suite contém 95 testes; o número atual é validado pelo próprio harness. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI. O job x64 cria e valida ainda um bundle `PrivateTest` x64+ARM64; o job ARM64 valida adicionalmente o pacote e executáveis de forma nativa. Ambos usam certificados efémeros não exportáveis e removem a chave do runner sem publicar os pacotes.
 
 O workflow CodeQL está configurado para analisar C# com consultas `security-extended` no repositório público; o resultado de cada execução deve ser verificado no GitHub e não é substituído por esta afirmação documental. A release restaura metadados de dependências para `win-x64` e `win-arm64`, exige ambos os runtimes e gera/valida um SBOM SPDX 2.2 como evidência separada, sem o confundir com os dez ficheiros instaláveis validados.
 
@@ -320,6 +324,21 @@ Instalador Inno Setup:
 powershell -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -RuntimeIdentifier win-x64
 ```
 
+MSIX interno x64, assinado pelo certificado isolado de QA:
+
+```powershell
+.\scripts\new-private-test-certificate.ps1
+.\scripts\build-msix.ps1 -Mode PrivateTest -RuntimeIdentifier win-x64
+```
+
+Bundle MSIX x64+ARM64 para QA interno:
+
+```powershell
+.\scripts\build-msix-bundle.ps1 -Mode PrivateTest
+```
+
+Um candidato para a Microsoft Store exige os três valores exatos de **Product identity** reservados no Partner Center e permanece propositadamente sem assinatura local; a Microsoft reassina o pacote aprovado. A Microsoft documenta atualmente onboarding sem taxa quando iniciado em `storedeveloper.microsoft.com`, embora continue a exigir conta, verificação de identidade e certificação. Este canal não assina nem melhora a reputação de executáveis soltos distribuídos pelo GitHub. Consulte o [guia MSIX completo](docs/MSIX.md) antes de confiar o CRT, instalar um pacote de teste ou criar um bundle Store.
+
 O workflow de release é exclusivamente manual: criar ou fazer push de uma tag não inicia uma execução vazia nem apresenta um falso sucesso. Depois de criar uma tag existente `vX.Y.Z` que corresponda à versão em `Directory.Build.props`, faça o dispatch explicitamente contra essa ref — por exemplo, `gh workflow run release.yml --ref vX.Y.Z -f publish_release=true` — apenas para produção assinada. O workflow recusa pedidos executados sobre um branch; antes do build, o preflight confirma que tags lightweight ou anotadas resolvem para o HEAD atual de `main` e apresenta códigos `LNS-REL-*` para configurações ou autorizações ausentes.
 
 O workflow versionado atualmente implementa apenas o backend **Microsoft Artifact Signing por OIDC**. Esse backend não está configurado neste repositório e não deve ser confundido com a candidatura SignPath pendente. O repositório ainda não contém o transporte por GitHub Actions artifact, a ação de submissão, os identificadores nem a política de origin verification necessários à SignPath; essa integração só será implementada depois de uma decisão de elegibilidade e da configuração fornecida pelo serviço. Em qualquer backend aceite, a chave privada permanece fora do repositório.
@@ -338,9 +357,11 @@ LocalNetworkScanner.Cli/    interface de linha de comandos
 LocalNetworkScanner.Wpf/    aplicação gráfica Windows
 LocalNetworkScanner.Tests/  harness determinístico e smoke WPF
 app/                        entrada simples para a build local nativa mais recente
+crt/                        certificado público de QA MSIX; nunca contém a chave privada
 .github/                    CI, release, propriedade e templates
 docs/                       instalação, diagnósticos e limites técnicos
 installer/                  instalador por utilizador com Inno Setup
+packaging/msix/             manifesto parametrizado e assets x64/ARM64 para MSIX
 scripts/                    validação, publish e empacotamento
 ```
 
