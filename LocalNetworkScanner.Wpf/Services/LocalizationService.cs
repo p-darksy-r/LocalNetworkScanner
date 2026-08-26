@@ -303,7 +303,7 @@ public static class LocalizationService
             ["Vizinho Reachable atual/revalidado"] = "Current/revalidated Reachable neighbor",
             ["Outro protocolo / origem não classificada"] = "Other protocol / unclassified source"
             ,
-            ["Sobre — Local Network Scanner"] = "About — Local Network Scanner"
+            ["Sobre — Local Network Scanner"] = "About Local Network Scanner"
             ,
             ["Topologia da rede — Local Network Scanner"] = "Network topology — Local Network Scanner"
             ,
@@ -1052,13 +1052,19 @@ public static class LocalizationService
 
     private static IEnumerable<DependencyObject> EnumerateChildren(DependencyObject parent)
     {
-        int visualCount = VisualTreeHelper.GetChildrenCount(parent);
-        for (int index = 0; index < visualCount; index++)
+        // WPF logical resources such as ColumnDefinition and RowDefinition are
+        // DependencyObjects, but they are not Visual/Visual3D nodes. Calling
+        // VisualTreeHelper on them throws and can abort window construction.
+        if (parent is Visual or Visual3D)
         {
-            DependencyObject child = VisualTreeHelper.GetChild(parent, index);
-            yield return child;
-            foreach (DependencyObject descendant in EnumerateChildren(child))
-                yield return descendant;
+            int visualCount = VisualTreeHelper.GetChildrenCount(parent);
+            for (int index = 0; index < visualCount; index++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(parent, index);
+                yield return child;
+                foreach (DependencyObject descendant in EnumerateChildren(child))
+                    yield return descendant;
+            }
         }
 
         if (parent is not FrameworkElement)
