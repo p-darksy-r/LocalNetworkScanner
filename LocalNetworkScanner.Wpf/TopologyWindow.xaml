@@ -4,6 +4,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:LocalNetworkScanner.Wpf.Controls"
+        xmlns:loc="clr-namespace:LocalNetworkScanner.Wpf.Services"
         Title="Topologia da rede — Local Network Scanner"
         Width="1240"
         Height="760"
@@ -15,7 +16,8 @@
         WindowStartupLocation="CenterOwner"
         Loaded="OnLoaded"
         PreviewKeyDown="OnPreviewKeyDown"
-        AutomationProperties.Name="Topologia do scan atual">
+        AutomationProperties.Name="Topologia do scan atual"
+        loc:LocalizationService.IsEnabled="True">
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -41,7 +43,7 @@
                                Text="Topologia do scan" />
                     <TextBlock Margin="0,3,0,0"
                                Foreground="{DynamicResource TextSecondaryBrush}"
-                               Text="{Binding TopologyMap.NetworkCidr, StringFormat=Mapa opcional da rede {0}}" />
+                               Text="{Binding TopologyMap.NetworkCidr, Converter={StaticResource LocalizedFormatConverter}, ConverterParameter=Mapa opcional da rede |}" />
                 </StackPanel>
                 <Button Grid.Column="1"
                         Margin="12,0,0,0"
@@ -296,7 +298,7 @@
                                 <TextBlock Margin="0,1"
                                            FontSize="11"
                                            Foreground="{DynamicResource WarningBrush}"
-                                           Text="{Binding StringFormat=• {0}}"
+                                           Text="{Binding Path=., Converter={StaticResource LocalizedFormatConverter}, ConverterParameter=• |}"
                                            TextWrapping="Wrap" />
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -321,9 +323,9 @@
                     <TextBlock Margin="0,3,0,0" FontWeight="SemiBold" Text="{Binding SelectedTopologyNode.Label, TargetNullValue=Nenhum nó selecionado}" TextTrimming="CharacterEllipsis" />
                     <TextBlock Margin="0,2,0,0" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding SelectedTopologyNode.Subtitle}" TextTrimming="CharacterEllipsis" />
                     <WrapPanel Margin="0,3,0,0">
-                        <TextBlock Margin="0,0,12,0" FontSize="11" Text="{Binding SelectedTopologyNode.IpAddress, StringFormat=IP: {0}}" />
-                        <TextBlock Margin="0,0,12,0" FontSize="11" Text="{Binding SelectedTopologyNode.VlanId, StringFormat=VLAN: {0}}" />
-                        <TextBlock FontSize="11" Text="{Binding SelectedTopologyNode.RiskLevel, StringFormat=Risco: {0}}" />
+                        <TextBlock Margin="0,0,12,0" FontSize="11" Text="{Binding SelectedTopologyNode.IpAddress, Converter={StaticResource LocalizedFormatConverter}, ConverterParameter=IP: |}" />
+                        <TextBlock Margin="0,0,12,0" FontSize="11" Text="{Binding SelectedTopologyNode.VlanId, Converter={StaticResource LocalizedFormatConverter}, ConverterParameter=VLAN: |}" />
+                        <TextBlock FontSize="11" Text="{Binding SelectedTopologyNode.RiskLevel, Converter={StaticResource LocalizedFormatConverter}, ConverterParameter=Risco: |}" />
                     </WrapPanel>
                 </StackPanel>
             </Border>

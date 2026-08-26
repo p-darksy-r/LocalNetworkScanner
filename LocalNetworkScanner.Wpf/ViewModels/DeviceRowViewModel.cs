@@ -4,6 +4,7 @@ using LocalNetworkScanner.Core.Models;
 using LocalNetworkScanner.Core.Services;
 using LocalNetworkScanner.Core.Utilities;
 using LocalNetworkScanner.Wpf.Infrastructure;
+using LocalNetworkScanner.Wpf.Services;
 using System.Globalization;
 
 namespace LocalNetworkScanner.Wpf.ViewModels;
@@ -23,84 +24,84 @@ public sealed class DeviceRowViewModel : ObservableObject
 
     public NetworkDevice Device => _device;
 
-    public string StatusText => _device.IsOnline ? "Online" : "Offline";
+    public string StatusText => L(_device.IsOnline ? "Online" : "Offline");
     public string IpAddress => _device.IpAddressText;
     public uint IpSortKey => IpAddressHelper.ToUInt32(_device.IpAddress);
     public string Hostname => _device.IdentityDisplay;
     public string HostnameTechnical => _device.HostnameDisplay;
-    public string NetBiosName => string.IsNullOrWhiteSpace(_device.NetBiosName) ? "—" : _device.NetBiosName;
-    public string Workgroup => string.IsNullOrWhiteSpace(_device.Workgroup) ? "—" : _device.Workgroup;
+    public string NetBiosName => string.IsNullOrWhiteSpace(_device.NetBiosName) ? "—" : E(_device.NetBiosName);
+    public string Workgroup => string.IsNullOrWhiteSpace(_device.Workgroup) ? "—" : E(_device.Workgroup);
     public string WsDiscovery => string.IsNullOrWhiteSpace(_device.WsDiscoveryTypes)
         ? "—"
-        : _device.WsDiscoveryTypes;
+        : E(_device.WsDiscoveryTypes);
     public string MacAddress => _device.MacDisplay;
-    public string MacEvidence => _device.MacEvidenceDisplay;
-    public string Manufacturer => _device.ManufacturerDisplay;
-    public string MacAssignee => _device.MacAssigneeDisplay;
+    public string MacEvidence => E(_device.MacEvidenceDisplay);
+    public string Manufacturer => E(_device.ManufacturerDisplay);
+    public string MacAssignee => E(_device.MacAssigneeDisplay);
     public string MacAssignment => BuildMacAssignment();
-    public string Model => _device.ModelDisplay;
+    public string Model => E(_device.ModelDisplay);
     public string FriendlyName => ValueOrDash(_device.FriendlyName);
     public string SerialNumber => ValueOrDash(_device.SerialNumber);
     public string Firmware => ValueOrDash(_device.Firmware);
     public string HardwareRevision => ValueOrDash(_device.HardwareRevision);
     public string IdentityDescription => ValueOrDash(_device.IdentityDescription);
-    public string IdentityConfidence => _device.IdentityConfidenceDisplay;
+    public string IdentityConfidence => L(_device.IdentityConfidenceDisplay);
     public string SsdpServiceType => ValueOrDash(_device.SsdpServiceType);
     public string SsdpUniqueServiceName => ValueOrDash(_device.SsdpUniqueServiceName);
     public string SsdpEndpoint => BuildEndpoint(_device.SsdpServer, _device.SsdpLocation);
-    public string MdnsServiceSummary => BuildMdnsServiceSummary(_device.MdnsServices);
+    public string MdnsServiceSummary => L(BuildMdnsServiceSummary(_device.MdnsServices));
     public string MdnsServiceSearchText => BuildMdnsServiceSearchText(_device.MdnsServices);
     public string SnmpIdentity => BuildEndpoint(_device.SnmpDescription, _device.SnmpObjectIdentifier);
     public string NmapIdentity => ValueOrDash(_device.NmapSummary);
     public string ResponseTime => _device.ResponseTimeDisplay;
     public long ResponseTimeSortKey => _device.ResponseTimeMs ?? long.MaxValue;
-    public string DeviceType => _device.DeviceType;
-    public string OsGuess => _device.OsGuess;
-    public string RiskLevel => _device.RiskLevel;
-    public string RiskDisplay => $"{_device.RiskLevel} · {_device.RiskScore}/100";
+    public string DeviceType => L(_device.DeviceType);
+    public string OsGuess => L(_device.OsGuess);
+    public string RiskLevel => L(_device.RiskLevel);
+    public string RiskDisplay => $"{RiskLevel} · {_device.RiskScore}/100";
     public int RiskScore => _device.RiskScore;
-    public string Discovery => _device.DiscoveryText;
-    public string Protocols => _device.ProtocolsText;
-    public string OpenPorts => _device.OpenPortsText;
+    public string Discovery => L(_device.DiscoveryText);
+    public string Protocols => L(_device.ProtocolsText);
+    public string OpenPorts => L(_device.OpenPortsText);
     public int OpenPortCount => _device.Ports.Count;
-    public string Topology => _device.TopologyText;
-    public string History => _device.HistoryText;
-    public string ReplyTtl => _device.ReplyTtl?.ToString(CultureInfo.CurrentCulture) ?? "—";
-    public string FirstSeen => _device.FirstSeen.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
-    public string LastSeen => _device.LastSeen.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
-    public string Vlan => _device.Topology.VlanId.HasValue
+    public string Topology => L(_device.TopologyText);
+    public string History => L(_device.HistoryText);
+    public string ReplyTtl => _device.ReplyTtl?.ToString(LocalizationService.CurrentCulture) ?? "—";
+    public string FirstSeen => _device.FirstSeen.ToLocalTime().ToString("g", LocalizationService.CurrentCulture);
+    public string LastSeen => _device.LastSeen.ToLocalTime().ToString("g", LocalizationService.CurrentCulture);
+    public string Vlan => L(_device.Topology.VlanId.HasValue
         ? $"VLAN {_device.Topology.VlanId}"
         : _device.Topology.SwitchPortPvid.HasValue
             ? $"VLAN não confirmada · PVID da porta {_device.Topology.SwitchPortPvid} (apenas referência)"
-            : "VLAN não confirmada";
-    public string Layer2 => _device.Topology.SameLayer2Segment switch
+            : "VLAN não confirmada");
+    public string Layer2 => L(_device.Topology.SameLayer2Segment switch
     {
         true => "Mesmo segmento L2",
         false => "Segmento L2 diferente",
         null => "Segmento L2 indeterminado"
-    };
-    public string SameSwitch => _device.Topology.SamePhysicalSwitch switch
+    });
+    public string SameSwitch => L(_device.Topology.SamePhysicalSwitch switch
     {
         true => "Mesmo switch físico",
         false => "Switch físico diferente",
         null => _device.Topology.ObservedOnManagedBridge
             ? "MAC observado na FDB do switch; ligação física não confirmada"
             : "Switch físico indeterminado"
-    };
-    public string Layer2Confidence => ConfidenceToText(_device.Topology.Layer2Confidence);
-    public string VlanConfidence => ConfidenceToText(_device.Topology.VlanConfidence);
-    public string SwitchEvidence => _device.Topology.SwitchEvidence;
-    public string Infrastructure => _device.InfrastructureSummary;
+    });
+    public string Layer2Confidence => L(ConfidenceToText(_device.Topology.Layer2Confidence));
+    public string VlanConfidence => L(ConfidenceToText(_device.Topology.VlanConfidence));
+    public string SwitchEvidence => L(_device.Topology.SwitchEvidence);
+    public string Infrastructure => L(_device.InfrastructureSummary);
     public string WifiSignal => _device.WifiSignalDbm.HasValue
         ? $"{_device.WifiSignalDbm} dBm"
         : "—";
     public string WifiAccessPoint => ValueOrDash(_device.WifiAccessPoint);
     public string WifiRadio => ValueOrDash(_device.WifiRadio);
-    public string RandomizedMac => _device.IsRandomizedMac ? "Sim" : "Não";
+    public string RandomizedMac => L(_device.IsRandomizedMac ? "Sim" : "Não");
 
     public IReadOnlyList<PortScanResult> Ports => _device.Ports;
-    public IReadOnlyList<string> SecurityFindings => _device.SecurityFindings;
-    public IReadOnlyList<string> Changes => _device.Changes;
+    public IReadOnlyList<string> SecurityFindings => _device.SecurityFindings.Select(L).ToArray();
+    public IReadOnlyList<string> Changes => _device.Changes.Select(L).ToArray();
     public IReadOnlyList<string> MdnsNames => _device.MdnsNames;
     public IReadOnlyList<string> IdentityEvidenceLines => _device.IdentityEvidence
         .OrderByDescending(evidence => evidence.Confidence)
@@ -165,6 +166,8 @@ public sealed class DeviceRowViewModel : ObservableObject
     public bool CanOpenExplorer => _device.Ports.Any(item => item.Port is 139 or 445);
     public bool CanOpenRemoteDesktop => _device.Ports.Any(item => item.Port == 3389);
 
+    public void RefreshLocalized() => OnAllPropertiesChanged();
+
     public void Update(NetworkDevice device)
     {
         ArgumentNullException.ThrowIfNull(device);
@@ -213,7 +216,7 @@ public sealed class DeviceRowViewModel : ObservableObject
         if (!string.IsNullOrWhiteSpace(_device.MacRegistry))
             parts.Add(_device.MacRegistry);
         if (!string.IsNullOrWhiteSpace(_device.MacAssignmentPrefix))
-            parts.Add($"prefixo {_device.MacAssignmentPrefix}");
+            parts.Add($"{L("prefixo")} {_device.MacAssignmentPrefix}");
 
         return parts.Count == 0 ? "—" : string.Join(" · ", parts);
     }
@@ -288,7 +291,7 @@ public sealed class DeviceRowViewModel : ObservableObject
         AddEvidenceDetail(details, "origem", evidence.Endpoint);
 
         string heading = $"{evidence.Source} · {MethodToText(evidence.Method)} · " +
-            ConfidenceToText(evidence.Confidence);
+            L(ConfidenceToText(evidence.Confidence));
         return details.Count == 0
             ? heading
             : $"{heading}: {string.Join(" · ", details)}";
@@ -297,7 +300,7 @@ public sealed class DeviceRowViewModel : ObservableObject
     private static void AddEvidenceDetail(List<string> details, string label, string? value)
     {
         if (!string.IsNullOrWhiteSpace(value))
-            details.Add($"{label}: {value}");
+            details.Add($"{E(label)}: {E(value)}");
     }
 
     private static string MethodToText(DiscoveryMethod method) => method switch
@@ -315,8 +318,12 @@ public sealed class DeviceRowViewModel : ObservableObject
         _ => method.ToString()
     };
 
+    private static string L(string value) => LocalizationService.Translate(value);
+
+    private static string E(string? value) => LocalizationService.TranslateExact(value);
+
     private static string ValueOrDash(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? "—" : value;
+        string.IsNullOrWhiteSpace(value) ? "—" : E(value);
 }
 
 // Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

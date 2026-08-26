@@ -11,7 +11,7 @@ using LocalNetworkScanner.Wpf.Services;
 
 namespace LocalNetworkScanner.Wpf;
 
-public partial class AboutWindow : Window
+public partial class AboutWindow : Window, INotifyPropertyChanged
 {
     private static readonly Uri RepositoryUri =
         new("https://github.com/p-darksy-r/LocalNetworkScanner", UriKind.Absolute);
@@ -26,6 +26,8 @@ public partial class AboutWindow : Window
 
     private readonly DesktopActionService _desktopActions = new();
     private readonly UserDialogService _dialogs = new();
+    private readonly string _version;
+    private readonly string _summarySource;
     private bool _hasLoaded;
 
     public AboutWindow()
@@ -38,9 +40,11 @@ public partial class AboutWindow : Window
         string version = informationalVersion?.Split('+', 2)[0] ??
             assembly.GetName().Version?.ToString(3) ??
             "0.0.0";
-        VersionLabel = $"Versão {version}";
-        Summary = assembly.GetCustomAttribute<AssemblyDescriptionAttribute>()?.Description ??
+        _version = version;
+        _summarySource = assembly.GetCustomAttribute<AssemblyDescriptionAttribute>()?.Description ??
             "Scanner de redes locais para Windows.";
+        VersionLabel = BuildVersionLabel();
+        Summary = LocalizationService.Translate(_summarySource);
         Creator = assembly.GetCustomAttribute<AssemblyCompanyAttribute>()?.Company ?? "p-darksy-r";
         CopyrightText = assembly.GetCustomAttribute<AssemblyCopyrightAttribute>()?.Copyright ??
             "Copyright (c) 2026 p-darksy-r and Local Network Scanner.";
@@ -48,19 +52,27 @@ public partial class AboutWindow : Window
 
         InitializeComponent();
         DataContext = this;
+        LanguageSelector.DisplayMemberPath = nameof(LanguageOption.DisplayName);
+        LanguageSelector.SelectedValuePath = nameof(LanguageOption.Tag);
+        LanguageSelector.ItemsSource = LocalizationService.LanguageOptions;
+        LanguageSelector.SelectedValue = LocalizationService.CurrentTag;
+        LocalizationService.LanguageChanged += OnLanguageChanged;
+        Closed += OnClosed;
     }
 
     public string ProductName { get; }
 
-    public string VersionLabel { get; }
+    public string VersionLabel { get; private set; }
 
-    public string Summary { get; }
+    public string Summary { get; private set; }
 
     public string Creator { get; }
 
     public string CopyrightText { get; }
 
     public string RuntimeLabel { get; }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -70,6 +82,30 @@ public partial class AboutWindow : Window
         _hasLoaded = true;
         FitWindowToWorkArea();
         CloseAboutButton.Focus();
+    }
+
+    private void OnLanguageSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (LanguageSelector.SelectedValue is string tag)
+            LocalizationService.SetLanguage(tag);
+    }
+
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        VersionLabel = BuildVersionLabel();
+        Summary = LocalizationService.Translate(_summarySource);
+        LanguageSelector.ItemsSource = LocalizationService.LanguageOptions;
+        LanguageSelector.SelectedValue = LocalizationService.CurrentTag;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VersionLabel)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Summary)));
+    }
+
+    private string BuildVersionLabel() => $"{LocalizationService.Translate("Versão")} {_version}";
+
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        LocalizationService.LanguageChanged -= OnLanguageChanged;
+        Closed -= OnClosed;
     }
 
     private void FitWindowToWorkArea()

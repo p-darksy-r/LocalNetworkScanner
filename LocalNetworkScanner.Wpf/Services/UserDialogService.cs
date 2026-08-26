@@ -30,8 +30,8 @@ public sealed class UserDialogService
     public bool Confirm(string title, string message) =>
         MessageBox.Show(
             Application.Current.MainWindow,
-            message,
-            title,
+            LocalizationService.Translate(message),
+            LocalizationService.Translate(title),
             MessageBoxButton.YesNo,
             MessageBoxImage.Question,
             MessageBoxResult.No) == MessageBoxResult.Yes;
@@ -39,8 +39,8 @@ public sealed class UserDialogService
     public void ShowError(string title, string message) =>
         MessageBox.Show(
             Application.Current.MainWindow,
-            message,
-            title,
+            LocalizationService.Translate(message),
+            LocalizationService.Translate(title),
             MessageBoxButton.OK,
             MessageBoxImage.Error);
 
@@ -53,19 +53,19 @@ public sealed class UserDialogService
 
         StringBuilder message = new();
         message.Append('[').Append(diagnostic.Code).Append("] ")
-            .Append(GetCategoryLabel(diagnostic.Category)).Append(" · ")
-            .AppendLine(GetSeverityLabel(diagnostic.Severity))
+            .Append(L(GetCategoryLabel(diagnostic.Category))).Append(" · ")
+            .AppendLine(L(GetSeverityLabel(diagnostic.Severity)))
             .AppendLine()
-            .AppendLine(diagnostic.Message)
+            .AppendLine(L(diagnostic.Message))
             .AppendLine()
-            .Append("O que fazer: ").Append(diagnostic.RecommendedAction);
+            .Append(L("O que fazer: ")).Append(L(diagnostic.RecommendedAction));
         if (!string.IsNullOrWhiteSpace(diagnostic.Target))
-            message.AppendLine().Append("Alvo: ").Append(diagnostic.Target);
+            message.AppendLine().Append(L("Alvo: ")).Append(diagnostic.Target);
 
         MessageBox.Show(
             owner,
-            message.ToString(),
-            title,
+            L(message.ToString()),
+            L(title),
             MessageBoxButton.OK,
             diagnostic.Severity is DiagnosticSeverity.Information
                 ? MessageBoxImage.Information
@@ -96,6 +96,8 @@ public sealed class UserDialogService
         DiagnosticCategory.Application => "Aplicação",
         _ => "Desconhecida"
     };
+
+    private static string L(string? value) => LocalizationService.Translate(value);
 
     private static string GetSeverityLabel(DiagnosticSeverity severity) => severity switch
     {

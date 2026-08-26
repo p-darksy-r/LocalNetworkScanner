@@ -14,6 +14,7 @@ using System.Windows.Media;
 using LocalNetworkScanner.Core.Models;
 using LocalNetworkScanner.Wpf.Controls;
 using LocalNetworkScanner.Wpf.Infrastructure;
+using LocalNetworkScanner.Wpf.Services;
 using Microsoft.Win32;
 using LocalNetworkScanner.Wpf.ViewModels;
 
@@ -27,6 +28,8 @@ public partial class TopologyWindow : Window
     private bool _isSynchronizingTableSelection;
     private bool _hasLoaded;
     private string? _lastSearchQuery;
+    private string? _topologySummarySource;
+    private string? _topologySearchStatusSource;
 
     public TopologyWindow(MainViewModel viewModel)
     {
@@ -36,6 +39,7 @@ public partial class TopologyWindow : Window
         DataContext = viewModel;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         TopologyGraph.ViewportChanged += OnTopologyViewportChanged;
+        LocalizationService.LanguageChanged += OnLanguageChanged;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -56,7 +60,19 @@ public partial class TopologyWindow : Window
     {
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         TopologyGraph.ViewportChanged -= OnTopologyViewportChanged;
+        LocalizationService.LanguageChanged -= OnLanguageChanged;
         base.OnClosed(e);
+    }
+
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        if (!IsLoaded)
+            return;
+
+        ApplyTopologyFilter();
+        if (_topologySearchStatusSource is not null)
+            SetTopologySearchStatus(_topologySearchStatusSource);
+        AnnounceSelectedTopologyNode();
     }
 
     private void FitWindowToCurrentWorkArea()
@@ -275,8 +291,8 @@ public partial class TopologyWindow : Window
                 node.IpAddress?.ToString() ?? "—",
                 node.Kind == NetworkMapNodeKind.NetworkSegment
                     ? "Rede"
-                    : node.IsOnline ? "Online" : "Não confirmado",
-                node.RiskLevel,
+                    : node.IsOnline ? L("Online") : L("Não confirmado"),
+                L(node.RiskLevel),
                 node.VlanId is int vlan ? vlan.ToString(CultureInfo.CurrentCulture) : "—"))
             .ToArray();
         TopologyEdgesTable.ItemsSource = visibleEdges
@@ -407,7 +423,8 @@ public partial class TopologyWindow : Window
         TopologySearchTextBox.Clear();
         _lastSearchQuery = null;
         TopologySearchStatusText.Text = string.Empty;
-        AutomationProperties.SetName(TopologySearchStatusText, "Estado da pesquisa na topologia");
+        AutomationProperties.SetName(TopologySearchStatusText, L("Estado da pesquisa na topologia"));
+        _topologySearchStatusSource = null;
         TopologySearchStatusText.Visibility = Visibility.Collapsed;
     }
 
@@ -429,19 +446,23 @@ public partial class TopologyWindow : Window
 
     private void SetTopologySummary(string message)
     {
-        if (string.Equals(TopologySummaryText.Text, message, StringComparison.Ordinal))
+        _topologySummarySource = message;
+        string localized = L(message);
+        if (string.Equals(TopologySummaryText.Text, localized, StringComparison.Ordinal))
             return;
 
-        TopologySummaryText.Text = message;
-        AutomationProperties.SetName(TopologySummaryText, $"Resumo da topologia: {message}");
+        TopologySummaryText.Text = localized;
+        AutomationProperties.SetName(TopologySummaryText, L($"Resumo da topologia: {message}"));
         RaiseLiveRegionChanged(TopologySummaryText);
     }
 
     private void SetTopologySearchStatus(string message)
     {
-        TopologySearchStatusText.Text = message;
+        _topologySearchStatusSource = message;
+        string localized = L(message);
+        TopologySearchStatusText.Text = localized;
         TopologySearchStatusText.Visibility = Visibility.Visible;
-        AutomationProperties.SetName(TopologySearchStatusText, message);
+        AutomationProperties.SetName(TopologySearchStatusText, localized);
         RaiseLiveRegionChanged(TopologySearchStatusText);
     }
 
@@ -449,11 +470,11 @@ public partial class TopologyWindow : Window
     {
         NetworkMapNode? node = _viewModel.SelectedTopologyNode;
         string message = node is null
-            ? "Nenhum nó selecionado"
-            : $"Nó selecionado: {node.Label}. " +
-              $"{(node.IpAddress is null ? "Sem endereço IP." : $"IP {node.IpAddress}.")} " +
-              $"Risco {node.RiskLevel}. " +
-              $"{(node.VlanId is int vlan ? $"VLAN {vlan}." : "VLAN não confirmada.")}";
+            ? L("Nenhum nó selecionado")
+            : L($"Nó selecionado: {node.Label}. ") +
+              L(node.IpAddress is null ? "Sem endereço IP." : $"IP {node.IpAddress}.") + " " +
+              L("Risco ") + L(node.RiskLevel) + ". " +
+              L(node.VlanId is int vlan ? $"VLAN {vlan}." : "VLAN não confirmada.");
         AutomationProperties.SetName(TopologySelectionRegion, message);
         RaiseLiveRegionChanged(TopologySelectionRegion);
     }
@@ -506,7 +527,7 @@ public partial class TopologyWindow : Window
         _ => 3
     };
 
-    private static string NodeKindText(NetworkMapNode node) => node.Kind switch
+    private static string NodeKindText(NetworkMapNode node) => L(node.Kind switch
     {
         NetworkMapNodeKind.NetworkSegment => "Rede",
         NetworkMapNodeKind.Gateway => "Gateway / router",
@@ -515,9 +536,9 @@ public partial class TopologyWindow : Window
         NetworkMapNodeKind.LocalHost => "Este computador",
         _ when NetworkTopologyControl.IsInfrastructureNode(node) => "Infraestrutura",
         _ => "Cliente / dispositivo"
-    };
+    });
 
-    private static string EdgeKindText(NetworkMapEdgeKind kind) => kind switch
+    private static string EdgeKindText(NetworkMapEdgeKind kind) => L(kind switch
     {
         NetworkMapEdgeKind.Layer2Observed => "ARP / L2 observado",
         NetworkMapEdgeKind.MacLearned => "FDB / SNMP",
@@ -525,24 +546,26 @@ public partial class TopologyWindow : Window
         NetworkMapEdgeKind.DefaultRoute => "Rota predefinida",
         NetworkMapEdgeKind.LldpNeighbor => "Vizinho LLDP",
         _ => "Pertence à rede"
-    };
+    });
 
-    private static string ConfidenceText(ConfidenceLevel confidence) => confidence switch
+    private static string ConfidenceText(ConfidenceLevel confidence) => L(confidence switch
     {
         ConfidenceLevel.High => "Alta",
         ConfidenceLevel.Medium => "Média",
         ConfidenceLevel.Low => "Baixa",
         _ => "Não especificada"
-    };
+    });
+
+    private static string L(string text) => LocalizationService.Translate(text);
 
     private void OnExportTopologyPngClick(object sender, RoutedEventArgs e)
     {
         SaveFileDialog dialog = new()
         {
-            Title = "Guardar mapa de topologia",
+            Title = L("Guardar mapa de topologia"),
             FileName = $"topologia-rede-{DateTime.Now:yyyyMMdd-HHmm}.png",
             DefaultExt = ".png",
-            Filter = "Imagem PNG (*.png)|*.png|Todos os ficheiros (*.*)|*.*",
+            Filter = L("Imagem PNG (*.png)|*.png|Todos os ficheiros (*.*)|*.*"),
             AddExtension = true,
             OverwritePrompt = true
         };
@@ -556,8 +579,8 @@ public partial class TopologyWindow : Window
             TopologyGraph.ExportVisiblePng(dialog.FileName);
             MessageBox.Show(
                 this,
-                $"Mapa guardado em:\n{dialog.FileName}",
-                "Topologia exportada",
+                L($"Mapa guardado em:\n{dialog.FileName}"),
+                L("Topologia exportada"),
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
@@ -565,7 +588,7 @@ public partial class TopologyWindow : Window
             exception is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             if (DataContext is MainViewModel viewModel)
-                viewModel.ReportException("Não foi possível guardar o mapa", exception, dialog.FileName);
+                viewModel.ReportException(L("Não foi possível guardar o mapa"), exception, dialog.FileName);
         }
     }
 

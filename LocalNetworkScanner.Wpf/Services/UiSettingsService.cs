@@ -65,6 +65,8 @@ public sealed class UiSettingsService
 public sealed class UiSettings
 {
     public AppThemeMode Theme { get; set; } = AppThemeMode.Light;
+    /// <summary>BCP-47 interface language tag persisted between sessions.</summary>
+    public string Language { get; set; } = "pt-PT";
     public string? LastInterfaceId { get; set; }
     public string? LastInterfaceAddress { get; set; }
     public string? LastCidr { get; set; }

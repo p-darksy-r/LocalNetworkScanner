@@ -3,6 +3,7 @@
 <Window x:Class="LocalNetworkScanner.Wpf.AboutWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:LocalNetworkScanner.Wpf.Services"
         Title="Sobre — Local Network Scanner"
         Width="640"
         Height="620"
@@ -17,7 +18,8 @@
         WindowStartupLocation="CenterOwner"
         Loaded="OnLoaded"
         PreviewKeyDown="OnPreviewKeyDown"
-        AutomationProperties.Name="Sobre o Local Network Scanner">
+        AutomationProperties.Name="Sobre o Local Network Scanner"
+        loc:LocalizationService.IsEnabled="True">
     <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
@@ -151,11 +153,29 @@
         </ScrollViewer>
 
         <Grid Grid.Row="1" Margin="0,14,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <WrapPanel VerticalAlignment="Center">
+            <StackPanel Grid.Row="0"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        Margin="0,0,0,8">
+                <TextBlock VerticalAlignment="Center"
+                           Margin="0,0,8,0"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Text="Idioma" />
+                <ComboBox x:Name="LanguageSelector"
+                          Width="190"
+                          SelectionChanged="OnLanguageSelectionChanged"
+                          AutomationProperties.Name="Escolher idioma"
+                          AutomationProperties.HelpText="Escolhe o idioma da interface entre Português (Portugal) e English (United States)." />
+            </StackPanel>
+            <WrapPanel Grid.Row="1" VerticalAlignment="Center">
                 <Button Margin="0,0,7,0"
                         Style="{StaticResource CompactButtonStyle}"
                         Click="OnRepositoryClick"
@@ -185,6 +205,7 @@
             </WrapPanel>
             <Button x:Name="CloseAboutButton"
                     Grid.Column="1"
+                    Grid.RowSpan="2"
                     Margin="12,0,0,0"
                     Style="{StaticResource IconButtonStyle}"
                     Click="OnCloseClick"

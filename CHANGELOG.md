@@ -20,7 +20,8 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 - onboarding inicial, não modal e persistente, explica redes autorizadas, tráfego ativo, histórico local e ausência de telemetria;
 - pesquisa de nós na topologia por nome, IP, MAC, tipo, VLAN ou identidade visível, com `Ctrl+F`, `Enter`/`F3`, centralização e anúncios acessíveis;
 - a janela Sobre liga diretamente às políticas de privacidade e assinatura;
-- seletor de tema claro/escuro no cabeçalho, com aplicação imediata, persistência local e atualização coerente da janela de topologia;
+- botão de ícone único para alternar o tema claro/escuro no cabeçalho, com glyph, tooltip e automação atualizados, aplicação imediata, persistência local e atualização coerente da janela de topologia;
+- localização pt-PT/en-US aplicada à UI WPF, incluindo opções de scan, diagnósticos, topologia, tooltips e a janela Sobre, com seleção de idioma persistida;
 - workflow manual para renderizar, validar e disponibilizar as imagens sintéticas da documentação num runner Windows quando App Control impede a renderização local;
 - pasta raiz `app` com lançador relativo e executável local gerado para a arquitetura nativa; versão, fontes, PE, SHA-256 e Authenticode são validados antes de uma substituição transacional, com lock entre processos, modo rápido para abrir, modo completo para QA local e publicação intermédia isolada dos artefactos de release.
 

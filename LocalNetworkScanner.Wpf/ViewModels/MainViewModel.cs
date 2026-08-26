@@ -109,54 +109,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _desktopActions = desktopActions;
         _settingsService = settingsService;
         _loadedSettings = settingsService.Load();
-
-        Profiles =
-        [
-            new ScanProfileOption(
-                ScanProfile.Quick,
-                "Rápido",
-                "Primeira passagem pelos mesmos alvos, com menos detalhe e tempos mais curtos.",
-                "Ping, ARP e portas essenciais",
-                "Mais rápido",
-                "VISÃO RÁPIDA"),
-            new ScanProfileOption(
-                ScanProfile.Standard,
-                "Normal",
-                "Os mesmos alvos, com tempo equilibrado e mais identidade e serviços.",
-                "mDNS, SSDP/UPnP, serviços e identidade",
-                "Equilibrado",
-                "RECOMENDADO"),
-            new ScanProfileOption(
-                ScanProfile.Deep,
-                "Avançado",
-                "Os mesmos alvos, com mais portas, tempo e enriquecimento opcional.",
-                "Mais portas; SNMP e Nmap opcionais",
-                "Mais demorado",
-                "ANÁLISE PROFUNDA")
-        ];
-        ThemeModes =
-        [
-            new ThemeModeOption(
-                AppThemeMode.Light,
-                "Claro",
-                "Usa a paleta clara da aplicação.",
-                "\uE793"),
-            new ThemeModeOption(
-                AppThemeMode.Dark,
-                "Escuro",
-                "Usa uma paleta escura com contraste adaptado.",
-                "\uE708")
-        ];
-        Filters =
-        [
-            new DeviceFilterOption("all", "Todos os dispositivos"),
-            new DeviceFilterOption("high", "Risco alto"),
-            new DeviceFilterOption("medium", "Risco médio"),
-            new DeviceFilterOption("low", "Risco baixo"),
-            new DeviceFilterOption("new", "Novos"),
-            new DeviceFilterOption("favorite", "Favoritos"),
-            new DeviceFilterOption("changed", "Alterados")
-        ];
+        LocalizationService.SetLanguage(_loadedSettings.Language, notify: false);
+        BuildLocalizedOptions();
 
         _selectedProfile = Profiles.FirstOrDefault(item => item.Value == _loadedSettings.Profile) ?? Profiles[1];
         AppThemeMode savedTheme = Enum.IsDefined(_loadedSettings.Theme)
@@ -165,6 +119,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _selectedTheme = ThemeModes.First(item => item.Value == savedTheme);
         _selectedFilter = Filters[0];
         ApplyLoadedSettings();
+        LocalizationService.LanguageChanged += OnLanguageChanged;
 
         DevicesView = CollectionViewSource.GetDefaultView(Devices);
         DevicesView.Filter = FilterDevice;
@@ -232,6 +187,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RemoteDesktopCommand = new RelayCommand(
             () => RunDesktopAction(_desktopActions.OpenRemoteDesktop, "Ligação de Ambiente de Trabalho Remoto iniciada."),
             () => SelectedDevice?.CanOpenRemoteDesktop == true);
+        ToggleThemeCommand = new RelayCommand(ToggleTheme);
 
         _uiTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -244,9 +200,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<DeviceRowViewModel> Devices { get; } = [];
     public ObservableCollection<DiagnosticRowViewModel> Diagnostics { get; } = [];
     public ObservableCollection<string> Warnings { get; } = [];
-    public IReadOnlyList<ScanProfileOption> Profiles { get; }
-    public IReadOnlyList<ThemeModeOption> ThemeModes { get; }
-    public IReadOnlyList<DeviceFilterOption> Filters { get; }
+    public IReadOnlyList<ScanProfileOption> Profiles { get; private set; } = [];
+    public IReadOnlyList<ThemeModeOption> ThemeModes { get; private set; } = [];
+    public IReadOnlyList<DeviceFilterOption> Filters { get; private set; } = [];
     public ICollectionView DevicesView { get; }
 
     public AsyncRelayCommand ScanCommand { get; }
@@ -274,6 +230,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand PingCommand { get; }
     public RelayCommand TracerouteCommand { get; }
     public RelayCommand RemoteDesktopCommand { get; }
+    public RelayCommand ToggleThemeCommand { get; }
 
     public LocalNetworkInterface? SelectedNetworkInterface
     {
@@ -324,6 +281,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 return;
 
             OnPropertyChanged(nameof(SelectedThemeDescription));
+            OnPropertyChanged(nameof(ThemeGlyph));
+            OnPropertyChanged(nameof(ThemeButtonToolTip));
+            OnPropertyChanged(nameof(ThemeButtonAutomationName));
+            OnPropertyChanged(nameof(ThemeButtonHelpText));
         }
     }
 
@@ -432,19 +393,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public string StatusMessage
     {
-        get => _statusMessage;
+        get => L(_statusMessage);
         private set => SetProperty(ref _statusMessage, value);
     }
 
     public string VendorDatabaseStatus
     {
-        get => _vendorDatabaseStatus;
+        get => L(_vendorDatabaseStatus);
         private set => SetProperty(ref _vendorDatabaseStatus, value);
     }
 
     public string ProgressPhase
     {
-        get => _progressPhase;
+        get => L(_progressPhase);
         private set
         {
             if (SetProperty(ref _progressPhase, value))
@@ -775,35 +736,35 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool HasUnsavedDeviceMetadata => Devices.Any(device => device.IsMetadataDirty);
     public string ScanConfigurationToggleLabel => IsScanConfigurationExpanded
-        ? "Ocultar configuração"
-        : "Configuração do scan";
+        ? L("Ocultar configuração")
+        : L("Configuração do scan");
     public string EmptyStateTitle => IsCancelling
-        ? "A cancelar o scan"
+        ? L("A cancelar o scan")
         : IsScanning
-            ? "A procurar dispositivos"
+            ? L("A procurar dispositivos")
         : _lastResult?.IsPartial == true
-            ? "Scan cancelado sem resultados completos"
-            : ProgressPhase.Equals("Erro", StringComparison.Ordinal)
-                ? "O scan não pôde ser concluído"
+            ? L("Scan cancelado sem resultados completos")
+            : _progressPhase.Equals("Erro", StringComparison.Ordinal)
+                ? L("O scan não pôde ser concluído")
                 : _lastResult is not null
-                    ? "Scan concluído sem dispositivos"
-                    : "Ainda não existem resultados";
+                    ? L("Scan concluído sem dispositivos")
+                    : L("Ainda não existem resultados");
     public string EmptyStateDescription => IsCancelling
-        ? "A terminar as operações de rede em curso e a preservar todos os resultados parciais já confirmados."
+        ? L("A terminar as operações de rede em curso e a preservar todos os resultados parciais já confirmados.")
         : IsScanning
-            ? "Os dispositivos aparecem aqui à medida que forem confirmados. Podes cancelar sem perder resultados já encontrados."
+            ? L("Os dispositivos aparecem aqui à medida que forem confirmados. Podes cancelar sem perder resultados já encontrados.")
         : _lastResult?.IsPartial == true
-            ? "Não foi concluído qualquer dispositivo antes do cancelamento. Consulta os diagnósticos e repete o scan quando estiveres pronto."
-            : ProgressPhase.Equals("Erro", StringComparison.Ordinal)
-                ? "Consulta o diagnóstico apresentado abaixo e revê a interface, a rede e os parâmetros antes de tentar novamente."
+            ? L("Não foi concluído qualquer dispositivo antes do cancelamento. Consulta os diagnósticos e repete o scan quando estiveres pronto.")
+            : _progressPhase.Equals("Erro", StringComparison.Ordinal)
+                ? L("Consulta o diagnóstico apresentado abaixo e revê a interface, a rede e os parâmetros antes de tentar novamente.")
                 : _lastResult is not null
-                    ? "O scan terminou, mas nenhum dispositivo foi confirmado online. Confirma o CIDR, a interface e eventuais regras de firewall."
-                    : "Seleciona uma interface e inicia um scan. Os dispositivos aparecem aqui à medida que forem encontrados.";
+                    ? L("O scan terminou, mas nenhum dispositivo foi confirmado online. Confirma o CIDR, a interface e eventuais regras de firewall.")
+                    : L("Seleciona uma interface e inicia um scan. Os dispositivos aparecem aqui à medida que forem encontrados.");
     public string EmptyStateGlyph => IsCancelling
         ? "\uE711"
         : IsScanning
             ? "\uE895"
-        : ProgressPhase.Equals("Erro", StringComparison.Ordinal)
+        : _progressPhase.Equals("Erro", StringComparison.Ordinal)
             ? "\uEA39"
             : _lastResult?.IsPartial == true
                 ? "\uE7BA"
@@ -819,17 +780,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         (UseCustomScanSettings && HasInputValidationErrors) || HasNmapPathValidationError;
     public string InputValidationMessage => HasBlockingInputValidationErrors
         ? HasNmapPathValidationError && _inputValidationErrorCount == 0
-            ? "O caminho explícito do Nmap é inválido. Corrige-o ou deixa-o vazio para autodeteção."
+            ? L("O caminho explícito do Nmap é inválido. Corrige-o ou deixa-o vazio para autodeteção.")
             : HasNmapPathValidationError
-                ? "Existem valores técnicos inválidos, incluindo o caminho do Nmap. Corrige os campos assinalados."
+                ? L("Existem valores técnicos inválidos, incluindo o caminho do Nmap. Corrige os campos assinalados.")
                 : _inputValidationErrorCount == 1
-                    ? "Existe 1 valor técnico inválido. Corrige o campo assinalado antes de iniciar o scan."
-                    : $"Existem {_inputValidationErrorCount:N0} valores técnicos inválidos. Corrige os campos assinalados antes de iniciar o scan."
+                    ? L("Existe 1 valor técnico inválido. Corrige o campo assinalado antes de iniciar o scan.")
+                    : L($"Existem {_inputValidationErrorCount:N0} valores técnicos inválidos. Corrige os campos assinalados antes de iniciar o scan.")
         : string.Empty;
     public bool HasDiagnostics => Diagnostics.Count > 0;
     public string DiagnosticSummary => Diagnostics.Count == 1
-        ? "1 diagnóstico do scan"
-        : $"{Diagnostics.Count:N0} diagnósticos do scan";
+        ? L("1 diagnóstico do scan")
+        : L($"{Diagnostics.Count:N0} diagnósticos do scan");
     public bool HasWarnings => Warnings.Count > 0;
     public bool IsSnmpEnabled => EnableSnmpDeviceDiscovery || EnableSnmpTopology;
     public bool IsNmapProfileEligible => SelectedProfile.Value == ScanProfile.Deep;
@@ -837,27 +798,35 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public int ActiveCustomOverrideCount => UseCustomScanSettings ? CustomOverrideCount : 0;
     public string CustomOverridesStatus => UseCustomScanSettings
         ? ActiveCustomOverrideCount == 1
-            ? "1 substituição ativa"
-            : $"{ActiveCustomOverrideCount:N0} substituições ativas"
-        : "0 substituições ativas · perfil em controlo";
+            ? L("1 substituição ativa")
+            : L($"{ActiveCustomOverrideCount:N0} substituições ativas")
+        : L("0 substituições ativas · perfil em controlo");
     public string CustomSettingsExplanation => UseCustomScanSettings
         ? CustomOverrideCount == 0
-            ? $"As definições correspondem ao perfil {SelectedProfile.DisplayName}."
-            : $"Os valores alterados abaixo substituem o perfil {SelectedProfile.DisplayName}."
-        : $"O perfil {SelectedProfile.DisplayName} comanda o scan; os valores guardados abaixo estão inativos.";
+            ? L($"As definições correspondem ao perfil {SelectedProfile.DisplayName}.")
+            : L($"Os valores alterados abaixo substituem o perfil {SelectedProfile.DisplayName}.")
+        : L($"O perfil {SelectedProfile.DisplayName} comanda o scan; os valores guardados abaixo estão inativos.");
     public string SelectedProfileDescription => UseCustomScanSettings
-        ? $"{SelectedProfile.Description}. As definições personalizadas ativas podem substituir este perfil."
-        : $"{SelectedProfile.Description}. Este perfil comanda o scan.";
-    public string SelectedThemeDescription => SelectedTheme.Description;
+        ? L($"{SelectedProfile.Description}. As definições personalizadas ativas podem substituir este perfil.")
+        : L($"{SelectedProfile.Description}. Este perfil comanda o scan.");
+    public string SelectedThemeDescription => L(SelectedTheme.Description);
+    public string ThemeGlyph => SelectedTheme.Value == AppThemeMode.Dark ? "\uE706" : "\uE708";
+    public string ThemeButtonToolTip => SelectedTheme.Value == AppThemeMode.Dark
+        ? L("Mudar para o tema claro")
+        : L("Mudar para o tema escuro");
+    public string ThemeButtonAutomationName => SelectedTheme.Value == AppThemeMode.Dark
+        ? L("Mudar para o tema claro")
+        : L("Mudar para o tema escuro");
+    public string ThemeButtonHelpText => L("Alterna entre o tema claro e o tema escuro. A escolha é guardada localmente.");
     public string SelectedInterfaceSummary => SelectedNetworkInterface is null
-        ? "Nenhuma interface selecionada"
+        ? L("Nenhuma interface selecionada")
         : $"{SelectedNetworkInterface.IpAddress}/{SelectedNetworkInterface.PrefixLength}  ·  " +
           $"Gateway {SelectedNetworkInterface.GatewayAddress?.ToString() ?? "—"}  ·  " +
           $"{SelectedNetworkInterface.SpeedMbps:N0} Mbps";
     public string SelectedInterfaceWifi => SelectedNetworkInterface?.WifiSummary ?? "—";
     public string SelectedInterfaceVlan => SelectedNetworkInterface?.VlanId is int vlan
-        ? $"VLAN {vlan} · confiança {ConfidenceToText(SelectedNetworkInterface.VlanConfidence)}"
-        : "VLAN não exposta pelo Windows";
+        ? L($"VLAN {vlan} · confiança {ConfidenceToText(SelectedNetworkInterface.VlanConfidence)}")
+        : L("VLAN não exposta pelo Windows");
 
     public void SetInputValidationErrorCount(int count)
     {
@@ -886,6 +855,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _settingsService.Save(new UiSettings
         {
             Theme = SelectedTheme.Value,
+            Language = LocalizationService.CurrentTag,
             LastInterfaceId = SelectedNetworkInterface?.Id,
             LastInterfaceAddress = SelectedNetworkInterface?.IpAddress.ToString(),
             LastCidr = NetworkCidr,
@@ -923,6 +893,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        LocalizationService.LanguageChanged -= OnLanguageChanged;
         _uiTimer.Stop();
         _uiTimer.Tick -= OnUiTimerTick;
         _scanCancellation?.Cancel();
@@ -961,6 +932,98 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _nmapExecutablePath = _loadedSettings.NmapExecutablePath;
         _nmapTimeoutMs = _loadedSettings.NmapTimeoutMs;
         _enableServiceProbes = _loadedSettings.EnableServiceProbes;
+    }
+
+    private static string L(string text) => LocalizationService.Translate(text);
+
+    private void BuildLocalizedOptions()
+    {
+        Profiles =
+        [
+            new ScanProfileOption(
+                ScanProfile.Quick,
+                L("Rápido"),
+                L("Primeira passagem pelos mesmos alvos, com menos detalhe e tempos mais curtos."),
+                L("Ping, ARP e portas essenciais"),
+                L("Mais rápido"),
+                L("VISÃO RÁPIDA")),
+            new ScanProfileOption(
+                ScanProfile.Standard,
+                L("Normal"),
+                L("Os mesmos alvos, com tempo equilibrado e mais identidade e serviços."),
+                L("mDNS, SSDP/UPnP, serviços e identidade"),
+                L("Equilibrado"),
+                L("RECOMENDADO")),
+            new ScanProfileOption(
+                ScanProfile.Deep,
+                L("Avançado"),
+                L("Os mesmos alvos, com mais portas, tempo e enriquecimento opcional."),
+                L("Mais portas; SNMP e Nmap opcionais"),
+                L("Mais demorado"),
+                L("ANÁLISE PROFUNDA"))
+        ];
+        ThemeModes =
+        [
+            new ThemeModeOption(AppThemeMode.Light, L("Claro"), L("Usa a paleta clara da aplicação."), "\uE793"),
+            new ThemeModeOption(AppThemeMode.Dark, L("Escuro"), L("Usa uma paleta escura com contraste adaptado."), "\uE708")
+        ];
+        Filters =
+        [
+            new DeviceFilterOption("all", L("Todos os dispositivos")),
+            new DeviceFilterOption("high", L("Risco alto")),
+            new DeviceFilterOption("medium", L("Risco médio")),
+            new DeviceFilterOption("low", L("Risco baixo")),
+            new DeviceFilterOption("new", L("Novos")),
+            new DeviceFilterOption("favorite", L("Favoritos")),
+            new DeviceFilterOption("changed", L("Alterados"))
+        ];
+    }
+
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        ScanProfile selectedProfile = SelectedProfile.Value;
+        AppThemeMode selectedTheme = SelectedTheme.Value;
+        string selectedFilter = SelectedFilter.Key;
+        BuildLocalizedOptions();
+        _selectedProfile = Profiles.First(item => item.Value == selectedProfile);
+        _selectedTheme = ThemeModes.First(item => item.Value == selectedTheme);
+        _selectedFilter = Filters.First(item => item.Key.Equals(selectedFilter, StringComparison.Ordinal));
+        foreach (DeviceRowViewModel device in Devices)
+            device.RefreshLocalized();
+        OnPropertyChanged(nameof(Profiles));
+        OnPropertyChanged(nameof(ThemeModes));
+        OnPropertyChanged(nameof(Filters));
+        OnPropertyChanged(nameof(SelectedProfile));
+        OnPropertyChanged(nameof(SelectedTheme));
+        OnPropertyChanged(nameof(SelectedFilter));
+        OnPropertyChanged(nameof(SelectedProfileDescription));
+        OnPropertyChanged(nameof(SelectedThemeDescription));
+        OnPropertyChanged(nameof(ThemeGlyph));
+        OnPropertyChanged(nameof(ThemeButtonToolTip));
+        OnPropertyChanged(nameof(ThemeButtonAutomationName));
+        OnPropertyChanged(nameof(ThemeButtonHelpText));
+        OnPropertyChanged(nameof(ScanConfigurationToggleLabel));
+        OnPropertyChanged(nameof(SelectedInterfaceSummary));
+        OnPropertyChanged(nameof(SelectedInterfaceVlan));
+        OnPropertyChanged(nameof(StatusMessage));
+        OnPropertyChanged(nameof(VendorDatabaseStatus));
+        OnPropertyChanged(nameof(ProgressPhase));
+        OnPropertyChanged(nameof(EmptyStateTitle));
+        OnPropertyChanged(nameof(EmptyStateDescription));
+        OnPropertyChanged(nameof(InputValidationMessage));
+        OnPropertyChanged(nameof(DiagnosticSummary));
+        OnPropertyChanged(nameof(CustomOverridesStatus));
+        OnPropertyChanged(nameof(CustomSettingsExplanation));
+        RefreshFilter();
+    }
+
+    private void ToggleTheme()
+    {
+        AppThemeMode next = SelectedTheme.Value == AppThemeMode.Dark
+            ? AppThemeMode.Light
+            : AppThemeMode.Dark;
+        SelectedTheme = ThemeModes.First(item => item.Value == next);
+        SaveSettings();
     }
 
     private bool SetCustomScanProperty<T>(

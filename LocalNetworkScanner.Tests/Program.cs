@@ -4377,6 +4377,18 @@ List<(string Name, Func<Task> Run)> tests =
                 Directory.Delete(directory, recursive: true);
         }
     }),
+    ("Localization supports pt-PT and en-US", () => RunOnSta(() =>
+    {
+        LocalizationService.SetLanguage("pt-PT", notify: false);
+        Equal("pt-PT", LocalizationService.CurrentTag);
+        Equal("Abrir topologia do scan", LocalizationService.Translate("Abrir topologia do scan"));
+        LocalizationService.SetLanguage("en-US");
+        Equal("en-US", LocalizationService.CurrentTag);
+        Equal("Open scan topology", LocalizationService.Translate("Abrir topologia do scan"));
+        Equal("Medium", LocalizationService.TranslateExact("Médio"));
+        Equal("My router", LocalizationService.TranslateExact("My router"));
+        LocalizationService.SetLanguage("pt-PT");
+    })),
     ("WPF selected-device and topology rendering smoke", () => RunOnSta(() =>
     {
         string directory = Path.Combine(Path.GetTempPath(), "LocalNetworkScanner.Tests", Guid.NewGuid().ToString("N"));
@@ -4467,7 +4479,7 @@ List<(string Name, Func<Task> Run)> tests =
                 window.FindName("DeviceNotesTextBox") as TextBox;
             Button? aboutButton = window.FindName("AboutButton") as Button;
             Button? exitButton = window.FindName("ExitButton") as Button;
-            ComboBox? themeSelector = window.FindName("ThemeSelector") as ComboBox;
+            Button? themeToggleButton = window.FindName("ThemeToggleButton") as Button;
             Border? onboardingBanner = window.FindName("OnboardingBanner") as Border;
             Button? scanStartButton = window.FindName("ScanStartButton") as Button;
             Button? scanCancelButton = window.FindName("ScanCancelButton") as Button;
@@ -4488,19 +4500,21 @@ List<(string Name, Func<Task> Run)> tests =
             NotNull(deviceNotesTextBox);
             NotNull(aboutButton);
             NotNull(exitButton);
-            NotNull(themeSelector);
+            NotNull(themeToggleButton);
             NotNull(onboardingBanner);
             NotNull(scanStartButton);
             NotNull(scanCancelButton);
             NotNull(scanProfileScopeExplanation);
             Equal("Abrir informação sobre a aplicação", AutomationProperties.GetName(aboutButton));
             Equal("Sair da aplicação", AutomationProperties.GetName(exitButton));
-            Equal("Tema da aplicação", AutomationProperties.GetName(themeSelector));
+            Equal("Mudar para o tema escuro", AutomationProperties.GetName(themeToggleButton));
+            Equal("Mudar para o tema escuro", themeToggleButton!.ToolTip?.ToString());
             Equal(AppThemeMode.Light, window.ViewModel.SelectedTheme.Value);
             Equal(AppThemeMode.Light, application.CurrentTheme);
 
             window.ViewModel.SelectedTheme = window.ViewModel.ThemeModes.Single(item => item.Value == AppThemeMode.Dark);
             Equal(AppThemeMode.Dark, application.CurrentTheme);
+            Equal("Mudar para o tema claro", AutomationProperties.GetName(themeToggleButton));
             if (!SystemParameters.HighContrast)
             {
                 Equal(Color.FromRgb(0x11, 0x16, 0x1D),
@@ -4511,6 +4525,7 @@ List<(string Name, Func<Task> Run)> tests =
 
             window.ViewModel.SelectedTheme = window.ViewModel.ThemeModes.Single(item => item.Value == AppThemeMode.Light);
             Equal(AppThemeMode.Light, application.CurrentTheme);
+            Equal("Mudar para o tema escuro", AutomationProperties.GetName(themeToggleButton));
             if (!SystemParameters.HighContrast)
             {
                 Equal(Color.FromRgb(0xF3, 0xF6, 0xFA),
@@ -4720,11 +4735,15 @@ List<(string Name, Func<Task> Run)> tests =
             Button? closeAboutButton = aboutWindow.FindName("CloseAboutButton") as Button;
             Button? privacyPolicyButton = aboutWindow.FindName("PrivacyPolicyButton") as Button;
             Button? codeSigningPolicyButton = aboutWindow.FindName("CodeSigningPolicyButton") as Button;
+            ComboBox? languageSelector = aboutWindow.FindName("LanguageSelector") as ComboBox;
             TextBlock? versionTextBlock = aboutWindow.FindName("VersionTextBlock") as TextBlock;
             NotNull(closeAboutButton);
             NotNull(privacyPolicyButton);
             NotNull(codeSigningPolicyButton);
+            NotNull(languageSelector);
             NotNull(versionTextBlock);
+            Equal("pt-PT", languageSelector!.SelectedValue?.ToString());
+            Equal(2, languageSelector.Items.Count);
             Equal(
                 "Fechar informação sobre a aplicação",
                 AutomationProperties.GetName(closeAboutButton));
@@ -4737,6 +4756,15 @@ List<(string Name, Func<Task> Run)> tests =
             Equal(
                 application.Resources["SelectionForegroundBrush"],
                 versionTextBlock!.Foreground);
+
+            LocalizationService.SetLanguage("en-US");
+            Equal("en-US", languageSelector.SelectedValue?.ToString());
+            Equal($"Version {expectedVersion}", aboutWindow.VersionLabel);
+            Equal("About Local Network Scanner", aboutWindow.Title);
+            Equal("Choose language", AutomationProperties.GetName(languageSelector));
+            Equal("Switch to dark theme", AutomationProperties.GetName(themeToggleButton));
+            LocalizationService.SetLanguage("pt-PT");
+            Equal("pt-PT", languageSelector.SelectedValue?.ToString());
             if (workArea.Width > 0 && workArea.Height > 0)
             {
                 True(aboutWindow.Width <= workArea.Width,

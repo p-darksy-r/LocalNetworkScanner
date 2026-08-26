@@ -73,8 +73,8 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 this,
-                "As preferências do dispositivo ainda estão a ser guardadas. Aguarda um momento e volta a fechar a aplicação.",
-                "A guardar preferências",
+                L("As preferências do dispositivo ainda estão a ser guardadas. Aguarda um momento e volta a fechar a aplicação."),
+                L("A guardar preferências"),
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             e.Cancel = true;
@@ -107,8 +107,8 @@ public partial class MainWindow : Window
 
             MessageBoxResult result = MessageBox.Show(
                 this,
-                message,
-                title,
+                L(message),
+                L(title),
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question,
                 MessageBoxResult.No);
@@ -282,8 +282,8 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 this,
-                "Inicia e conclui um scan com resultados antes de abrir o mapa.",
-                "Topologia ainda vazia",
+                L("Inicia e conclui um scan com resultados antes de abrir o mapa."),
+                L("Topologia ainda vazia"),
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             return;
@@ -318,6 +318,8 @@ public partial class MainWindow : Window
     }
 
     private void OnExitClick(object sender, RoutedEventArgs e) => Close();
+
+    private static string L(string? value) => LocalizationService.Translate(value);
 }
 
 // Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License.

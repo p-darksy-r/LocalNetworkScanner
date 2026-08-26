@@ -68,7 +68,7 @@ Um checksum deteta alterações relativamente ao ficheiro publicado, mas não su
 
 1. Abra `LocalNetworkScanner.exe`.
 2. Escolha a interface IPv4 e confirme o intervalo CIDR.
-3. Use **Rápido** para uma primeira passagem ou **Normal** para o inventário recomendado e inicie com o ícone de reprodução (`Alt+I`). No seletor **Tema**, escolhe **Claro** ou **Escuro**; a alteração é imediata e fica guardada localmente.
+3. Use **Rápido** para uma primeira passagem ou **Normal** para o inventário recomendado e inicie com o ícone de reprodução (`Alt+I`). O único ícone de tema no cabeçalho alterna entre **Claro** e **Escuro**; a alteração é imediata e fica guardada localmente.
 4. Analise a lista de dispositivos; abra **Topologia** apenas quando quiser explorar o mapa do mesmo scan. O ícone de informação abre **Sobre** (`F1`) e o ícone de saída fecha a aplicação através das mesmas confirmações do `Alt+F4`. `F5` também inicia o scan, `Alt+C` cancela-o e `Esc` limpa a pesquisa focada ou cancela um scan ativo; na janela da topologia, `Esc` fecha apenas essa janela.
 
 Abrir **Parâmetros técnicos personalizados** apenas mostra os valores. Estes só substituem o perfil depois de ativar explicitamente **Usar definições personalizadas**; o contador indica quantas substituições estão efetivamente ativas.
@@ -91,7 +91,8 @@ O executável e o manifesto gerados são ignorados pelo Git: esta pasta é uma c
 
 - **Resultados honestos:** cada relação de topologia preserva origem, confiança e evidência.
 - **UI acessível e adaptável:** comandos óbvios usam ícones compactos, mas preservam tooltip, nome de automação, navegação por teclado, alvos de 40 px e feedback para leitores de ecrã; a configuração recolhe durante o scan e os painéis ajustam-se ao espaço disponível.
-- **Tema à escolha:** o seletor do cabeçalho alterna entre **Claro** e **Escuro** sem reiniciar a aplicação; a paleta escura é aplicada também à topologia e a escolha é guardada nas preferências locais. O Alto Contraste do Windows mantém prioridade.
+- **Tema à escolha:** um único ícone compacto alterna entre **Claro** e **Escuro** sem reiniciar a aplicação; o tooltip, o nome de automação e o glyph indicam sempre a ação seguinte. A paleta é aplicada também à topologia e a escolha fica guardada localmente. O Alto Contraste do Windows mantém prioridade.
+- **Português e inglês:** a interface suporta `pt-PT` e `en-US`. Abra **Sobre** pelo ícone de informação (`F1`) para escolher o idioma; a preferência é guardada e a troca atualiza janelas abertas, opções, diagnósticos e mensagens sem alterar dados descobertos.
 - **Informação transparente:** a janela Sobre apresenta versão, autoria, copyright, runtime, arquitetura, licença e limites de confiança sem obrigar o utilizador a procurar esses dados nos ficheiros.
 - **Lista primeiro:** o inventário continua a ser a vista principal depois do scan.
 - **Topologia a pedido:** o mapa abre numa janela separada sem repetir ou alterar o scan.
@@ -175,7 +176,7 @@ Leia os [limites técnicos completos](https://github.com/p-darksy-r/LocalNetwork
 
 ## Diagnósticos e códigos de erro
 
-Um diagnóstico inclui código, categoria, severidade, mensagem em pt-PT, ação recomendada e contexto sanitizado:
+Um diagnóstico inclui código, categoria, severidade, mensagem/apresentação localizada (pt-PT ou en-US), ação recomendada e contexto sanitizado:
 
 | Prefixo | Origem provável |
 | --- | --- |

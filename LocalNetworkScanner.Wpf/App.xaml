@@ -45,6 +45,7 @@
         <infra:InverseBooleanConverter x:Key="InverseBooleanConverter" />
         <infra:RiskToBrushConverter x:Key="RiskToBrushConverter" />
         <infra:RiskToForegroundConverter x:Key="RiskToForegroundConverter" />
+        <infra:LocalizedFormatConverter x:Key="LocalizedFormatConverter" />
 
         <Style x:Key="AccessibleFocusVisualStyle">
             <Setter Property="Control.Template">

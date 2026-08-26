@@ -28,7 +28,9 @@ public partial class App : Application
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
         SystemParameters.StaticPropertyChanged += OnSystemParametersChanged;
         CaptureDefaultPalette();
-        AppThemeMode startupTheme = new UiSettingsService().Load().Theme;
+        UiSettings startupSettings = new UiSettingsService().Load();
+        LocalizationService.SetLanguage(startupSettings.Language, notify: false);
+        AppThemeMode startupTheme = startupSettings.Theme;
         ApplyTheme(startupTheme, notify: false);
 
         MainWindow window = new();
