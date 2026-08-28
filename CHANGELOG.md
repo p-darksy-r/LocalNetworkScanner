@@ -6,7 +6,11 @@ Todas as alterações relevantes deste projeto são registadas neste ficheiro. O
 
 ## [Unreleased]
 
-O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag/release: em 27-08-2026 a SignPath informou que o projeto seria provavelmente problemático para o programa gratuito Foundation e recomendou não submeter o estado atual. Isto não é uma rejeição formal nem uma aprovação; não existe integração SignPath e os binários atuais permanecem `NotSigned`, sem apresentação como produção.
+Sem alterações adicionais depois da tag de código-fonte `v1.4.1`.
+
+## [1.4.1] - 2026-08-28
+
+A `v1.4.1` fixa o estado validado do código-fonte, sem criar uma GitHub Release nem publicar novos binários. Em 27-08-2026, a SignPath informou que o projeto seria provavelmente problemático para o programa gratuito Foundation e recomendou não submeter o estado atual. Isto não é uma rejeição formal nem uma aprovação; não existe integração SignPath e os binários históricos permanecem `NotSigned`, sem apresentação como produção.
 
 ### Added
 
@@ -27,6 +31,7 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 
 ### Changed
 
+- a grelha principal deixa de repetir a coluna **Risco**; o nível e a pontuação continuam visíveis no badge do painel lateral e a tab **Segurança** mantém os alertas heurísticos detalhados;
 - CI x64 cria e valida o bundle `PrivateTest` x64+ARM64, o runner ARM64 valida adicionalmente o pacote nativo, e ambos removem as chaves efémeras no fim sem publicar estes artefactos;
 - os perfis Rápido, Normal e Avançado explicam agora que partilham o mesmo objetivo de descoberta, diferindo sobretudo no tempo e detalhe, e que as contagens são retratos transitórios;
 - o cabeçalho de configuração deixa de impor uma largura mínima superior à janela e mantém Iniciar/Cancelar acessíveis a 760 DIPs;
@@ -42,6 +47,8 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 
 ### Fixed
 
+- as tabs do painel lateral e o respetivo conteúdo deixam de usar superfícies claras do template nativo WPF no tema escuro; Resumo, Identidade, Serviços, Segurança, Rede e Histórico usam agora a paleta dinâmica em seleção, hover, foco e desativação;
+- as células da linha selecionada deixam de assumir a seleção inativa branca do Windows quando o foco passa para o painel lateral, mantendo uma superfície coerente em tema claro, escuro e Alto Contraste;
 - os seletores de interface de rede, filtros de dispositivos, idioma e topologia deixam de herdar o botão, seta, popup e realces claros do template nativo do Windows; todos os estados usam agora a paleta dinâmica da aplicação em tema claro, escuro e Alto Contraste, incluindo rato, teclado, seleção, abertura e desativação;
 - uma falha numa sonda por host cancela e observa a descoberta multicast paralela antes de propagar o erro original, evitando sockets e tráfego órfãos em background;
 - uma configuração personalizada que desativa simultaneamente ICMP, TCP, ARP e multicast é recusada como `LNS-USR-008`, em vez de terminar com um falso problema de rede e zero descobertas possíveis;

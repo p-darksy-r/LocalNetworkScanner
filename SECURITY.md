@@ -4,7 +4,7 @@
 
 ## Versões suportadas
 
-A linha de código suportada é `1.4.x`; apenas a revisão mais recente dessa linha recebe correções de segurança. As linhas `1.2.x` e `1.3.x` são históricas e não devem ser usadas como builds de produção. Builds locais, forks e tags não são, por si só, releases instaláveis oficiais. A prerelease pública `v1.4.0` conserva o título histórico `Private QA (NotSigned)`, mas continua a ser apenas evidência de validação sem Authenticode, não uma distribuição de produção. Atualmente não existe uma release assinada e suportada para produção.
+A linha de código suportada é `1.4.x`; apenas a revisão mais recente dessa linha recebe correções de segurança. As linhas `1.2.x` e `1.3.x` são históricas e não devem ser usadas como builds de produção. A `v1.4.1` é apenas uma tag de código-fonte, sem GitHub Release ou binários oficiais; builds locais, forks e tags não são, por si só, releases instaláveis. A prerelease pública `v1.4.0` conserva o título histórico `Private QA (NotSigned)`, mas continua a ser apenas evidência de validação sem Authenticode, não uma distribuição de produção. Atualmente não existe uma release assinada e suportada para produção.
 
 ## Comunicar uma vulnerabilidade
 

@@ -4508,6 +4508,15 @@ List<(string Name, Func<Task> Run)> tests =
                 window.FindName("NetworkInterfaceComboBox") as ComboBox;
             ComboBox? deviceFilterComboBox =
                 window.FindName("DeviceFilterComboBox") as ComboBox;
+            DataGrid? devicesDataGrid = window.FindName("DevicesDataGrid") as DataGrid;
+            TabControl? deviceDetailsTabControl =
+                window.FindName("DeviceDetailsTabControl") as TabControl;
+            TabItem? deviceSummaryTab = window.FindName("DeviceSummaryTab") as TabItem;
+            TabItem? deviceIdentityTab = window.FindName("DeviceIdentityTab") as TabItem;
+            Border? selectedDeviceRiskBadge =
+                window.FindName("SelectedDeviceRiskBadge") as Border;
+            TextBlock? selectedDeviceRiskText =
+                window.FindName("SelectedDeviceRiskText") as TextBlock;
             TextBlock? scanProfileScopeExplanation =
                 window.FindName("ScanProfileScopeExplanation") as TextBlock;
             NotNull(configurationToggle);
@@ -4531,6 +4540,12 @@ List<(string Name, Func<Task> Run)> tests =
             NotNull(scanCancelButton);
             NotNull(networkInterfaceComboBox);
             NotNull(deviceFilterComboBox);
+            NotNull(devicesDataGrid);
+            NotNull(deviceDetailsTabControl);
+            NotNull(deviceSummaryTab);
+            NotNull(deviceIdentityTab);
+            NotNull(selectedDeviceRiskBadge);
+            NotNull(selectedDeviceRiskText);
             NotNull(scanProfileScopeExplanation);
             Equal("Abrir informação sobre a aplicação", AutomationProperties.GetName(aboutButton));
             Equal("Sair da aplicação", AutomationProperties.GetName(exitButton));
@@ -4538,9 +4553,20 @@ List<(string Name, Func<Task> Run)> tests =
             Equal("Mudar para o tema escuro", themeToggleButton!.ToolTip?.ToString());
             Equal(AppThemeMode.Light, window.ViewModel.SelectedTheme.Value);
             Equal(AppThemeMode.Light, application.CurrentTheme);
+            True(
+                devicesDataGrid!.Columns.All(column =>
+                    !string.Equals(column.Header?.ToString(), "Risco", StringComparison.Ordinal)),
+                "A grelha não deve repetir a coluna de risco já apresentada no painel lateral.");
+            True(
+                selectedDeviceRiskText!.Text.Contains("Risco", StringComparison.Ordinal) &&
+                selectedDeviceRiskText.Text.Contains(row.RiskLevel, StringComparison.Ordinal),
+                "Remover a coluna não pode remover o nível de risco do painel lateral.");
 
             networkInterfaceComboBox!.ApplyTemplate();
             deviceFilterComboBox!.ApplyTemplate();
+            deviceDetailsTabControl!.ApplyTemplate();
+            deviceSummaryTab!.ApplyTemplate();
+            deviceIdentityTab!.ApplyTemplate();
             Border? networkInterfaceComboBoxBorder = networkInterfaceComboBox.Template.FindName(
                 "ComboBoxBorder",
                 networkInterfaceComboBox) as Border;
@@ -4565,6 +4591,18 @@ List<(string Name, Func<Task> Run)> tests =
             NotNull(deviceFilterDropDownArrow);
             NotNull(networkInterfaceDropDownBorder);
             NotNull(deviceFilterDropDownBorder);
+            Border? deviceDetailsContentBorder = deviceDetailsTabControl.Template.FindName(
+                "TabContentBorder",
+                deviceDetailsTabControl) as Border;
+            Border? deviceSummaryHeaderBorder = deviceSummaryTab.Template.FindName(
+                "TabHeaderBorder",
+                deviceSummaryTab) as Border;
+            Border? deviceIdentityHeaderBorder = deviceIdentityTab.Template.FindName(
+                "TabHeaderBorder",
+                deviceIdentityTab) as Border;
+            NotNull(deviceDetailsContentBorder);
+            NotNull(deviceSummaryHeaderBorder);
+            NotNull(deviceIdentityHeaderBorder);
             Style? comboBoxItemStyle = application.TryFindResource(typeof(ComboBoxItem)) as Style;
             NotNull(comboBoxItemStyle);
             True(
@@ -4617,6 +4655,43 @@ List<(string Name, Func<Task> Run)> tests =
                 ((SolidColorBrush)deviceFilterComboBoxBorder.Background).Color);
             deviceFilterComboBox.IsDropDownOpen = false;
             window.UpdateLayout();
+
+            deviceDetailsTabControl.SelectedItem = deviceIdentityTab;
+            devicesDataGrid.ScrollIntoView(row);
+            window.UpdateLayout();
+            Equal(deviceIdentityTab, deviceDetailsTabControl.SelectedItem);
+            Equal(themedSurfaceColor,
+                ((SolidColorBrush)deviceDetailsContentBorder!.Background).Color);
+            Equal(themedSurfaceColor,
+                ((SolidColorBrush)deviceIdentityHeaderBorder!.Background).Color);
+            Equal(
+                ((SolidColorBrush)application.Resources["AccentBrush"]).Color,
+                ((SolidColorBrush)deviceIdentityHeaderBorder.BorderBrush).Color);
+            Equal(
+                ((SolidColorBrush)application.Resources["SurfaceMutedBrush"]).Color,
+                ((SolidColorBrush)deviceSummaryHeaderBorder!.Background).Color);
+
+            DataGridRow? selectedDeviceRow =
+                devicesDataGrid.ItemContainerGenerator.ContainerFromItem(row) as DataGridRow;
+            NotNull(selectedDeviceRow);
+            True(selectedDeviceRow!.IsSelected,
+                "O dispositivo do painel lateral deve continuar selecionado na grelha.");
+            Equal(themedSelectionColor, ((SolidColorBrush)selectedDeviceRow.Background).Color);
+            DataGridCell[] selectedDeviceCells = FindVisualDescendants<DataGridCell>(selectedDeviceRow)
+                .Where(cell => cell.IsSelected)
+                .ToArray();
+            True(selectedDeviceCells.Length > 0,
+                "A linha selecionada deve materializar pelo menos uma célula para validação visual.");
+            foreach (DataGridCell selectedCell in selectedDeviceCells)
+            {
+                selectedCell.ApplyTemplate();
+                Border? selectedCellBorder = selectedCell.Template.FindName(
+                    "DataGridCellBorder",
+                    selectedCell) as Border;
+                NotNull(selectedCellBorder);
+                Equal(themedSelectionColor,
+                    ((SolidColorBrush)selectedCellBorder!.Background).Color);
+            }
             if (!SystemParameters.HighContrast)
             {
                 Equal(Color.FromRgb(0x11, 0x16, 0x1D),
@@ -4639,6 +4714,24 @@ List<(string Name, Func<Task> Run)> tests =
                 ((SolidColorBrush)networkInterfaceDropDownBorder.Background).Color);
             Equal(restoredSurfaceColor,
                 ((SolidColorBrush)deviceFilterDropDownBorder.Background).Color);
+            Equal(restoredSurfaceColor,
+                ((SolidColorBrush)deviceDetailsContentBorder.Background).Color);
+            Equal(restoredSurfaceColor,
+                ((SolidColorBrush)deviceIdentityHeaderBorder.Background).Color);
+            Color restoredSelectionColor =
+                ((SolidColorBrush)application.Resources["SelectionBrush"]).Color;
+            Equal(restoredSelectionColor,
+                ((SolidColorBrush)selectedDeviceRow.Background).Color);
+            foreach (DataGridCell selectedCell in selectedDeviceCells)
+            {
+                Border selectedCellBorder = (Border)selectedCell.Template.FindName(
+                    "DataGridCellBorder",
+                    selectedCell);
+                Equal(restoredSelectionColor,
+                    ((SolidColorBrush)selectedCellBorder.Background).Color);
+            }
+            deviceDetailsTabControl.SelectedItem = deviceSummaryTab;
+            window.UpdateLayout();
             if (!SystemParameters.HighContrast)
             {
                 Equal(Color.FromRgb(0xF3, 0xF6, 0xFA),

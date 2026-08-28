@@ -2,8 +2,8 @@
 
 # Local Network Scanner
 
+[![Source v1.4.1](https://img.shields.io/badge/source-v1.4.1-475569)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.4.1)
 [![QA v1.4.0](https://img.shields.io/badge/QA-v1.4.0-2563eb)](https://github.com/p-darksy-r/LocalNetworkScanner/tree/v1.4.0)
-![main v1.4.1 unreleased](https://img.shields.io/badge/main-v1.4.1%20unreleased-475569)
 ![Windows](https://img.shields.io/badge/Windows-x64%20%7C%20ARM64-0078d4)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)](https://github.com/p-darksy-r/LocalNetworkScanner/blob/main/LICENSE)
 
@@ -11,7 +11,7 @@
 
 Scanner de redes locais para Windows com uma UI WPF simples, uma CLI para automação, diagnósticos acionáveis e topologia opcional. O programa separa observações diretas, dados fornecidos pela infraestrutura e inferências, para que um resultado provável nunca seja apresentado como facto confirmado.
 
-> **Estado de distribuição:** o repositório é público, mas todos os binários publicados atualmente continuam sem assinatura Authenticode. A `v1.2.0` foi reclassificada como prerelease histórica e não é recomendada para instalação; atualmente nenhuma release está marcada como `Latest`. A `v1.4.0` é o candidato de código e QA mais recente; a sua prerelease conserva o título histórico `Private QA (NotSigned)`, mas os assets são agora publicamente acessíveis e não constituem uma distribuição de produção.
+> **Estado de distribuição:** o repositório é público, mas todos os binários publicados atualmente continuam sem assinatura Authenticode. A `v1.4.1` é a tag de código-fonte mais recente e não possui GitHub Release nem novos assets; a `v1.4.0` continua a ser a prerelease de QA mais recente, com o título histórico `Private QA (NotSigned)`. Atualmente nenhuma release está marcada como `Latest` e nenhuma deve ser tratada como distribuição de produção.
 >
 > Em 27-08-2026, a SignPath informou por escrito que este projeto seria provavelmente problemático para o programa gratuito SignPath Foundation devido à sua natureza de scanner de rede e enumeração de portas/serviços, recomendando não submeter o estado atual. Isto não é uma rejeição formal nem uma aprovação: não existe integração SignPath, nem release assinada pela Foundation. As funcionalidades de diagnóstico permanecem porque são parte legítima do produto; se no futuro for escolhida a SignPath, a via indicada pela própria resposta é uma subscrição regular com certificado próprio. Consulte a [Code signing policy](CODE_SIGNING_POLICY.md) e o [guia técnico de assinatura](docs/SIGNING.md).
 >
@@ -298,7 +298,7 @@ Validação completa:
 powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1 -Configuration Release -VerifyFormat
 ```
 
-O mesmo script é usado localmente e no job x64 do CI. O gate verifica copyright, sintaxe dos scripts PowerShell, contratos sintéticos de release e MSIX, ausência de material de chave privada, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.4.0`, a suite contém 95 testes; o número atual é validado pelo próprio harness. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI. O job x64 cria e valida ainda um bundle `PrivateTest` x64+ARM64; o job ARM64 valida adicionalmente o pacote e executáveis de forma nativa. Ambos usam certificados efémeros não exportáveis e removem a chave do runner sem publicar os pacotes.
+O mesmo script é usado localmente e no job x64 do CI. O gate verifica copyright, sintaxe dos scripts PowerShell, contratos sintéticos de release e MSIX, ausência de material de chave privada, restore, build com warnings como erros, uma suite determinística com contagem validada, formatação e smoke da CLI. Na `v1.4.1`, a suite contém 100 testes; o número atual é validado pelo próprio harness. Os testes automáticos usam loopback e dados sintéticos; scans reais não pertencem ao CI. O job x64 cria e valida ainda um bundle `PrivateTest` x64+ARM64; o job ARM64 valida adicionalmente o pacote e executáveis de forma nativa. Ambos usam certificados efémeros não exportáveis e removem a chave do runner sem publicar os pacotes.
 
 O workflow CodeQL está configurado para analisar C# com consultas `security-extended` no repositório público; o resultado de cada execução deve ser verificado no GitHub e não é substituído por esta afirmação documental. A release restaura metadados de dependências para `win-x64` e `win-arm64`, exige ambos os runtimes e gera/valida um SBOM SPDX 2.2 como evidência separada, sem o confundir com os dez ficheiros instaláveis validados.
 
