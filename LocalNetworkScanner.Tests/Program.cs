@@ -4504,6 +4504,10 @@ List<(string Name, Func<Task> Run)> tests =
             Border? onboardingBanner = window.FindName("OnboardingBanner") as Border;
             Button? scanStartButton = window.FindName("ScanStartButton") as Button;
             Button? scanCancelButton = window.FindName("ScanCancelButton") as Button;
+            ComboBox? networkInterfaceComboBox =
+                window.FindName("NetworkInterfaceComboBox") as ComboBox;
+            ComboBox? deviceFilterComboBox =
+                window.FindName("DeviceFilterComboBox") as ComboBox;
             TextBlock? scanProfileScopeExplanation =
                 window.FindName("ScanProfileScopeExplanation") as TextBlock;
             NotNull(configurationToggle);
@@ -4525,6 +4529,8 @@ List<(string Name, Func<Task> Run)> tests =
             NotNull(onboardingBanner);
             NotNull(scanStartButton);
             NotNull(scanCancelButton);
+            NotNull(networkInterfaceComboBox);
+            NotNull(deviceFilterComboBox);
             NotNull(scanProfileScopeExplanation);
             Equal("Abrir informação sobre a aplicação", AutomationProperties.GetName(aboutButton));
             Equal("Sair da aplicação", AutomationProperties.GetName(exitButton));
@@ -4532,6 +4538,41 @@ List<(string Name, Func<Task> Run)> tests =
             Equal("Mudar para o tema escuro", themeToggleButton!.ToolTip?.ToString());
             Equal(AppThemeMode.Light, window.ViewModel.SelectedTheme.Value);
             Equal(AppThemeMode.Light, application.CurrentTheme);
+
+            networkInterfaceComboBox!.ApplyTemplate();
+            deviceFilterComboBox!.ApplyTemplate();
+            Border? networkInterfaceComboBoxBorder = networkInterfaceComboBox.Template.FindName(
+                "ComboBoxBorder",
+                networkInterfaceComboBox) as Border;
+            Border? deviceFilterComboBoxBorder = deviceFilterComboBox.Template.FindName(
+                "ComboBoxBorder",
+                deviceFilterComboBox) as Border;
+            TextBlock? networkInterfaceDropDownArrow = networkInterfaceComboBox.Template.FindName(
+                "DropDownArrow",
+                networkInterfaceComboBox) as TextBlock;
+            TextBlock? deviceFilterDropDownArrow = deviceFilterComboBox.Template.FindName(
+                "DropDownArrow",
+                deviceFilterComboBox) as TextBlock;
+            Border? networkInterfaceDropDownBorder = networkInterfaceComboBox.Template.FindName(
+                "DropDownBorder",
+                networkInterfaceComboBox) as Border;
+            Border? deviceFilterDropDownBorder = deviceFilterComboBox.Template.FindName(
+                "DropDownBorder",
+                deviceFilterComboBox) as Border;
+            NotNull(networkInterfaceComboBoxBorder);
+            NotNull(deviceFilterComboBoxBorder);
+            NotNull(networkInterfaceDropDownArrow);
+            NotNull(deviceFilterDropDownArrow);
+            NotNull(networkInterfaceDropDownBorder);
+            NotNull(deviceFilterDropDownBorder);
+            Style? comboBoxItemStyle = application.TryFindResource(typeof(ComboBoxItem)) as Style;
+            NotNull(comboBoxItemStyle);
+            True(
+                comboBoxItemStyle!.Setters
+                    .OfType<Setter>()
+                    .Any(setter => setter.Property == Control.TemplateProperty &&
+                                   setter.Value is ControlTemplate),
+                "Os itens dos seletores devem usar o template temático da aplicação.");
 
             Border riskThemeProbe = new()
             {
@@ -4545,6 +4586,37 @@ List<(string Name, Func<Task> Run)> tests =
             Equal(AppThemeMode.Dark, application.CurrentTheme);
             Equal("Mudar para o tema claro", AutomationProperties.GetName(themeToggleButton));
             Equal(AppThemeMode.Dark, new UiSettingsService(settingsPath).Load().Theme);
+            Color themedSurfaceColor =
+                ((SolidColorBrush)application.Resources["SurfaceBrush"]).Color;
+            Color themedTextColor =
+                ((SolidColorBrush)application.Resources["TextPrimaryBrush"]).Color;
+            Color themedBorderColor =
+                ((SolidColorBrush)application.Resources["BorderBrush"]).Color;
+            Color themedSecondaryTextColor =
+                ((SolidColorBrush)application.Resources["TextSecondaryBrush"]).Color;
+            Equal(themedSurfaceColor, ((SolidColorBrush)networkInterfaceComboBox.Background).Color);
+            Equal(themedSurfaceColor, ((SolidColorBrush)deviceFilterComboBox.Background).Color);
+            Equal(themedTextColor, ((SolidColorBrush)networkInterfaceComboBox.Foreground).Color);
+            Equal(themedTextColor, ((SolidColorBrush)deviceFilterComboBox.Foreground).Color);
+            Equal(themedBorderColor, ((SolidColorBrush)networkInterfaceComboBox.BorderBrush).Color);
+            Equal(themedBorderColor, ((SolidColorBrush)deviceFilterComboBox.BorderBrush).Color);
+            Equal(themedSurfaceColor, ((SolidColorBrush)networkInterfaceComboBoxBorder!.Background).Color);
+            Equal(themedSurfaceColor, ((SolidColorBrush)deviceFilterComboBoxBorder!.Background).Color);
+            Equal(themedSurfaceColor, ((SolidColorBrush)networkInterfaceDropDownBorder!.Background).Color);
+            Equal(themedSurfaceColor, ((SolidColorBrush)deviceFilterDropDownBorder!.Background).Color);
+            Equal(themedSecondaryTextColor,
+                ((SolidColorBrush)networkInterfaceDropDownArrow!.Foreground).Color);
+            Equal(themedSecondaryTextColor,
+                ((SolidColorBrush)deviceFilterDropDownArrow!.Foreground).Color);
+
+            deviceFilterComboBox.IsDropDownOpen = true;
+            window.UpdateLayout();
+            Color themedSelectionColor =
+                ((SolidColorBrush)application.Resources["SelectionBrush"]).Color;
+            Equal(themedSelectionColor,
+                ((SolidColorBrush)deviceFilterComboBoxBorder.Background).Color);
+            deviceFilterComboBox.IsDropDownOpen = false;
+            window.UpdateLayout();
             if (!SystemParameters.HighContrast)
             {
                 Equal(Color.FromRgb(0x11, 0x16, 0x1D),
@@ -4557,6 +4629,16 @@ List<(string Name, Func<Task> Run)> tests =
             themeToggleButton.Command.Execute(themeToggleButton.CommandParameter);
             Equal(AppThemeMode.Light, application.CurrentTheme);
             Equal("Mudar para o tema escuro", AutomationProperties.GetName(themeToggleButton));
+            Color restoredSurfaceColor =
+                ((SolidColorBrush)application.Resources["SurfaceBrush"]).Color;
+            Equal(restoredSurfaceColor,
+                ((SolidColorBrush)networkInterfaceComboBoxBorder.Background).Color);
+            Equal(restoredSurfaceColor,
+                ((SolidColorBrush)deviceFilterComboBoxBorder.Background).Color);
+            Equal(restoredSurfaceColor,
+                ((SolidColorBrush)networkInterfaceDropDownBorder.Background).Color);
+            Equal(restoredSurfaceColor,
+                ((SolidColorBrush)deviceFilterDropDownBorder.Background).Color);
             if (!SystemParameters.HighContrast)
             {
                 Equal(Color.FromRgb(0xF3, 0xF6, 0xFA),

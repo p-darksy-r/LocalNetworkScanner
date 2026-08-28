@@ -177,7 +177,8 @@
                 <Label Grid.Row="0" Grid.Column="0" Content="Interface de rede" />
                 <Label Grid.Row="0" Grid.Column="1" Margin="12,0,0,0" Content="Rede / CIDR" />
 
-                <ComboBox Grid.Row="1"
+                <ComboBox x:Name="NetworkInterfaceComboBox"
+                          Grid.Row="1"
                           Grid.Column="0"
                           ItemsSource="{Binding NetworkInterfaces}"
                           SelectedItem="{Binding SelectedNetworkInterface, Mode=TwoWay}"
@@ -815,7 +816,8 @@
                                     <TextBlock Style="{StaticResource IconGlyphStyle}" Text="&#xE711;" />
                                 </Button>
                             </Grid>
-                            <ComboBox Width="165"
+                            <ComboBox x:Name="DeviceFilterComboBox"
+                                      Width="165"
                                       Margin="8,0,0,0"
                                       ItemsSource="{Binding Filters}"
                                       SelectedItem="{Binding SelectedFilter}"

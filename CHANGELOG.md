@@ -42,6 +42,7 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 
 ### Fixed
 
+- os seletores de interface de rede, filtros de dispositivos, idioma e topologia deixam de herdar o botão, seta, popup e realces claros do template nativo do Windows; todos os estados usam agora a paleta dinâmica da aplicação em tema claro, escuro e Alto Contraste, incluindo rato, teclado, seleção, abertura e desativação;
 - uma falha numa sonda por host cancela e observa a descoberta multicast paralela antes de propagar o erro original, evitando sockets e tráfego órfãos em background;
 - uma configuração personalizada que desativa simultaneamente ICMP, TCP, ARP e multicast é recusada como `LNS-USR-008`, em vez de terminar com um falso problema de rede e zero descobertas possíveis;
 - mudar o filtro da topologia limpa uma seleção que deixou de estar visível e anuncia corretamente que nenhum nó está selecionado;
