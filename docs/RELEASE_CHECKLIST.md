@@ -4,7 +4,7 @@
 
 Uma release só deve ser marcada como concluída quando todos os itens obrigatórios estiverem verificados. Guardar evidência dos comandos, versões, hashes e máquinas usadas.
 
-**Estado atual:** o repositório é público, a avaliação SignPath está pendente e todos os downloads existentes estão `NotSigned`. Esta checklist não autoriza criar outra tag/release sem assinatura. Os itens SignPath só podem ser marcados depois de aceitação e configuração reais; os itens Microsoft Artifact Signing só se aplicam se esse backend for efetivamente escolhido e configurado.
+**Estado atual:** o repositório é público, a SignPath Foundation indicou por escrito que este projeto seria provavelmente problemático para o programa gratuito e recomendou não submeter o estado atual; todos os downloads existentes estão `NotSigned`. Esta checklist não autoriza criar outra tag/release sem assinatura. Os itens SignPath abaixo só se aplicam se, no futuro, for escolhida uma subscrição regular com certificado próprio; nunca se deve alegar aprovação Foundation.
 
 ## 1. Identidade e âmbito
 
@@ -18,7 +18,7 @@ Uma release só deve ser marcada como concluída quando todos os itens obrigató
 - [ ] Existe autorização escrita da IEEE para redistribuir publicamente a snapshot incorporada e a release cumpre integralmente o texto e as condições recebidas.
 - [ ] A licença/condição da snapshot IEEE também foi aceite pelo serviço de assinatura; uma autorização de redistribuição não é confundida automaticamente com uma licença OSI.
 - [ ] `PRIVACY.md` e `CODE_SIGNING_POLICY.md` refletem o comportamento e o estado reais e estão ligados a partir da homepage e da página de download/release.
-- [ ] Uma resposta escrita da SignPath confirma a elegibilidade do conjunto exato de funcionalidades incluído no artefacto assinado; enumeração de portas, Nmap e avisos heurísticos de risco não são omitidos da avaliação.
+- [ ] Se for escolhida uma subscrição regular SignPath, existe configuração e aceitação escrita do conjunto exato de funcionalidades; a orientação Foundation recebida não é apresentada como aprovação e enumeração de portas, Nmap e avisos heurísticos de risco não são omitidos da avaliação.
 - [ ] O `CHANGELOG.md` descreve apenas funcionalidades presentes nessa revisão.
 - [ ] Não existem links placeholder, contactos inexistentes ou alegações de capacidades futuras.
 
@@ -138,7 +138,7 @@ if ($actual -ne $expected) { throw 'SHA-256 invalido.' }
 
 Para uma release publicada:
 
-- [ ] Se for usada a SignPath, o projeto foi aceite, o GitHub App/trusted build system está ligado, origin verification passou, o input foi previamente guardado como GitHub Actions artifact e o pedido teve aprovação manual.
+- [ ] Se for usada uma subscrição regular SignPath, o GitHub App/trusted build system está ligado, origin verification passou, o input foi previamente guardado como GitHub Actions artifact e o pedido teve aprovação manual; o programa Foundation não é alegado.
 - [ ] Se for usado Microsoft Artifact Signing, a conta/perfil tem identidade válida, função mínima `Artifact Signing Certificate Profile Signer`, tipo explícito `PublicTrust` e credencial OIDC limitada a `release-signing`.
 - [ ] Não existe PFX/chave privada no GitHub; tokens de integração estão limitados ao projeto, policy e environment necessários.
 - [ ] O environment `release-signing` restringe deployments a tags autorizadas e exige reviewer apenas quando essa proteção está efetivamente disponível no plano/repositório; a ausência dessa capacidade tem um gate externo documentado.
@@ -205,11 +205,11 @@ Se for usado outro instalador, documentar a ferramenta e versão, privilégios p
 - [ ] ZIP, checksum, changelog e instruções de instalação estão anexados à release correta.
 - [ ] A autorização escrita aplicável à redistribuição IEEE foi arquivada com a evidência da release e os avisos exigidos estão presentes no pacote.
 - [ ] A variável do repositório `IEEE_REDISTRIBUTION_APPROVED` foi definida como `true` apenas depois de arquivar essa autorização.
-- [ ] A página da release contém uma secção ou ligação visível chamada **Code signing policy**, sem alegar SignPath antes da aceitação/assinatura efetiva.
+- [ ] A página da release contém uma secção ou ligação visível chamada **Code signing policy**, sem alegar SignPath Foundation e sem chamar `Signed` a uma release antes da assinatura efetiva.
 - [ ] Os hashes e assinaturas foram novamente verificados depois do upload.
 - [ ] O job de publicação recebeu exatamente 12 assets pela draft privada, verificou nomes, estado, tamanhos, SHA-256 e os digests canónicos do candidato Pending, payload Validated e release final; voltou a validar checksums e, numa release pública, timestamps e um único signer antes de retirar o estado draft.
 - [ ] O materializador final aceitou o `SIGNING-STATE.txt` já validado do payload apenas através do opt-in do job Publish e confirmou-o contra o atestado; os restantes caminhos continuam a exigir evidência separada.
-- [ ] No backend Microsoft atual, o workflow não criou artefactos de Actions; numa integração SignPath, o artifact de entrada obrigatório foi validado e recebeu retenção mínima/cleanup seguro depois da conclusão. `VALIDATION-ATTESTATION.json` e o SBOM SPDX permanecem como assets da release.
+- [ ] No backend Microsoft atual, o workflow não criou artefactos de Actions; numa eventual subscrição regular SignPath, o artifact de entrada obrigatório foi validado e recebeu retenção mínima/cleanup seguro depois da conclusão. `VALIDATION-ATTESTATION.json` e o SBOM SPDX permanecem como assets da release.
 - [ ] O gate terminal `Require an actually published release` terminou com sucesso e confirmou pela API `draft=false`, a tag, o modo de confiança, o marker e os 12 assets, recompondo também os digests canónicos do payload e da release; uma publicação elegível `skipped`, falhada ou cancelada não pode deixar o workflow verde.
 - [ ] Todos os blocos `shell: pwsh` do workflow passaram validação sintática, incluindo o resumo executado depois de `draft=false`.
 - [ ] `SIGNING-STATE.txt` e as notas da release publicada dizem explicitamente `Signed`; releases anteriores conhecidas como não assinadas permanecem documentadas como `NotSigned`.

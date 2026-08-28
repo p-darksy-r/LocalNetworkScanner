@@ -50,15 +50,16 @@ public sealed class UserDialogService
     public void ShowDiagnostic(Window? owner, string title, ScanDiagnostic diagnostic)
     {
         ArgumentNullException.ThrowIfNull(diagnostic);
+        LocalizedDiagnosticText localized = DiagnosticLocalizationService.GetText(diagnostic);
 
         StringBuilder message = new();
         message.Append('[').Append(diagnostic.Code).Append("] ")
             .Append(L(GetCategoryLabel(diagnostic.Category))).Append(" · ")
             .AppendLine(L(GetSeverityLabel(diagnostic.Severity)))
             .AppendLine()
-            .AppendLine(L(diagnostic.Message))
+            .AppendLine(localized.Message)
             .AppendLine()
-            .Append(L("O que fazer: ")).Append(L(diagnostic.RecommendedAction));
+            .Append(L("O que fazer: ")).Append(localized.RecommendedAction);
         if (!string.IsNullOrWhiteSpace(diagnostic.Target))
             message.AppendLine().Append(L("Alvo: ")).Append(diagnostic.Target);
 

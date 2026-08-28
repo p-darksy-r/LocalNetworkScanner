@@ -56,7 +56,7 @@ Uma release pública deve:
 
 O workflow recusa uma nova publicação pública de produção enquanto os binários não tiverem assinatura Authenticode confiável e timestamp válido. As prereleases de QA já publicadas identificam explicitamente o estado `NotSigned` e não devem ser redistribuídas como builds de produção. Para uma distribuição com identidade de publisher verificável e reputação de produção é necessária uma assinatura Authenticode Public Trust válida e com timestamp.
 
-A avaliação de elegibilidade para a SignPath Foundation está pendente. Nenhuma release atual foi assinada ou aprovada pela SignPath, e o workflow ainda não possui essa integração. A [Code signing policy](CODE_SIGNING_POLICY.md) define o estado atual, as funções da equipa e os gates pendentes. Entre esses gates estão a clarificação das funcionalidades de enumeração/risco face à condição **No hacking tools** e a licença/autorização aplicável à snapshot IEEE incorporada. A acessibilidade pública do repositório ou dos assets não resolve nenhum desses pontos.
+A SignPath informou por escrito que o projeto seria provavelmente problemático para o programa gratuito Foundation devido à enumeração de rede, portas e serviços, recomendando não submeter o estado atual. Isto não constitui uma rejeição formal nem uma aprovação; nenhuma release atual foi assinada ou aprovada pela SignPath e não existe integração ativa. A [Code signing policy](CODE_SIGNING_POLICY.md) regista a orientação, mantém separadas a assinatura e a autorização IEEE e impede alegações de elegibilidade. Se no futuro for escolhida a SignPath, a resposta indica uma subscrição regular com certificado próprio.
 
 ## Proteções do repositório público
 
@@ -68,6 +68,6 @@ O GitHub está configurado para:
 - executar CodeQL `security-extended` em alterações C#/XAML e semanalmente;
 - usar secret scanning, push protection e relatórios privados de vulnerabilidade.
 
-O projeto mantém apenas o branch `main`; por isso atualizações de Actions fixadas por SHA são revistas manualmente em vez de abrir branches automáticos do Dependabot. Uma alteração a workflows, scripts de release, políticas de assinatura ou futuros ficheiros `.signpath` deve receber atenção equivalente a código executável.
+O projeto mantém apenas o branch `main`; por isso atualizações de Actions fixadas por SHA são revistas manualmente em vez de abrir branches automáticos do Dependabot. Uma alteração a workflows, scripts de release, políticas de assinatura ou futuros ficheiros `.signpath` de uma eventual subscrição regular deve receber atenção equivalente a código executável.
 
 <!-- Copyright (c) 2026 p-darksy-r and Local Network Scanner. Licensed under the MIT License. -->

@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Documents;
+using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
 
@@ -916,7 +917,286 @@ public static class LocalizationService
             [" correspondências "] = " matches "
             ,
             [" nós de contexto "] = " context nodes "
+            ,
+            ["Mapa de topologia da rede"] = "Network topology map"
+            ,
+            ["Usa a roda do rato para ampliar, arrasta o fundo para mover e usa Tab para percorrer os nós."] = "Use the mouse wheel to zoom, drag the background to pan, and use Tab to move through nodes."
+            ,
+            ["O mapa ainda não tem uma área visível para exportar."] = "The map does not yet have a visible area to export."
+            ,
+            ["A topologia aparecerá depois de um scan. Resultados parciais continuam visíveis quando existirem dados suficientes."] = "The topology will appear after a scan. Partial results remain visible when enough data is available."
+            ,
+            ["Não existem dispositivos com alertas neste mapa."] = "There are no devices with alerts on this map."
+            ,
+            ["Não existem nós para o filtro selecionado."] = "There are no nodes for the selected filter."
+            ,
+            ["REDE ANALISADA"] = "SCANNED NETWORK"
+            ,
+            ["SWITCHING, WI-FI E VIZINHOS"] = "SWITCHING, WI-FI AND NEIGHBORS"
+            ,
+            ["CLIENTES"] = "CLIENTS"
+            ,
+            ["Ligação"] = "Link"
+            ,
+            ["Selecionado"] = "Selected"
+            ,
+            ["Ligado ao nó selecionado"] = "Connected to the selected node"
+            ,
+            ["Segmento de rede"] = "Network segment"
+            ,
+            ["ARP / L2 observado"] = "Observed ARP / L2"
+            ,
+            ["Alcance IP inferido"] = "Inferred IP reachability"
+            ,
+            ["Online"] = "Online"
+            ,
+            ["alta"] = "high"
+            ,
+            ["média"] = "medium"
+            ,
+            ["baixa"] = "low"
+            ,
+            ["não especificada"] = "not specified"
+            ,
+            ["não confirmado online"] = "not confirmed online"
+            ,
+            ["VLAN confirmada"] = "Confirmed VLAN"
+            ,
+            ["Seleciona o nó. Os detalhes resumidos aparecem abaixo e os detalhes completos permanecem na janela principal."] = "Select the node. Summary details appear below and full details remain in the main window."
+            ,
+            ["Timeout de ping"] = "Ping timeout"
+            ,
+            ["Timeout TCP"] = "TCP timeout"
+            ,
+            ["Timeout de descoberta"] = "Discovery timeout"
+            ,
+            ["Timeout SNMP"] = "SNMP timeout"
+            ,
+            ["Timeout Nmap"] = "Nmap timeout"
+            ,
+            ["Valor"] = "Value"
+            ,
+            ["NOVOS"] = "NEW"
+            ,
+            ["IDENTIDADE"] = "IDENTITY"
+            ,
+            ["Protocolos observados ou inferidos; não representa captura integral de pacotes."] = "Observed or inferred protocols; this does not represent full packet capture."
+            ,
+            ["Aberta"] = "Open"
+            ,
+            ["desconhecido"] = "unknown"
+            ,
+            ["TLS confirmado"] = "TLS confirmed"
+            ,
+            ["Não verificado"] = "Not verified"
+            ,
+            ["Indeterminado (falha)"] = "Undetermined (failure)"
+            ,
+            [" confirmado"] = " confirmed"
+            ,
+            ["Indeterminado ("] = "Undetermined ("
+            ,
+            ["online"] = "online"
+            ,
+            ["Segmento IP"] = "IP segment"
+            ,
+            ["Gateway e switch gerido consultado por SNMP"] = "Gateway and managed switch queried through SNMP"
+            ,
+            ["Rota predefinida da interface"] = "Interface default route"
+            ,
+            ["Gateway / switch gerido"] = "Gateway / managed switch"
+            ,
+            ["Gateway configurado pelo sistema operativo para a interface selecionada; não confirma disponibilidade atual nem cablagem física."] = "Gateway configured by the operating system for the selected interface; it does not confirm current availability or physical cabling."
+            ,
+            ["As ligações de pertença ao segmento representam endereçamento IP, não cablagem."] = "Segment membership links represent IP addressing, not cabling."
+            ,
+            ["ARP é evidência de resolução na camada 2, mas proxy ARP é possível e o switch físico permanece indeterminado."] = "ARP is evidence of layer-2 resolution, but proxy ARP is possible and the physical switch remains undetermined."
+            ,
+            ["Uma FDB SNMP mostra onde um MAC foi aprendido; a porta pode ser acesso, uplink, trunk, AP ou bridge remota e não prova ligação física direta."] = "An SNMP FDB shows where a MAC was learned; the port may be access, uplink, trunk, AP, or a remote bridge and does not prove a direct physical link."
+            ,
+            ["O switch consultado não devolveu vizinhos LLDP; a topologia física não é completada por inferência."] = "The queried switch returned no LLDP neighbors; physical topology is not completed by inference."
+            ,
+            ["Mapa gerado a partir de um scan parcial."] = "Map generated from a partial scan."
+            ,
+            ["Switch consultado por SNMP"] = "Switch queried through SNMP"
+            ,
+            ["ARP observado"] = "Observed ARP"
+            ,
+            ["O endereço foi resolvido para um MAC na interface local. É compatível com alcance L2 direto, mas proxy ARP é possível e não identifica o switch físico."] = "The address was resolved to a MAC on the local interface. This is compatible with direct L2 reachability, but proxy ARP is possible and it does not identify the physical switch."
+            ,
+            ["O dispositivo respondeu através de "] = "The device responded through "
+            ,
+            ["; o caminho, a VLAN e a ligação física não foram observados."] = "; the path, VLAN, and physical link were not observed."
+            ,
+            ["porta lógica "] = "logical port "
+            ,
+            [", VLAN confirmada "] = ", confirmed VLAN "
+            ,
+            ["MAC aprendido · "] = "MAC learned · "
+            ,
+            ["A FDB SNMP contém o MAC em "] = "The SNMP FDB contains the MAC on "
+            ,
+            [". A entrada pode apontar para acesso, uplink, trunk, AP ou bridge remota; não prova ligação física direta."] = ". The entry may point to access, uplink, trunk, AP, or a remote bridge; it does not prove a direct physical link."
+            ,
+            ["porta LLDP "] = "LLDP port "
+            ,
+            ["porta remota não anunciada"] = "remote port not advertised"
+            ,
+            ["O agente LLDP do switch registou este anúncio na porta local "] = "The switch LLDP agent recorded this advertisement on local port "
+            ,
+            [". Confirma a observação LLDP, não autentica a identidade anunciada."] = ". It confirms the LLDP observation but does not authenticate the advertised identity."
+            ,
+            ["Endereço no segmento"] = "Address in segment"
+            ,
+            ["O endereço pertence matematicamente a "] = "The address mathematically belongs to "
+            ,
+            ["; isto não representa uma ligação física."] = "; this does not represent a physical link."
+            ,
+            ["MAC aprendido na FDB"] = "MAC learned in the FDB"
+            ,
+            ["uma observação de rede"] = "a network observation"
+            ,
+            ["Mesmo switch físico"] = "Same physical switch"
+            ,
+            ["Switch físico diferente"] = "Different physical switch"
+            ,
+            ["MAC observado na FDB do switch; ligação física não confirmada"] = "MAC observed in the switch FDB; physical link not confirmed"
+            ,
+            ["fabricante"] = "manufacturer"
+            ,
+            ["modelo"] = "model"
+            ,
+            ["nome"] = "name"
+            ,
+            ["descrição"] = "description"
+            ,
+            ["tipo"] = "type"
+            ,
+            ["origem"] = "source"
+            ,
+            [" serviços"] = " services"
+            ,
+            ["Windows local"] = "Local Windows host"
+            ,
+            ["Enriquecimento"] = "Enrichment"
+            ,
+            ["Identidade SNMP"] = "SNMP identity"
+            ,
+            ["Nmap opcional"] = "Optional Nmap"
+            ,
+            ["Scan concluído: "] = "Scan completed: "
+            ,
+            [" dispositivos online em "] = " online devices in "
+            ,
+            [" dispositivos."] = " devices."
+            ,
+            ["Resultado parcial: o scan foi cancelado e alguns dispositivos ou detalhes podem estar em falta."] = "Partial result: the scan was canceled and some devices or details may be missing."
+            ,
+            ["Scan cancelado. "] = "Scan canceled. "
+            ,
+            [" resultados parciais podem ser exportados."] = " partial results can be exported."
+            ,
+            [" snapshots de histórico apagados. O resultado atual não foi alterado."] = " history snapshots deleted. The current result was not changed."
+            ,
+            ["Relatório de suporte guardado em "] = "Support report saved to "
+            ,
+            [". Revê o conteúdo antes de o partilhar."] = ". Review its contents before sharing it."
+            ,
+            ["A atualizar a base IEEE... "] = "Updating the IEEE database... "
+            ,
+            [" copiado."] = " copied."
+            ,
+            ["Interface Web aberta."] = "Web interface opened."
+            ,
+            ["Explorador aberto para o dispositivo."] = "File Explorer opened for the device."
+            ,
+            ["Janela de ping aberta."] = "Ping window opened."
+            ,
+            ["Janela de tracert aberta."] = "Traceroute window opened."
+            ,
+            ["Ligação de Ambiente de Trabalho Remoto iniciada."] = "Remote Desktop connection started."
+            ,
+            ["Definições personalizadas repostas para o perfil "] = "Custom settings reset to profile "
+            ,
+            ["As definições correspondem ao perfil "] = "The settings match profile "
+            ,
+            ["Os valores alterados abaixo substituem o perfil "] = "The values changed below override profile "
+            ,
+            ["O perfil "] = "Profile "
+            ,
+            [" comanda o scan; os valores guardados abaixo estão inativos."] = " controls the scan; the saved values below are inactive."
+            ,
+            [". As definições personalizadas ativas podem substituir este perfil."] = ". Active custom settings may override this profile."
+            ,
+            [". Este perfil comanda o scan."] = ". This profile controls the scan."
+            ,
+            [" substituições ativas"] = " active overrides"
+            ,
+            [" valores técnicos inválidos. Corrige os campos assinalados antes de iniciar o scan."] = " invalid technical values. Correct the highlighted fields before starting the scan."
+            ,
+            ["A combinar ICMP, TCP, ARP, mDNS e SSDP..."] = "Combining ICMP, TCP, ARP, mDNS, and SSDP..."
+            ,
+            ["A analisar "] = "Analyzing "
+            ,
+            ["Encontrado "] = "Found "
+            ,
+            ["Detalhes concluídos para "] = "Details completed for "
+            ,
+            ["Identidade SNMP recebida de "] = "SNMP identity received from "
+            ,
+            ["Sem identidade SNMP em "] = "No SNMP identity on "
+            ,
+            ["A enriquecer "] = "Enriching "
+            ,
+            [" dispositivo(s) com o Nmap instalado localmente..."] = " device(s) with the locally installed Nmap..."
+            ,
+            ["A consultar a tabela MAC do switch "] = "Querying the MAC table on switch "
+            ,
+            ["Tabela MAC recebida: "] = "MAC table received: "
+            ,
+            [" entradas; "] = " entries; "
+            ,
+            [" vizinhos LLDP."] = " LLDP neighbors."
+            ,
+            [" em modo somente leitura..."] = " in read-only mode..."
+            ,
+            ["Telemetria recebida: "] = "Telemetry received: "
+            ,
+            [" evidências."] = " evidence items."
+            ,
+            ["Sem telemetria aplicável; o scan base foi preservado."] = "No applicable telemetry; the base scan was preserved."
+            ,
+            ["A configuração abrange "] = "The configuration covers "
+            ,
+            [" endereços, "] = " addresses, "
+            ,
+            [" portas de descoberta e "] = " discovery ports and "
+            ,
+            [" portas de inventário. "] = " inventory ports. "
+            ,
+            ["O máximo conservador das sondas TCP incorporadas é "] = "The conservative maximum for built-in TCP probes is "
+            ,
+            [" tentativas, incluindo até "] = " attempts, including up to "
+            ,
+            [" ligações leves de serviço e "] = " lightweight service connections and "
+            ,
+            [" pedidos de descrição UPnP. "] = " UPnP description requests. "
+            ,
+            ["As portas de inventário só são testadas nos dispositivos confirmados online, pelo que a carga real tende a ser inferior."] = "Inventory ports are tested only on confirmed online devices, so the actual load tends to be lower."
+            ,
+            [" O Nmap está ativo e executará sondas adicionais com o seu próprio orçamento; esse tráfego não entra nesta contagem."] = " Nmap is enabled and will run additional probes with its own budget; that traffic is not included in this count."
+            ,
+            ["Esta configuração pode produzir uma carga muito elevada e deve ser usada apenas numa janela de manutenção."] = "This configuration may generate a very high load and should be used only during a maintenance window."
+            ,
+            ["Esta configuração pode demorar e gerar tráfego significativo."] = "This configuration may take time and generate significant traffic."
+            ,
+            ["A rede selecionada é extensa e pode demorar a analisar."] = "The selected network is large and may take time to scan."
         };
+
+    private static readonly IReadOnlyList<KeyValuePair<string, string>> EnglishPhrases = English
+        .Where(pair => pair.Key.Length >= 5 && pair.Key.Any(char.IsWhiteSpace))
+        .OrderByDescending(pair => pair.Key.Length)
+        .ToArray();
 
     private static readonly ConditionalWeakTable<DependencyObject, OriginalValues> OriginalValuesByElement = new();
     private static readonly List<WeakReference<FrameworkElement>> Roots = [];
@@ -946,10 +1226,13 @@ public static class LocalizationService
             "en" or "en-us" or "english" => AppLanguage.EnUs,
             _ => AppLanguage.PtPt
         };
-        if (_current == next)
+        bool changed = _current != next;
+        _current = next;
+        CultureInfo.CurrentCulture = CurrentCulture;
+        CultureInfo.CurrentUICulture = CurrentCulture;
+        if (!changed)
             return;
 
-        _current = next;
         if (notify)
         {
             LanguageChanged?.Invoke(null, EventArgs.Empty);
@@ -967,9 +1250,7 @@ public static class LocalizationService
         // Dynamic status lines contain counters, addresses or device names. Apply
         // only longer phrases so identifiers such as IP/MAC are never rewritten.
         string result = value;
-        foreach ((string source, string target) in English
-                     .Where(pair => pair.Key.Length >= 5 && pair.Key.Any(char.IsWhiteSpace))
-                     .OrderByDescending(pair => pair.Key.Length))
+        foreach ((string source, string target) in EnglishPhrases)
         {
             if (result.Contains(source, StringComparison.Ordinal))
                 result = result.Replace(source, target, StringComparison.Ordinal);
@@ -1045,6 +1326,13 @@ public static class LocalizationService
 
     private static void TranslateTree(DependencyObject root)
     {
+        if (root is FrameworkElement frameworkRoot)
+        {
+            frameworkRoot.SetCurrentValue(
+                FrameworkElement.LanguageProperty,
+                XmlLanguage.GetLanguage(CurrentTag));
+        }
+
         TranslateElement(root);
         foreach (DependencyObject child in EnumerateChildren(root))
             TranslateElement(child);

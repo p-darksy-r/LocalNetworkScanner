@@ -6,7 +6,7 @@
 
 O repositório é público. Todos os downloads publicados atualmente estão `NotSigned`; a `v1.2.0` é histórica e as prereleases `v1.3.x`/`v1.4.0` conservam o título histórico `Private QA (NotSigned)`, sem constituírem produção. Não existe uma release assinada pela SignPath Foundation nem pelo backend Microsoft descrito abaixo.
 
-A avaliação de elegibilidade para o programa gratuito da SignPath Foundation está pendente. O projeto ainda não foi aceite e não possui organização, projeto, artifact configuration, signing policy, origin verification ou credenciais SignPath configuradas. Consulte a [Code signing policy](../CODE_SIGNING_POLICY.md), que prevalece para o estado público e as alegações de assinatura.
+A SignPath respondeu em 27-08-2026 que o projeto seria provavelmente problemático para o programa gratuito Foundation devido à sua categoria de scanner de rede e recomendou não submeter o estado atual. Isto não é uma rejeição formal nem uma aprovação: a candidatura gratuita não prosseguirá, não existe integração SignPath e nenhuma release foi assinada pela Foundation. Consulte a [Code signing policy](../CODE_SIGNING_POLICY.md), que prevalece para o estado público e as alegações de assinatura.
 
 ## Porque o erro 4551 não pode ser corrigido apenas no código
 
@@ -52,9 +52,9 @@ O GitHub restringe a leitura de draft releases a tokens com push access. Assim, 
 
 O suporte local por thumbprint nos scripts continua disponível para laboratórios, PKI privada ou um runner próprio ligado a token/HSM. O workflow público não usa PFX exportável: certificados Code Signing públicos novos exigem normalmente que a chave seja gerada, armazenada e usada num módulo criptográfico adequado.
 
-## Candidatura SignPath pendente
+## Resultado da avaliação SignPath Foundation
 
-A SignPath não é um backend ativo neste repositório. Se o projeto for aceite, a integração terá de ser implementada e revista antes de qualquer pedido de assinatura:
+A SignPath não é um backend ativo neste repositório. A orientação recebida desaconselha a candidatura gratuita no estado atual, porque a enumeração de rede, portas e serviços é parte central do produto. As funcionalidades permanecem deliberadamente disponíveis para inventário e troubleshooting autorizado. Se no futuro for escolhida uma subscrição regular SignPath, a integração terá de ser implementada e revista antes de qualquer pedido de assinatura:
 
 1. instalar e autorizar a aplicação GitHub da SignPath conforme a configuração fornecida;
 2. ligar o projeto a um trusted build system GitHub com origin verification;
@@ -64,9 +64,7 @@ A SignPath não é um backend ativo neste repositório. Se o projeto for aceite,
 6. exigir aprovação manual de cada pedido de produção e validar o artifact devolvido antes de gerar checksums ou publicar;
 7. documentar exatamente quais executáveis, scripts, instaladores e desinstaladores são abrangidos.
 
-Esta integração difere do transporte por draft release do backend atual. Não basta trocar o nome do serviço ou criar secrets: a ordem de build, assinatura, criação do instalador, testes nativos e hashes terá de preservar a proveniência do mesmo candidato.
-
-Antes disso, a SignPath deve responder sobre a elegibilidade da enumeração de portas/Nmap/avisos heurísticos de risco e sobre a snapshot IEEE. A política da Foundation exige condições próprias para funcionalidades de segurança e para licenças das componentes; uma autorização de redistribuição IEEE e uma licença OSI são questões diferentes. Não esconda capacidades nem apresente uma resposta parcial como aprovação do produto completo.
+Esta possível integração regular difere do transporte por draft release do backend atual. Não basta trocar o nome do serviço ou criar secrets: a ordem de build, assinatura, criação do instalador, testes nativos e hashes terá de preservar a proveniência do mesmo candidato. Uma autorização de redistribuição IEEE e uma licença OSI são questões diferentes. Não esconda capacidades nem apresente uma resposta parcial como aprovação do produto completo.
 
 ## Pré-requisitos externos do backend Microsoft
 
@@ -147,8 +145,8 @@ Definir a variável sem possuir a autorização não cria direitos de redistribu
 1. Execute CI no `main` e confirme **CI gate**, incluindo o job ARM64 nativo.
 2. Não crie uma tag nova para publicar QA sem assinatura: no repositório público o modo `PrivateQa` falha antes do build.
 3. Teste UI, CLI, scan, topologia, instalação, atualização e remoção num Windows limpo através de builds locais claramente identificadas como `NotSigned`.
-4. Obtenha respostas escritas sobre elegibilidade SignPath e snapshot IEEE; arquive as condições aplicáveis.
-5. Escolha um backend realmente elegível. Para SignPath, implemente GitHub artifact/origin verification/aprovação; para Microsoft, configure e proteja `release-signing`, OIDC e um perfil `PublicTrust` elegível.
+4. Arquive a resposta escrita da SignPath Foundation como orientação de não candidatura gratuita; obtenha separadamente a autorização da snapshot IEEE.
+5. Escolha um backend realmente elegível. Para uma subscrição regular SignPath, implemente GitHub artifact/origin verification/aprovação; para Microsoft, configure e proteja `release-signing`, OIDC e um perfil `PublicTrust` elegível.
 6. Proteja `main`, tags, workflows e credenciais, e confirme MFA para todas as funções de assinatura.
 7. Atualize versão/changelog e confirme novamente que o HEAD local e `origin/main` são o mesmo commit.
 8. Configure todos os gates externos antes de criar a nova tag de produção. A primeira release assinada não pode reutilizar `v1.4.0` nem substituir assets existentes.

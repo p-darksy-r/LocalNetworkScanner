@@ -290,7 +290,7 @@ public partial class TopologyWindow : Window
                 NodeKindText(node),
                 node.IpAddress?.ToString() ?? "—",
                 node.Kind == NetworkMapNodeKind.NetworkSegment
-                    ? "Rede"
+                    ? L("Rede")
                     : node.IsOnline ? L("Online") : L("Não confirmado"),
                 L(node.RiskLevel),
                 node.VlanId is int vlan ? vlan.ToString(CultureInfo.CurrentCulture) : "—"))
@@ -301,7 +301,7 @@ public partial class TopologyWindow : Window
                 labels.GetValueOrDefault(edge.TargetId, edge.TargetId),
                 EdgeKindText(edge.Kind),
                 ConfidenceText(edge.Confidence),
-                $"{edge.Label}. {edge.Evidence}"))
+                $"{L(edge.Label)}. {L(edge.Evidence)}"))
             .ToArray();
         ClearTopologySelectionIfNotVisible(visibleIds);
 

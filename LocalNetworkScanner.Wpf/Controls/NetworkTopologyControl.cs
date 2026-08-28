@@ -11,6 +11,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using LocalNetworkScanner.Core.Models;
+using LocalNetworkScanner.Wpf.Services;
 
 namespace LocalNetworkScanner.Wpf.Controls;
 
@@ -72,6 +73,7 @@ public sealed class NetworkTopologyControl : Grid
     private bool _isAutoFitEnabled = true;
     private bool _isSystemParametersSubscribed;
     private bool _isThemeSubscribed;
+    private bool _isLanguageSubscribed;
     private bool _paletteRefreshQueued;
 
     public NetworkTopologyControl()
@@ -112,10 +114,7 @@ public sealed class NetworkTopologyControl : Grid
         Loaded += OnControlLoaded;
         Unloaded += OnControlUnloaded;
 
-        AutomationProperties.SetName(this, "Mapa de topologia da rede");
-        AutomationProperties.SetHelpText(
-            this,
-            "Usa a roda do rato para ampliar, arrasta o fundo para mover e usa Tab para percorrer os nós.");
+        UpdateAutomationText();
         RebuildVisuals();
     }
 
@@ -305,7 +304,7 @@ public sealed class NetworkTopologyControl : Grid
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (ActualWidth <= 0 || ActualHeight <= 0)
-            throw new InvalidOperationException("O mapa ainda não tem uma área visível para exportar.");
+            throw new InvalidOperationException(L("O mapa ainda não tem uma área visível para exportar."));
 
         DpiScale dpi = VisualTreeHelper.GetDpi(this);
         int pixelWidth = Math.Max(1, (int)Math.Ceiling(ActualWidth * dpi.DpiScaleX));
@@ -346,7 +345,7 @@ public sealed class NetworkTopologyControl : Grid
         if (map is null || map.Nodes.Count == 0)
         {
             _emptyMessage.Text =
-                "A topologia aparecerá depois de um scan. Resultados parciais continuam visíveis quando existirem dados suficientes.";
+                L("A topologia aparecerá depois de um scan. Resultados parciais continuam visíveis quando existirem dados suficientes.");
             _emptyMessage.Visibility = Visibility.Visible;
             return;
         }
@@ -358,8 +357,8 @@ public sealed class NetworkTopologyControl : Grid
         if (matchingCount == 0)
         {
             _emptyMessage.Text = FilterMode == TopologyFilterMode.Alerts
-                ? "Não existem dispositivos com alertas neste mapa."
-                : "Não existem nós para o filtro selecionado.";
+                ? L("Não existem dispositivos com alertas neste mapa.")
+                : L("Não existem nós para o filtro selecionado.");
             _emptyMessage.Visibility = Visibility.Visible;
             return;
         }
@@ -451,7 +450,7 @@ public sealed class NetworkTopologyControl : Grid
 
         TextBlock label = new()
         {
-            Text = title,
+            Text = L(title),
             FontSize = 10,
             FontWeight = FontWeights.Bold,
             Foreground = ResourceBrush("TextSecondaryBrush", Brushes.DimGray),
@@ -488,6 +487,8 @@ public sealed class NetworkTopologyControl : Grid
         }
 
         (Brush brush, DoubleCollection? dash, double thickness, string category) = GetEdgeStyle(edge.Kind);
+        string edgeLabelText = L(edge.Label);
+        string edgeEvidenceText = L(edge.Evidence);
         PathGeometry geometry = BuildEdgeGeometry(source, target);
         System.Windows.Shapes.Path halo = new()
         {
@@ -508,10 +509,10 @@ public sealed class NetworkTopologyControl : Grid
             StrokeDashArray = dash,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
-            ToolTip = $"{category}: {edge.Label}\n{edge.Evidence}\nConfiança: {ConfidenceText(edge.Confidence)}",
+            ToolTip = $"{category}: {edgeLabelText}\n{edgeEvidenceText}\n{L("Confiança")}: {ConfidenceText(edge.Confidence)}",
             IsHitTestVisible = true
         };
-        AutomationProperties.SetName(path, $"Ligação {category}: {edge.Label}");
+        AutomationProperties.SetName(path, $"{L("Ligação")} {category}: {edgeLabelText}");
         Panel.SetZIndex(path, 2);
         _canvas.Children.Add(path);
 
@@ -575,6 +576,11 @@ public sealed class NetworkTopologyControl : Grid
             return;
 
         string kindLabel = NodeKindText(node.Kind);
+        string riskLabel = L(node.RiskLevel);
+        // Subtitles can contain manufacturer names or other network-provided
+        // values. Translate only complete, controlled phrases so user data is
+        // never rewritten by a partial dictionary match.
+        string subtitleText = LocalizationService.TranslateExact(node.Subtitle);
         TextBlock icon = new()
         {
             Text = NodeIconGlyph(node),
@@ -614,7 +620,7 @@ public sealed class NetworkTopologyControl : Grid
         };
         TextBlock subtitle = new()
         {
-            Text = node.Subtitle,
+            Text = subtitleText,
             Margin = new Thickness(0, 2, 0, 0),
             FontSize = 11,
             Foreground = ResourceBrush("TextSecondaryBrush", Brushes.DimGray),
@@ -627,12 +633,12 @@ public sealed class NetworkTopologyControl : Grid
         identity.Children.Add(subtitle);
 
         Border stateChip = CreateChip(
-            node.IsOnline ? "● Online" : "○ Não confirmado",
+            node.IsOnline ? $"● {L("Online")}" : $"○ {L("Não confirmado")}",
             node.IsOnline
                 ? ResourceBrush("SuccessBrush", Brushes.SeaGreen)
                 : ResourceBrush("TextSecondaryBrush", Brushes.DimGray));
         Border riskChip = CreateChip(
-            $"Risco {node.RiskLevel}",
+            $"{L("Risco")} {riskLabel}",
             node.RiskLevel.Equals("Alto", StringComparison.OrdinalIgnoreCase)
                 ? ResourceBrush("DangerBrush", Brushes.Firebrick)
                 : node.RiskLevel.Equals("Médio", StringComparison.OrdinalIgnoreCase)
@@ -676,13 +682,13 @@ public sealed class NetworkTopologyControl : Grid
         button.Click += OnNodeClick;
         AutomationProperties.SetName(
             button,
-            $"{kindLabel}: {node.Label}. {node.Subtitle}. " +
-            $"Estado: {(node.IsOnline ? "online" : "não confirmado online")}. " +
-            $"Risco {node.RiskLevel}. " +
-            $"{(node.VlanId is int nodeVlan ? $"VLAN {nodeVlan}." : "VLAN não confirmada.")}");
+            $"{kindLabel}: {node.Label}. {subtitleText}. " +
+            $"{L("Estado")}: {(node.IsOnline ? L("online") : L("não confirmado online"))}. " +
+            $"{L("Risco")} {riskLabel}. " +
+            $"{(node.VlanId is int nodeVlan ? $"VLAN {nodeVlan}." : L("VLAN não confirmada."))}");
         AutomationProperties.SetHelpText(
             button,
-            "Seleciona o nó. Os detalhes resumidos aparecem abaixo e os detalhes completos permanecem na janela principal.");
+            L("Seleciona o nó. Os detalhes resumidos aparecem abaixo e os detalhes completos permanecem na janela principal."));
 
         Canvas.SetLeft(button, center.X - (NodeWidth / 2));
         Canvas.SetTop(button, center.Y - (NodeHeight / 2));
@@ -723,15 +729,16 @@ public sealed class NetworkTopologyControl : Grid
         HashSet<string> connectedNodeIds = selectedId is null
             ? []
             : new HashSet<string>(StringComparer.Ordinal) { selectedId };
+        bool dimUnconnected = selectedId is not null && !SystemParameters.HighContrast;
         foreach (EdgeVisual visual in _edgeVisuals)
         {
             bool isConnected = selectedId is null ||
                 string.Equals(visual.Edge.SourceId, selectedId, StringComparison.Ordinal) ||
                 string.Equals(visual.Edge.TargetId, selectedId, StringComparison.Ordinal);
-            visual.Path.Opacity = isConnected ? 1 : 0.12;
-            visual.Halo.Opacity = isConnected ? 0.94 : 0.06;
+            visual.Path.Opacity = isConnected || !dimUnconnected ? 1 : 0.12;
+            visual.Halo.Opacity = isConnected || !dimUnconnected ? 0.94 : 0.06;
             if (visual.Label is not null)
-                visual.Label.Opacity = isConnected ? 1 : 0.12;
+                visual.Label.Opacity = isConnected || !dimUnconnected ? 1 : 0.12;
 
             if (selectedId is not null && isConnected)
             {
@@ -744,7 +751,7 @@ public sealed class NetworkTopologyControl : Grid
         {
             bool selected = string.Equals(id, selectedId, StringComparison.Ordinal);
             bool connected = selectedId is null || connectedNodeIds.Contains(id);
-            button.Opacity = connected ? 1 : 0.36;
+            button.Opacity = connected || !dimUnconnected ? 1 : 0.36;
             button.BorderThickness = selected
                 ? new Thickness(4)
                 : NodeBorderThickness(((NetworkMapNode)button.Tag).Kind);
@@ -754,9 +761,9 @@ public sealed class NetworkTopologyControl : Grid
             AutomationProperties.SetItemStatus(
                 button,
                 selected
-                    ? "Selecionado"
+                    ? L("Selecionado")
                     : selectedId is not null && connected
-                        ? "Ligado ao nó selecionado"
+                        ? L("Ligado ao nó selecionado")
                         : string.Empty);
         }
     }
@@ -774,6 +781,12 @@ public sealed class NetworkTopologyControl : Grid
             application.ThemeChanged += OnThemeChanged;
             _isThemeSubscribed = true;
         }
+
+        if (!_isLanguageSubscribed)
+        {
+            LocalizationService.LanguageChanged += OnLanguageChanged;
+            _isLanguageSubscribed = true;
+        }
     }
 
     private void OnControlUnloaded(object sender, RoutedEventArgs e)
@@ -788,6 +801,12 @@ public sealed class NetworkTopologyControl : Grid
         {
             application.ThemeChanged -= OnThemeChanged;
             _isThemeSubscribed = false;
+        }
+
+        if (_isLanguageSubscribed)
+        {
+            LocalizationService.LanguageChanged -= OnLanguageChanged;
+            _isLanguageSubscribed = false;
         }
     }
 
@@ -804,6 +823,8 @@ public sealed class NetworkTopologyControl : Grid
 
     private void OnThemeChanged(object? sender, EventArgs e) => QueuePaletteRefresh();
 
+    private void OnLanguageChanged(object? sender, EventArgs e) => QueuePaletteRefresh();
+
     private void QueuePaletteRefresh()
     {
         if (_paletteRefreshQueued)
@@ -815,10 +836,19 @@ public sealed class NetworkTopologyControl : Grid
             new Action(() =>
             {
                 _paletteRefreshQueued = false;
+                UpdateAutomationText();
                 RebuildVisuals(scheduleFit: false);
                 InvalidateVisual();
                 OnViewportChanged();
             }));
+    }
+
+    private void UpdateAutomationText()
+    {
+        AutomationProperties.SetName(this, L("Mapa de topologia da rede"));
+        AutomationProperties.SetHelpText(
+            this,
+            L("Usa a roda do rato para ampliar, arrasta o fundo para mover e usa Tab para percorrer os nós."));
     }
 
     private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -950,17 +980,17 @@ public sealed class NetworkTopologyControl : Grid
         NetworkMapEdgeKind kind) => kind switch
         {
             NetworkMapEdgeKind.Layer2Observed =>
-                (ResourceBrush("SuccessBrush", Brushes.SeaGreen), null, 3, "ARP / L2 observado"),
+                (ResourceBrush("SuccessBrush", Brushes.SeaGreen), null, 3, L("ARP / L2 observado")),
             NetworkMapEdgeKind.MacLearned =>
                 (ResourceBrush("AccentBrush", Brushes.RoyalBlue), new DoubleCollection([8, 4]), 3, "FDB / SNMP"),
             NetworkMapEdgeKind.IpReachability =>
-                (ResourceBrush("TextSecondaryBrush", Brushes.DimGray), new DoubleCollection([2, 4]), 2, "Alcance IP inferido"),
+                (ResourceBrush("TextSecondaryBrush", Brushes.DimGray), new DoubleCollection([2, 4]), 2, L("Alcance IP inferido")),
             NetworkMapEdgeKind.DefaultRoute =>
-                (ResourceBrush("WarningBrush", Brushes.DarkOrange), new DoubleCollection([12, 3]), 3, "Rota predefinida"),
+                (ResourceBrush("WarningBrush", Brushes.DarkOrange), new DoubleCollection([12, 3]), 3, L("Rota predefinida")),
             NetworkMapEdgeKind.LldpNeighbor =>
-                (ResourceBrush("AccentDarkBrush", Brushes.Navy), new DoubleCollection([10, 3, 2, 3]), 3, "Vizinho LLDP"),
+                (ResourceBrush("AccentDarkBrush", Brushes.Navy), new DoubleCollection([10, 3, 2, 3]), 3, L("Vizinho LLDP")),
             _ =>
-                (ResourceBrush("BorderBrush", Brushes.Gray), new DoubleCollection([1, 3]), 2, "Pertence à rede")
+                (ResourceBrush("BorderBrush", Brushes.Gray), new DoubleCollection([1, 3]), 2, L("Pertence à rede"))
         };
 
     private Brush NodeBackground(NetworkMapNode node)
@@ -1047,7 +1077,7 @@ public sealed class NetworkTopologyControl : Grid
         _ => "\uE7F8"
     };
 
-    private static string NodeKindText(NetworkMapNodeKind kind) => kind switch
+    private static string NodeKindText(NetworkMapNodeKind kind) => L(kind switch
     {
         NetworkMapNodeKind.NetworkSegment => "Segmento de rede",
         NetworkMapNodeKind.LocalHost => "Este computador",
@@ -1055,20 +1085,21 @@ public sealed class NetworkTopologyControl : Grid
         NetworkMapNodeKind.ManagedSwitch => "Switch gerido",
         NetworkMapNodeKind.LldpNeighbor => "Vizinho LLDP",
         _ => "Dispositivo"
-    };
+    });
 
     private static string BuildNodeToolTip(NetworkMapNode node)
     {
-        List<string> details = [NodeKindText(node.Kind), node.Label, node.Subtitle];
+        List<string> details =
+        [NodeKindText(node.Kind), node.Label, LocalizationService.TranslateExact(node.Subtitle)];
         if (node.IpAddress is not null)
             details.Add($"IP: {node.IpAddress}");
         if (!string.IsNullOrWhiteSpace(node.MacAddress))
             details.Add($"MAC: {node.MacAddress}");
         if (node.VlanId.HasValue)
-            details.Add($"VLAN confirmada: {node.VlanId}");
+            details.Add($"{L("VLAN confirmada")}: {node.VlanId}");
         if (!string.IsNullOrWhiteSpace(node.DeviceType))
-            details.Add($"Tipo: {node.DeviceType}");
-        details.Add($"Risco: {node.RiskLevel}");
+            details.Add($"{L("Tipo")}: {LocalizationService.TranslateExact(node.DeviceType)}");
+        details.Add($"{L("Risco")}: {L(node.RiskLevel)}");
         return string.Join(Environment.NewLine, details);
     }
 
@@ -1077,13 +1108,15 @@ public sealed class NetworkTopologyControl : Grid
     private Color ResourceColor(string key, Color fallback) =>
         TryFindResource(key) is SolidColorBrush brush ? brush.Color : fallback;
 
-    private static string ConfidenceText(ConfidenceLevel confidence) => confidence switch
+    private static string ConfidenceText(ConfidenceLevel confidence) => L(confidence switch
     {
         ConfidenceLevel.High => "alta",
         ConfidenceLevel.Medium => "média",
         ConfidenceLevel.Low => "baixa",
         _ => "não especificada"
-    };
+    });
+
+    private static string L(string? value) => LocalizationService.Translate(value);
 
     private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
     {

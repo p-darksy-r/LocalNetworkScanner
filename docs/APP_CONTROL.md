@@ -94,7 +94,7 @@ Configuração que o backend Microsoft exigiria no GitHub:
 
 O workflow não lê PFX, palavra-passe ou chave privada. Os antigos secrets `AUTHENTICODE_PFX_*`, caso existam, devem ser removidos depois de confirmar que nenhuma outra automação depende deles.
 
-A avaliação de elegibilidade para a SignPath Foundation está pendente. O projeto ainda não foi aceite e o workflow ainda não envia artefactos à SignPath. Uma eventual integração exigirá GitHub Actions artifacts, origin verification e aprovação manual, e substituirá ou generalizará o backend atual; não se deve configurar credenciais ou alegar assinatura antes de o serviço fornecer e aprovar a configuração. Consulte a [Code signing policy](../CODE_SIGNING_POLICY.md).
+A SignPath informou por escrito que o projeto seria provavelmente problemático para o programa gratuito Foundation devido à sua categoria de scanner de rede, recomendando não submeter o estado atual. Não existe integração SignPath nem release assinada pela Foundation. As alternativas legítimas são uma publicação MSIX aprovada pela Microsoft Store, Microsoft Artifact Signing elegível, uma CA pública ou uma eventual subscrição regular SignPath com certificado próprio; qualquer integração futura exigirá configuração, origin verification e aprovação explícitas. Consulte a [Code signing policy](../CODE_SIGNING_POLICY.md).
 
 O preflight usa códigos `LNS-REL-*` e termina antes do build quando a tag não corresponde ao HEAD de `main`, falta Artifact Signing/OIDC ou não existe autorização IEEE. Consulte [Assinatura e prontidão de release](SIGNING.md) para a configuração completa.
 

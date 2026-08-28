@@ -1009,11 +1009,13 @@
                                         <DataTemplate>
                                             <Border Padding="8,3"
                                                     HorizontalAlignment="Left"
-                                                    Background="{Binding RiskLevel, Converter={StaticResource RiskToBrushConverter}}"
+                                                    Tag="{Binding RiskLevel}"
+                                                    Style="{StaticResource RiskSurfaceStyle}"
                                                     CornerRadius="10">
                                                 <TextBlock FontSize="11"
                                                            FontWeight="SemiBold"
-                                                           Foreground="{Binding RiskLevel, Converter={StaticResource RiskToForegroundConverter}}"
+                                                           Tag="{Binding RiskLevel}"
+                                                           Style="{StaticResource RiskTextStyle}"
                                                            Text="{Binding RiskDisplay}" />
                                             </Border>
                                         </DataTemplate>
@@ -1248,11 +1250,13 @@
                             <Border Grid.Column="1"
                                     Padding="9,4"
                                     VerticalAlignment="Center"
-                                    Background="{Binding SelectedDevice.RiskLevel, Converter={StaticResource RiskToBrushConverter}}"
+                                    Tag="{Binding SelectedDevice.RiskLevel}"
+                                    Style="{StaticResource RiskSurfaceStyle}"
                                     CornerRadius="11">
                                 <TextBlock FontSize="11"
                                            FontWeight="SemiBold"
-                                           Foreground="{Binding SelectedDevice.RiskLevel, Converter={StaticResource RiskToForegroundConverter}}"
+                                           Tag="{Binding SelectedDevice.RiskLevel}"
+                                           Style="{StaticResource RiskTextStyle}"
                                            Text="{Binding SelectedDevice.RiskDisplay, Converter={StaticResource LocalizedFormatConverter}, ConverterParameter=Risco |}" />
                             </Border>
                         </Grid>
@@ -1487,8 +1491,8 @@
                                             <GridView>
                                                 <GridViewColumn Width="58" Header="Porta" DisplayMemberBinding="{Binding Port}" />
                                                 <GridViewColumn Width="62" Header="Proto." DisplayMemberBinding="{Binding Protocol}" />
-                                                <GridViewColumn Width="112" Header="Serviço" DisplayMemberBinding="{Binding ServiceName}" />
-                                                <GridViewColumn Width="190" Header="TLS" DisplayMemberBinding="{Binding TlsStatusDisplay}" />
+                                                <GridViewColumn Width="112" Header="Serviço" DisplayMemberBinding="{Binding ServiceName, Converter={StaticResource LocalizedFormatConverter}}" />
+                                                <GridViewColumn Width="190" Header="TLS" DisplayMemberBinding="{Binding TlsStatusDisplay, Converter={StaticResource LocalizedFormatConverter}}" />
                                             </GridView>
                                         </ListView.View>
                                         <ListView.ItemContainerStyle>
@@ -1522,15 +1526,18 @@
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <StackPanel Margin="12">
                                         <Border Padding="12"
-                                                Background="{Binding SelectedDevice.RiskLevel, Converter={StaticResource RiskToBrushConverter}}"
+                                                Tag="{Binding SelectedDevice.RiskLevel}"
+                                                Style="{StaticResource RiskSurfaceStyle}"
                                                 CornerRadius="7">
                                             <StackPanel>
                                                 <TextBlock FontWeight="SemiBold"
-                                                           Foreground="{Binding SelectedDevice.RiskLevel, Converter={StaticResource RiskToForegroundConverter}}"
+                                                           Tag="{Binding SelectedDevice.RiskLevel}"
+                                                           Style="{StaticResource RiskTextStyle}"
                                                            Text="{Binding SelectedDevice.RiskLevel, Converter={StaticResource LocalizedFormatConverter}, ConverterParameter=Nível de risco: |}" />
                                                 <TextBlock Margin="0,4,0,0"
                                                            FontSize="11"
-                                                           Foreground="{Binding SelectedDevice.RiskLevel, Converter={StaticResource RiskToForegroundConverter}}"
+                                                           Tag="{Binding SelectedDevice.RiskLevel}"
+                                                           Style="{StaticResource RiskTextStyle}"
                                                            Text="Avaliação heurística baseada nos serviços observados." />
                                             </StackPanel>
                                         </Border>

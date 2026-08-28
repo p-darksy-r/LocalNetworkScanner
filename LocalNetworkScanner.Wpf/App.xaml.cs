@@ -23,6 +23,12 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // WPF can deliver a queued startup callback after a host has already
+        // supplied its own main window (the test harness does this deliberately).
+        // Never create a second window or overwrite its selected language/theme.
+        if (MainWindow is not null)
+            return;
+
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
@@ -181,6 +187,8 @@ public partial class App : Application
         Resources["RiskHighForegroundBrush"] = SystemColors.ControlTextBrush;
         Resources["RiskMediumForegroundBrush"] = SystemColors.ControlTextBrush;
         Resources["RiskLowForegroundBrush"] = SystemColors.ControlTextBrush;
+        Resources["ToolTipBackgroundBrush"] = SystemColors.InfoBrush;
+        Resources["ToolTipForegroundBrush"] = SystemColors.InfoTextBrush;
     }
 
     private void ApplyDarkPalette()
@@ -188,7 +196,7 @@ public partial class App : Application
         SetPaletteBrush("WindowBackgroundBrush", 0x11, 0x16, 0x1D);
         SetPaletteBrush("SurfaceBrush", 0x1A, 0x21, 0x2B);
         SetPaletteBrush("SurfaceMutedBrush", 0x22, 0x2C, 0x38);
-        SetPaletteBrush("BorderBrush", 0x3A, 0x47, 0x57);
+        SetPaletteBrush("BorderBrush", 0x5D, 0x70, 0x87);
         SetPaletteBrush("TextPrimaryBrush", 0xF4, 0xF7, 0xFB);
         SetPaletteBrush("TextSecondaryBrush", 0xAA, 0xB7, 0xC8);
         SetPaletteBrush("AccentBrush", 0x66, 0xA8, 0xFF);
@@ -206,6 +214,8 @@ public partial class App : Application
         SetPaletteBrush("RiskMediumForegroundBrush", 0xFF, 0xD5, 0x8A);
         SetPaletteBrush("RiskLowBrush", 0x21, 0x4C, 0x39);
         SetPaletteBrush("RiskLowForegroundBrush", 0xA9, 0xF3, 0xC9);
+        SetPaletteBrush("ToolTipBackgroundBrush", 0x2A, 0x34, 0x42);
+        SetPaletteBrush("ToolTipForegroundBrush", 0xF4, 0xF7, 0xFB);
     }
 
     private void SetPaletteBrush(string key, byte red, byte green, byte blue)
@@ -238,6 +248,9 @@ public partial class App : Application
         "RiskHighForegroundBrush",
         "RiskMediumForegroundBrush",
         "RiskLowForegroundBrush"
+        ,
+        "ToolTipBackgroundBrush",
+        "ToolTipForegroundBrush"
     ];
 }
 

@@ -29,6 +29,7 @@ public partial class AboutWindow : Window, INotifyPropertyChanged
     private readonly string _version;
     private readonly string _summarySource;
     private bool _hasLoaded;
+    private bool _synchronizingLanguageSelector;
 
     public AboutWindow()
     {
@@ -54,8 +55,7 @@ public partial class AboutWindow : Window, INotifyPropertyChanged
         DataContext = this;
         LanguageSelector.DisplayMemberPath = nameof(LanguageOption.DisplayName);
         LanguageSelector.SelectedValuePath = nameof(LanguageOption.Tag);
-        LanguageSelector.ItemsSource = LocalizationService.LanguageOptions;
-        LanguageSelector.SelectedValue = LocalizationService.CurrentTag;
+        SynchronizeLanguageSelector(includeItems: true);
         LocalizationService.LanguageChanged += OnLanguageChanged;
         Closed += OnClosed;
     }
@@ -86,6 +86,9 @@ public partial class AboutWindow : Window, INotifyPropertyChanged
 
     private void OnLanguageSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
+        if (_synchronizingLanguageSelector)
+            return;
+
         if (LanguageSelector.SelectedValue is string tag)
             LocalizationService.SetLanguage(tag);
     }
@@ -94,10 +97,34 @@ public partial class AboutWindow : Window, INotifyPropertyChanged
     {
         VersionLabel = BuildVersionLabel();
         Summary = LocalizationService.Translate(_summarySource);
-        LanguageSelector.ItemsSource = LocalizationService.LanguageOptions;
-        LanguageSelector.SelectedValue = LocalizationService.CurrentTag;
+        // Keep the same item collection while the window is open. Replacing the
+        // ItemsSource can clear the selection and emit a delayed SelectionChanged
+        // event that restores the first language after an unrelated theme change.
+        SynchronizeLanguageSelector(includeItems: false);
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VersionLabel)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Summary)));
+    }
+
+    private void SynchronizeLanguageSelector(bool includeItems)
+    {
+        _synchronizingLanguageSelector = true;
+        try
+        {
+            if (includeItems)
+                LanguageSelector.ItemsSource = LocalizationService.LanguageOptions;
+
+            if (!string.Equals(
+                    LanguageSelector.SelectedValue?.ToString(),
+                    LocalizationService.CurrentTag,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                LanguageSelector.SelectedValue = LocalizationService.CurrentTag;
+            }
+        }
+        finally
+        {
+            _synchronizingLanguageSelector = false;
+        }
     }
 
     private string BuildVersionLabel() => $"{LocalizationService.Translate("Versão")} {_version}";

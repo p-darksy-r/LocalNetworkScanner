@@ -22,6 +22,7 @@ using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Media.Media3D;
 using LocalNetworkScanner.Core.Models;
 using LocalNetworkScanner.Core.Services;
 using LocalNetworkScanner.Core.Utilities;
@@ -4387,7 +4388,27 @@ List<(string Name, Func<Task> Run)> tests =
         Equal("Open scan topology", LocalizationService.Translate("Abrir topologia do scan"));
         Equal("Medium", LocalizationService.TranslateExact("Médio"));
         Equal("My router", LocalizationService.TranslateExact("My router"));
+        Equal("en-US", CultureInfo.CurrentCulture.Name);
+        True(
+            LocalizationService.Translate("Scan concluído: 5 dispositivos online em 1.2 s.")
+                .Contains("Scan completed: 5 online devices in 1.2 s.", StringComparison.Ordinal),
+            "As mensagens dinâmicas do scan devem ser localizadas sem alterar os valores.");
+        ScanDiagnostic diagnostic = DiagnosticCatalog.InvalidCidr("192.168.1.999/24");
+        LocalizedDiagnosticText diagnosticText = DiagnosticLocalizationService.GetText(diagnostic);
+        Equal("The IPv4 address or CIDR prefix is not valid.", diagnosticText.Message);
+        Equal("The IPv4 address or CIDR prefix is not valid.", new DiagnosticRowViewModel(diagnostic).Message);
+        IntegerRangeValidationRule validationRule = new()
+        {
+            FieldName = "Máximo de endereços",
+            Minimum = 1,
+            Maximum = 65_536
+        };
+        ValidationResult validation = validationRule.Validate(string.Empty, CultureInfo.GetCultureInfo("pt-PT"));
+        True(
+            validation.ErrorContent?.ToString()?.StartsWith("Maximum addresses: enter an integer", StringComparison.Ordinal) == true,
+            "A validação numérica deve acompanhar a língua selecionada.");
         LocalizationService.SetLanguage("pt-PT");
+        Equal("pt-PT", CultureInfo.CurrentCulture.Name);
     })),
     ("WPF selected-device and topology rendering smoke", () => RunOnSta(() =>
     {
@@ -4512,18 +4533,28 @@ List<(string Name, Func<Task> Run)> tests =
             Equal(AppThemeMode.Light, window.ViewModel.SelectedTheme.Value);
             Equal(AppThemeMode.Light, application.CurrentTheme);
 
-            window.ViewModel.SelectedTheme = window.ViewModel.ThemeModes.Single(item => item.Value == AppThemeMode.Dark);
+            Border riskThemeProbe = new()
+            {
+                Tag = "Alto",
+                Style = (Style)application.Resources["RiskSurfaceStyle"]
+            };
+            ((Grid)window.Content).Children.Add(riskThemeProbe);
+            Color lightRiskColor = ((SolidColorBrush)riskThemeProbe.Background).Color;
+
+            themeToggleButton.Command.Execute(themeToggleButton.CommandParameter);
             Equal(AppThemeMode.Dark, application.CurrentTheme);
             Equal("Mudar para o tema claro", AutomationProperties.GetName(themeToggleButton));
+            Equal(AppThemeMode.Dark, new UiSettingsService(settingsPath).Load().Theme);
             if (!SystemParameters.HighContrast)
             {
                 Equal(Color.FromRgb(0x11, 0x16, 0x1D),
                     ((SolidColorBrush)application.Resources["WindowBackgroundBrush"]).Color);
+                True(
+                    lightRiskColor != ((SolidColorBrush)riskThemeProbe.Background).Color,
+                    "Os indicadores de risco devem receber imediatamente a paleta escura.");
             }
-            window.ViewModel.SaveSettings();
-            Equal(AppThemeMode.Dark, new UiSettingsService(settingsPath).Load().Theme);
 
-            window.ViewModel.SelectedTheme = window.ViewModel.ThemeModes.Single(item => item.Value == AppThemeMode.Light);
+            themeToggleButton.Command.Execute(themeToggleButton.CommandParameter);
             Equal(AppThemeMode.Light, application.CurrentTheme);
             Equal("Mudar para o tema escuro", AutomationProperties.GetName(themeToggleButton));
             if (!SystemParameters.HighContrast)
@@ -4757,14 +4788,13 @@ List<(string Name, Func<Task> Run)> tests =
                 application.Resources["SelectionForegroundBrush"],
                 versionTextBlock!.Foreground);
 
-            LocalizationService.SetLanguage("en-US");
+            languageSelector.SelectedValue = "en-US";
             Equal("en-US", languageSelector.SelectedValue?.ToString());
+            Equal("en-US", new UiSettingsService(settingsPath).Load().Language);
             Equal($"Version {expectedVersion}", aboutWindow.VersionLabel);
             Equal("About Local Network Scanner", aboutWindow.Title);
             Equal("Choose language", AutomationProperties.GetName(languageSelector));
             Equal("Switch to dark theme", AutomationProperties.GetName(themeToggleButton));
-            LocalizationService.SetLanguage("pt-PT");
-            Equal("pt-PT", languageSelector.SelectedValue?.ToString());
             if (workArea.Width > 0 && workArea.Height > 0)
             {
                 True(aboutWindow.Width <= workArea.Width,
@@ -4848,6 +4878,21 @@ List<(string Name, Func<Task> Run)> tests =
             Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(topologySelectionRegion));
             Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(topologySearchStatusText));
             Equal(map, optionalTopology!.Map);
+            Equal("Network topology map", AutomationProperties.GetName(optionalTopology));
+            string[] topologyText = FindVisualDescendants<TextBlock>(optionalTopology)
+                .Select(item => item.Text)
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .ToArray();
+            True(topologyText.Contains("SCANNED NETWORK", StringComparer.Ordinal),
+                "As camadas geradas dinamicamente devem nascer em inglês.");
+            Button generatedNodeButton = FindVisualDescendants<Button>(optionalTopology)
+                .First(item => item.Tag is NetworkMapNode);
+            string generatedNodeName = AutomationProperties.GetName(generatedNodeButton);
+            True(
+                generatedNodeName.Contains("State:", StringComparison.Ordinal) &&
+                generatedNodeName.Contains("Risk", StringComparison.Ordinal) &&
+                !generatedNodeName.Contains("Estado", StringComparison.Ordinal),
+                "Os nomes acessíveis dos nós devem ser reconstruídos em inglês.");
             optionalTopology.ResetView();
             Equal(100, optionalTopology.ZoomPercent);
             Equal("100%", topologyZoomText!.Text);
@@ -4861,11 +4906,13 @@ List<(string Name, Func<Task> Run)> tests =
             Equal(searchableNode.Id, optionalTopology.SelectedNode?.Id);
             Equal(Visibility.Visible, topologySearchStatusText!.Visibility);
             True(
-                topologySearchStatusText.Text.Contains("Correspondência", StringComparison.Ordinal),
+                topologySearchStatusText.Text.Contains("Match", StringComparison.Ordinal),
                 "A pesquisa deve anunciar a correspondência localizada.");
             clearTopologySearchButton!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Equal(string.Empty, topologySearchTextBox.Text);
             Equal(Visibility.Collapsed, topologySearchStatusText.Visibility);
+
+            Equal("en-US", LocalizationService.CurrentTag);
 
             Equal(searchableNode.Id, window.ViewModel.SelectedTopologyNode?.Id);
             topologyFilterComboBox!.SelectedIndex = 3;
@@ -4874,13 +4921,31 @@ List<(string Name, Func<Task> Run)> tests =
             Equal(null, optionalTopology.SelectedNode);
             Equal(null, topologyNodesTable!.SelectedItem);
             Equal(
-                "Nenhum nó selecionado",
+                "No node selected",
                 AutomationProperties.GetName(topologySelectionRegion));
             topologyFilterComboBox.SelectedIndex = 0;
             topologyWindow.UpdateLayout();
 
             Equal(false, optionalTopology.CenterOnNode("node-that-does-not-exist"));
             Equal(true, optionalTopology.CenterOnNode(searchableNode.Id));
+            Equal("en-US", LocalizationService.CurrentTag);
+
+            themeToggleButton.Command.Execute(themeToggleButton.CommandParameter);
+            window.Dispatcher.Invoke(
+                System.Windows.Threading.DispatcherPriority.ContextIdle,
+                new Action(() => { }));
+            string rebuiltNodeName = AutomationProperties.GetName(
+                FindVisualDescendants<Button>(optionalTopology).First(item => item.Tag is NetworkMapNode));
+            True(!rebuiltNodeName.Contains("Estado", StringComparison.Ordinal),
+                "Alternar o tema não deve recriar a topologia em português.");
+            themeToggleButton.Command.Execute(themeToggleButton.CommandParameter);
+
+            languageSelector.SelectedValue = "pt-PT";
+            Equal("pt-PT", languageSelector.SelectedValue?.ToString());
+            window.Dispatcher.Invoke(
+                System.Windows.Threading.DispatcherPriority.ContextIdle,
+                new Action(() => { }));
+            Equal("Mapa de topologia da rede", AutomationProperties.GetName(optionalTopology));
 
             NetworkTopologyControl topology = new()
             {
@@ -5291,6 +5356,24 @@ static Exception CaptureException(string message)
     catch (InvalidOperationException exception)
     {
         return exception;
+    }
+}
+
+static IEnumerable<T> FindVisualDescendants<T>(DependencyObject root)
+    where T : DependencyObject
+{
+    if (root is not Visual && root is not Visual3D)
+        yield break;
+
+    int childCount = VisualTreeHelper.GetChildrenCount(root);
+    for (int index = 0; index < childCount; index++)
+    {
+        DependencyObject child = VisualTreeHelper.GetChild(root, index);
+        if (child is T match)
+            yield return match;
+
+        foreach (T descendant in FindVisualDescendants<T>(child))
+            yield return descendant;
     }
 }
 

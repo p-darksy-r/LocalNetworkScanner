@@ -9,7 +9,7 @@
         <Color x:Key="WindowBackgroundColor">#F3F6FA</Color>
         <Color x:Key="SurfaceColor">#FFFFFFFF</Color>
         <Color x:Key="SurfaceMutedColor">#FFF8FAFC</Color>
-        <Color x:Key="BorderColor">#FFDCE3EC</Color>
+        <Color x:Key="BorderColor">#FF7A8799</Color>
         <Color x:Key="TextPrimaryColor">#FF172033</Color>
         <Color x:Key="TextSecondaryColor">#FF5C667A</Color>
         <Color x:Key="AccentColor">#FF1769E0</Color>
@@ -39,6 +39,8 @@
         <SolidColorBrush x:Key="RiskMediumForegroundBrush" Color="#FF744400" />
         <SolidColorBrush x:Key="RiskLowBrush" Color="#FFE4F5EC" />
         <SolidColorBrush x:Key="RiskLowForegroundBrush" Color="#FF125B3C" />
+        <SolidColorBrush x:Key="ToolTipBackgroundBrush" Color="#FF172033" />
+        <SolidColorBrush x:Key="ToolTipForegroundBrush" Color="White" />
 
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <infra:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
@@ -46,6 +48,44 @@
         <infra:RiskToBrushConverter x:Key="RiskToBrushConverter" />
         <infra:RiskToForegroundConverter x:Key="RiskToForegroundConverter" />
         <infra:LocalizedFormatConverter x:Key="LocalizedFormatConverter" />
+
+        <Style x:Key="RiskSurfaceStyle" TargetType="{x:Type Border}">
+            <Setter Property="Background" Value="{DynamicResource RiskLowBrush}" />
+            <Style.Triggers>
+                <Trigger Property="Tag" Value="Alto">
+                    <Setter Property="Background" Value="{DynamicResource RiskHighBrush}" />
+                </Trigger>
+                <Trigger Property="Tag" Value="High">
+                    <Setter Property="Background" Value="{DynamicResource RiskHighBrush}" />
+                </Trigger>
+                <Trigger Property="Tag" Value="Médio">
+                    <Setter Property="Background" Value="{DynamicResource RiskMediumBrush}" />
+                </Trigger>
+                <Trigger Property="Tag" Value="Medium">
+                    <Setter Property="Background" Value="{DynamicResource RiskMediumBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="RiskTextStyle"
+               TargetType="{x:Type TextBlock}"
+               BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Foreground" Value="{DynamicResource RiskLowForegroundBrush}" />
+            <Style.Triggers>
+                <Trigger Property="Tag" Value="Alto">
+                    <Setter Property="Foreground" Value="{DynamicResource RiskHighForegroundBrush}" />
+                </Trigger>
+                <Trigger Property="Tag" Value="High">
+                    <Setter Property="Foreground" Value="{DynamicResource RiskHighForegroundBrush}" />
+                </Trigger>
+                <Trigger Property="Tag" Value="Médio">
+                    <Setter Property="Foreground" Value="{DynamicResource RiskMediumForegroundBrush}" />
+                </Trigger>
+                <Trigger Property="Tag" Value="Medium">
+                    <Setter Property="Foreground" Value="{DynamicResource RiskMediumForegroundBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
 
         <Style x:Key="AccessibleFocusVisualStyle">
             <Setter Property="Control.Template">
@@ -385,8 +425,8 @@
         </Style>
 
         <Style TargetType="{x:Type ToolTip}">
-            <Setter Property="Background" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="Background" Value="{DynamicResource ToolTipBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource ToolTipForegroundBrush}" />
             <Setter Property="Padding" Value="8,6" />
         </Style>
     </Application.Resources>

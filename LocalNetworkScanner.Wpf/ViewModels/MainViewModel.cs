@@ -34,6 +34,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly UiSettings _loadedSettings;
     private readonly Dictionary<string, DeviceRowViewModel> _devicesByIp = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, NetworkDevice> _pendingDeviceUpdates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<string> _warningSources = [];
     private readonly DispatcherTimer _uiTimer;
 
     private LocalNetworkInterface? _selectedNetworkInterface;
@@ -990,6 +991,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _selectedFilter = Filters.First(item => item.Key.Equals(selectedFilter, StringComparison.Ordinal));
         foreach (DeviceRowViewModel device in Devices)
             device.RefreshLocalized();
+        foreach (DiagnosticRowViewModel diagnostic in Diagnostics)
+            diagnostic.RefreshLocalized();
+        Warnings.Clear();
+        foreach (string warning in _warningSources)
+            Warnings.Add(L(warning));
         OnPropertyChanged(nameof(Profiles));
         OnPropertyChanged(nameof(ThemeModes));
         OnPropertyChanged(nameof(Filters));
@@ -1015,6 +1021,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CustomOverridesStatus));
         OnPropertyChanged(nameof(CustomSettingsExplanation));
         RefreshFilter();
+        SaveSettings();
     }
 
     private void ToggleTheme()
@@ -1731,7 +1738,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         OnlineCount = Math.Max(OnlineCount, Devices.Count(item => item.IsOnline));
         NewCount = Devices.Count(item => item.IsNew);
-        RiskCount = Devices.Count(item => item.RiskLevel is "Alto" or "Médio");
+        RiskCount = Devices.Count(item => item.Device.RiskLevel is "Alto" or "Médio");
     }
 
     private void UpdateTopologyMap()
@@ -1843,6 +1850,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _pendingDeviceUpdates.Clear();
         Diagnostics.Clear();
         Warnings.Clear();
+        _warningSources.Clear();
         SelectedDevice = null;
         SelectedTopologyNode = null;
         TopologyMap = null;
@@ -2164,9 +2172,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         bool categoryMatches = SelectedFilter.Key switch
         {
-            "high" => device.RiskLevel == "Alto",
-            "medium" => device.RiskLevel == "Médio",
-            "low" => device.RiskLevel == "Baixo",
+            "high" => device.Device.RiskLevel == "Alto",
+            "medium" => device.Device.RiskLevel == "Médio",
+            "low" => device.Device.RiskLevel == "Baixo",
             "new" => device.IsNew,
             "favorite" => device.IsFavorite,
             "changed" => device.HasChanges,
@@ -2291,6 +2299,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         Diagnostics.Clear();
         Warnings.Clear();
+        _warningSources.Clear();
 
         HashSet<string> diagnosticMessages = new(StringComparer.Ordinal);
         foreach (ScanDiagnostic diagnostic in result.Diagnostics)
@@ -2300,7 +2309,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         foreach (string warning in result.Warnings.Where(warning => !diagnosticMessages.Contains(warning)))
-            Warnings.Add(warning);
+        {
+            _warningSources.Add(warning);
+            Warnings.Add(L(warning));
+        }
 
         OnPropertyChanged(nameof(HasDiagnostics));
         OnPropertyChanged(nameof(DiagnosticSummary));
@@ -2317,7 +2329,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         OnPropertyChanged(nameof(HasDiagnostics));
         OnPropertyChanged(nameof(DiagnosticSummary));
-        StatusMessage = $"[{diagnostic.Code}] {diagnostic.Message}";
+        StatusMessage = $"[{diagnostic.Code}] {DiagnosticLocalizationService.GetText(diagnostic).Message}";
         _dialogs.ShowDiagnostic(title, diagnostic);
     }
 

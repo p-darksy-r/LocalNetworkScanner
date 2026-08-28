@@ -6,7 +6,7 @@ Todas as alterações relevantes deste projeto são registadas neste ficheiro. O
 
 ## [Unreleased]
 
-O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag/release: a elegibilidade SignPath, a integração de assinatura e a licença/autorização aplicável à snapshot IEEE continuam pendentes, por isso os binários atuais permanecem `NotSigned` e não são apresentados como produção.
+O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag/release: em 27-08-2026 a SignPath informou que o projeto seria provavelmente problemático para o programa gratuito Foundation e recomendou não submeter o estado atual. Isto não é uma rejeição formal nem uma aprovação; não existe integração SignPath e os binários atuais permanecem `NotSigned`, sem apresentação como produção.
 
 ### Added
 
@@ -16,7 +16,7 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 - certificado público `crt/LocalNetworkScanner-PrivateTest.crt`, com chave RSA 3072/SHA-256 não exportável mantida apenas em `CurrentUser\My`, mais scripts explícitos para geração, confiança restrita a `LocalMachine\TrustedPeople` e remoção segura;
 - manifesto WPF `packagedClassicApp`/`mediumIL`, assets MSIX determinísticos e documentação passo a passo para sideload interno e futura submissão no Partner Center;
 - `PRIVACY.md` documenta comunicações iniciadas pelo utilizador, dados locais, terceiros, retenção e eliminação;
-- `CODE_SIGNING_POLICY.md` regista o estado pendente da SignPath, funções da equipa, âmbito proposto, aprovação manual e gates que impedem alegações prematuras de assinatura;
+- `CODE_SIGNING_POLICY.md` regista a orientação escrita da SignPath Foundation, funções da equipa, âmbito independente do fornecedor e gates que impedem alegações prematuras de assinatura;
 - onboarding inicial, não modal e persistente, explica redes autorizadas, tráfego ativo, histórico local e ausência de telemetria;
 - pesquisa de nós na topologia por nome, IP, MAC, tipo, VLAN ou identidade visível, com `Ctrl+F`, `Enter`/`F3`, centralização e anúncios acessíveis;
 - a janela Sobre liga diretamente às políticas de privacidade e assinatura;
@@ -32,7 +32,7 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 - o cabeçalho de configuração deixa de impor uma largura mínima superior à janela e mantém Iniciar/Cancelar acessíveis a 760 DIPs;
 - a topologia ajusta-se à work area do monitor atual, permite scroll horizontal da toolbar, realça apenas o nó selecionado e as suas ligações e preserva o zoom ao atualizar a paleta de Alto Contraste;
 - resumo, pesquisa e seleção da topologia passam a emitir eventos live-region para leitores de ecrã;
-- README, segurança, instalação, assinatura, App Control, checklist e documentação IEEE distinguem corretamente repositório público, prereleases históricas `Private QA (NotSigned)` e candidatura SignPath ainda não aprovada;
+- README, segurança, instalação, assinatura, App Control, checklist e documentação IEEE distinguem corretamente repositório público, prereleases históricas `Private QA (NotSigned)` e a orientação de não candidatura gratuita da SignPath Foundation;
 - todas as páginas de releases existentes ligam agora a **Code signing policy** e à política de privacidade; a `v1.2.0` foi reclassificada como prerelease histórica `NotSigned`, deixando o projeto sem uma falsa release `Latest` enquanto não existir produção assinada;
 - metadados do produto e manifesto Windows avançam para `1.4.1`, sem criar uma release;
 - o job x64 do CI usa agora o mesmo `scripts/check.ps1 -VerifyFormat` da validação local, incluindo sintaxe PowerShell e os contratos sintéticos de release;
@@ -51,7 +51,7 @@ O `main` prepara a versão `1.4.1`. Não foi criada nem reutilizada qualquer tag
 
 - candidatos Store permanecem obrigatoriamente `UnsignedForMicrosoftStore` e exigem a identidade externa exata do Partner Center; os gates fixam `PrivateTest` ao CRT versionado e rejeitam chaves privadas, payloads/ativações adicionais, capabilities além de `runFullTrust`, mistura de identidades e um pacote Store assinado pelo certificado de QA;
 - secret scanning, push protection, relatórios privados de vulnerabilidade e fixação obrigatória das GitHub Actions por SHA foram ativados no repositório público;
-- nenhuma funcionalidade de enumeração de portas, Nmap ou avaliação heurística de risco foi removida ou escondida enquanto se aguarda a resposta de elegibilidade da SignPath;
+- nenhuma funcionalidade de enumeração de portas, Nmap ou avaliação heurística de risco foi removida ou escondida para tentar contornar a orientação de elegibilidade da SignPath Foundation;
 - a documentação deixa explícito que a exposição pública dos dados IEEE não constitui autorização e bloqueia uma nova release assinada/estável até existir clarificação escrita aplicável.
 
 ## [1.4.0] - 2026-08-23

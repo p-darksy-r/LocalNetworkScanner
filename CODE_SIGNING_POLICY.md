@@ -4,19 +4,15 @@
 
 ## Estado atual
 
-O projeto está a pedir uma avaliação de elegibilidade para o programa gratuito de assinatura de código open source da SignPath Foundation. A candidatura, configuração técnica e aprovação ainda não estão concluídas.
+Em 27-08-2026, a SignPath respondeu por escrito que o projeto seria provavelmente problemático para o programa gratuito SignPath Foundation, devido à sua natureza de scanner de rede e enumeração de portas/serviços, e recomendou não submeter o estado atual. Isto não constitui uma rejeição formal nem uma aprovação. Não existe candidatura ativa, integração SignPath ou release assinada pela Foundation.
 
 Nenhum binário publicado atualmente foi assinado pela SignPath Foundation. A `v1.2.0` é uma release histórica sem assinatura e não é recomendada para produção. As versões `v1.3.x` e a `v1.4.0` publicadas como `Private QA (NotSigned)` conservam esse rótulo histórico e continuam a ser candidatos de QA sem Authenticode, apesar de o repositório ser agora público. Não devem ser apresentadas como releases estáveis, assinadas ou aprovadas pela SignPath.
 
-Se o projeto for aceite e a integração for concluída, será usada a atribuição exigida pelo programa:
-
-> Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
-
-Esta frase descreve apenas o processo futuro condicionado à aceitação. O estado real de cada release é o que consta da respetiva página, de `SIGNING-STATE.txt` e das assinaturas Authenticode verificadas nos ficheiros.
+Não deve ser usada a atribuição “Free code signing provided by SignPath.io, certificate by SignPath Foundation”: o projeto não está aceite nesse programa e não possui essa assinatura. Se no futuro for escolhida uma subscrição regular SignPath ou outro backend, a atribuição e o publisher serão os fornecidos por esse serviço. O estado real de cada release é o que consta da respetiva página, de `SIGNING-STATE.txt` e das assinaturas Authenticode verificadas nos ficheiros.
 
 ## Âmbito proposto
 
-Uma release oficial assinada deverá abranger os executáveis Windows produzidos pelo projeto e distribuídos ao utilizador, incluindo a UI, a CLI, o diagnóstico PowerShell, os instaladores e os componentes de desinstalação que o formato permitir assinar. A configuração final de artefactos aprovada pela SignPath determinará o âmbito exato.
+Uma release oficial assinada deverá abranger os executáveis Windows produzidos pelo projeto e distribuídos ao utilizador, incluindo a UI, a CLI, o diagnóstico PowerShell, os instaladores e os componentes de desinstalação que o formato permitir assinar. A configuração final do backend de assinatura escolhido determinará o âmbito exato.
 
 Os ZIPs, checksums, SBOM e atestados não são apresentados como executáveis Authenticode. Os hashes devem ser gerados apenas depois da assinatura final dos ficheiros abrangidos.
 
@@ -38,7 +34,7 @@ Um build `Store` recusa a chave de teste e só aceita a identidade exata atribu�
 
 ## Origem e aprovação
 
-A integração proposta usará GitHub Actions em runners alojados pelo GitHub, um artefacto unsigned produzido pelo workflow e origin verification da SignPath. Cada pedido de assinatura de produção deverá exigir aprovação manual na SignPath. Estes mecanismos ainda não estão configurados no workflow atual e não devem ser descritos como ativos.
+Uma futura integração de assinatura poderá usar GitHub Actions em runners alojados pelo GitHub, um artefacto unsigned produzido pelo workflow e origin verification do fornecedor escolhido. Cada pedido de assinatura de produção deverá exigir aprovação manual quando o serviço o suportar. Estes mecanismos não estão configurados no workflow atual e não devem ser descritos como ativos.
 
 A chave privada e o certificado não serão guardados no repositório nem entregues ao runner. Tokens de integração devem ficar limitados ao ambiente e à política de assinatura necessários.
 
@@ -50,18 +46,18 @@ A chave privada e o certificado não serão guardados no repositório nem entreg
 | Reviewer | [p-darksy-r](https://github.com/p-darksy-r) | rever contribuições de pessoas que não sejam committers antes da integração |
 | Approver | [p-darksy-r](https://github.com/p-darksy-r) | confirmar proveniência, testes, conteúdo e política antes de aprovar um pedido de assinatura |
 
-Todas as pessoas que venham a ocupar estas funções têm de usar autenticação multifator no GitHub e na SignPath. Alterações futuras à equipa devem atualizar esta tabela e as permissões reais antes de poderem participar numa assinatura.
+Todas as pessoas que venham a ocupar estas funções têm de usar autenticação multifator no GitHub e no fornecedor de assinatura escolhido. Alterações futuras à equipa devem atualizar esta tabela e as permissões reais antes de poderem participar numa assinatura.
 
-## Gates ainda pendentes
+## Condições para uma futura assinatura
 
-Não será pedida nem publicada uma assinatura da SignPath enquanto não estiverem resolvidos, por escrito, pelo menos estes pontos:
+Antes de qualquer release `Signed`, independentemente do fornecedor, devem estar resolvidos e documentados:
 
-- a elegibilidade das funcionalidades de enumeração de portas, integração Nmap e avisos heurísticos de risco à luz da condição **No hacking tools** da SignPath Foundation;
-- a licença e autorização aplicáveis à snapshot normalizada das listagens IEEE incorporada no produto e a compatibilidade dessa componente com as condições open source da SignPath;
-- a configuração do projeto, artifact configuration, trusted build system, origin verification, aprovadores e restrições de metadados na SignPath;
+- o âmbito exato de enumeração de portas, integração Nmap e avisos heurísticos de risco aceites pelo backend escolhido;
+- a licença e autorização aplicáveis à snapshot normalizada das listagens IEEE incorporada no produto;
+- a configuração do projeto, artifact configuration, trusted build system, origin verification, aprovadores e restrições de metadados do fornecedor escolhido;
 - as proteções adequadas de `main`, tags de release, workflows e segredos do repositório.
 
-Uma aceitação do projeto não substitui a autorização da IEEE. Uma autorização da IEEE também não prova, por si só, que a snapshot satisfaz a condição de licença OSI da SignPath. Se a solução aprovada exigir excluir dados ou funcionalidades do artefacto assinado, essa diferença será documentada de forma visível e verificável.
+A orientação recebida da SignPath Foundation não é uma autorização para assinar nem uma rejeição formal; significa apenas que a candidatura gratuita não deve avançar no estado atual. Se for escolhida uma subscrição regular SignPath, será necessária uma configuração e revisão novas. Uma autorização de redistribuição IEEE não prova, por si só, que a snapshot satisfaz uma condição de licença do serviço de assinatura. Se a solução escolhida exigir excluir dados ou funcionalidades do artefacto assinado, essa diferença será documentada de forma visível e verificável.
 
 ## Verificação pelo utilizador
 

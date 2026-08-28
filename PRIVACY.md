@@ -56,7 +56,7 @@ O projeto não consegue apagar cópias que o utilizador tenha partilhado com ter
 
 ## Assinatura e distribuição
 
-A avaliação de elegibilidade para o programa gratuito da SignPath Foundation está pendente. Nenhum artefacto publicado atualmente transfere dados para a SignPath durante a execução e nenhuma release atual deve ser tratada como assinada pela SignPath Foundation. Consulte a [Code signing policy](CODE_SIGNING_POLICY.md) para o estado exato.
+A SignPath informou que o projeto seria provavelmente problemático para o programa gratuito Foundation; não existe candidatura aceite, integração ativa ou release assinada pela Foundation. Nenhum artefacto publicado transfere dados para a SignPath durante a execução. Uma eventual subscrição regular exigiria configuração e revisão próprias. Consulte a [Code signing policy](CODE_SIGNING_POLICY.md) para o estado exato.
 
 ## Contacto e alterações
 

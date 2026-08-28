@@ -9,7 +9,7 @@ O projeto inclui uma infraestrutura separada para empacotar a aplicação WPF co
 - **`PrivateTest`**: pacote assinado por um certificado autoassinado, apenas para computadores de teste onde esse certificado foi confiado deliberadamente;
 - **`Store`**: candidato MSIX com a identidade exata reservada no Partner Center, sem assinatura local, destinado exclusivamente à certificação e publicação pela Microsoft Store.
 
-Esta infraestrutura não altera as tags, releases ou o estado da candidatura SignPath. Também não transforma os ZIPs, os instaladores Inno Setup ou os executáveis soltos publicados no GitHub em ficheiros assinados. Até existir uma publicação Store aprovada ou uma release Authenticode válida por outro backend, esses downloads mantêm o estado documentado em [Assinatura e prontidão de release](SIGNING.md).
+Esta infraestrutura não altera as tags, releases ou a decisão de não prosseguir com a candidatura gratuita SignPath Foundation. Também não transforma os ZIPs, os instaladores Inno Setup ou os executáveis soltos publicados no GitHub em ficheiros assinados. Até existir uma publicação Store aprovada ou uma release Authenticode válida por outro backend, esses downloads mantêm o estado documentado em [Assinatura e prontidão de release](SIGNING.md).
 
 ## Porque a Microsoft Store é diferente
 

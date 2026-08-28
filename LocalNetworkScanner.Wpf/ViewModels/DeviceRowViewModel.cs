@@ -290,7 +290,7 @@ public sealed class DeviceRowViewModel : ObservableObject
         AddEvidenceDetail(details, "SO", evidence.OperatingSystem);
         AddEvidenceDetail(details, "origem", evidence.Endpoint);
 
-        string heading = $"{evidence.Source} · {MethodToText(evidence.Method)} · " +
+        string heading = $"{evidence.Source} · {L(MethodToText(evidence.Method))} · " +
             L(ConfidenceToText(evidence.Confidence));
         return details.Count == 0
             ? heading
@@ -300,7 +300,7 @@ public sealed class DeviceRowViewModel : ObservableObject
     private static void AddEvidenceDetail(List<string> details, string label, string? value)
     {
         if (!string.IsNullOrWhiteSpace(value))
-            details.Add($"{E(label)}: {E(value)}");
+            details.Add($"{L(label)}: {E(value)}");
     }
 
     private static string MethodToText(DiscoveryMethod method) => method switch
