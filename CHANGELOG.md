@@ -8,7 +8,7 @@ Todas as alterações relevantes deste projeto são registadas neste ficheiro. O
 
 Sem alterações adicionais depois da tag de código-fonte `v1.4.1`.
 
-## [1.4.1] - 2026-08-28
+## [1.4.1] - 2026-08-29
 
 A `v1.4.1` fixa o estado validado do código-fonte, sem criar uma GitHub Release nem publicar novos binários. Em 27-08-2026, a SignPath informou que o projeto seria provavelmente problemático para o programa gratuito Foundation e recomendou não submeter o estado atual. Isto não é uma rejeição formal nem uma aprovação; não existe integração SignPath e os binários históricos permanecem `NotSigned`, sem apresentação como produção.
 
@@ -47,6 +47,8 @@ A `v1.4.1` fixa o estado validado do código-fonte, sem criar uma GitHub Release
 
 ### Fixed
 
+- os cabeçalhos **Porta**, **Proto.**, **Serviço** e **TLS** deixam de herdar o chrome claro do `GridViewColumnHeader` nativo; fundo, texto, separadores, hover, pressão e redimensionamento seguem agora a paleta dinâmica no tema escuro;
+- os diagnósticos e notas do scan passam a ocupar uma área vertical limitada com scroll por rato, teclado, toque ou barra, permitindo consultar todas as mensagens e ações recomendadas sem conteúdo cortado;
 - as tabs do painel lateral e o respetivo conteúdo deixam de usar superfícies claras do template nativo WPF no tema escuro; Resumo, Identidade, Serviços, Segurança, Rede e Histórico usam agora a paleta dinâmica em seleção, hover, foco e desativação;
 - as células da linha selecionada deixam de assumir a seleção inativa branca do Windows quando o foco passa para o painel lateral, mantendo uma superfície coerente em tema claro, escuro e Alto Contraste;
 - os seletores de interface de rede, filtros de dispositivos, idioma e topologia deixam de herdar o botão, seta, popup e realces claros do template nativo do Windows; todos os estados usam agora a paleta dinâmica da aplicação em tema claro, escuro e Alto Contraste, incluindo rato, teclado, seleção, abertura e desativação;

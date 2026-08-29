@@ -4466,6 +4466,13 @@ List<(string Name, Func<Task> Run)> tests =
             DeviceRowViewModel row = new(result.Devices[0]);
             window.ViewModel.Devices.Add(row);
             window.ViewModel.SelectedDevice = row;
+            for (int diagnosticIndex = 0; diagnosticIndex < 8; diagnosticIndex++)
+            {
+                window.ViewModel.Diagnostics.Add(new DiagnosticRowViewModel(
+                    DiagnosticCatalog.InvalidMacAddress(
+                        result.Devices[0].IpAddressText,
+                        $"invalid-mac-{diagnosticIndex}")));
+            }
             window.Show();
             window.Hide();
             window.Measure(new Size(1_440, 880));
@@ -4513,6 +4520,12 @@ List<(string Name, Func<Task> Run)> tests =
                 window.FindName("DeviceDetailsTabControl") as TabControl;
             TabItem? deviceSummaryTab = window.FindName("DeviceSummaryTab") as TabItem;
             TabItem? deviceIdentityTab = window.FindName("DeviceIdentityTab") as TabItem;
+            TabItem? deviceServicesTab = window.FindName("DeviceServicesTab") as TabItem;
+            ListView? servicesListView = window.FindName("ServicesListView") as ListView;
+            ScrollViewer? scanDiagnosticsScrollViewer =
+                window.FindName("ScanDiagnosticsScrollViewer") as ScrollViewer;
+            Expander? scanDiagnosticsExpander =
+                window.FindName("ScanDiagnosticsExpander") as Expander;
             Border? selectedDeviceRiskBadge =
                 window.FindName("SelectedDeviceRiskBadge") as Border;
             TextBlock? selectedDeviceRiskText =
@@ -4544,6 +4557,10 @@ List<(string Name, Func<Task> Run)> tests =
             NotNull(deviceDetailsTabControl);
             NotNull(deviceSummaryTab);
             NotNull(deviceIdentityTab);
+            NotNull(deviceServicesTab);
+            NotNull(servicesListView);
+            NotNull(scanDiagnosticsScrollViewer);
+            NotNull(scanDiagnosticsExpander);
             NotNull(selectedDeviceRiskBadge);
             NotNull(selectedDeviceRiskText);
             NotNull(scanProfileScopeExplanation);
@@ -4567,6 +4584,7 @@ List<(string Name, Func<Task> Run)> tests =
             deviceDetailsTabControl!.ApplyTemplate();
             deviceSummaryTab!.ApplyTemplate();
             deviceIdentityTab!.ApplyTemplate();
+            deviceServicesTab!.ApplyTemplate();
             Border? networkInterfaceComboBoxBorder = networkInterfaceComboBox.Template.FindName(
                 "ComboBoxBorder",
                 networkInterfaceComboBox) as Border;
@@ -4670,6 +4688,59 @@ List<(string Name, Func<Task> Run)> tests =
             Equal(
                 ((SolidColorBrush)application.Resources["SurfaceMutedBrush"]).Color,
                 ((SolidColorBrush)deviceSummaryHeaderBorder!.Background).Color);
+
+            deviceDetailsTabControl.SelectedItem = deviceServicesTab;
+            window.UpdateLayout();
+            GridViewColumnHeader[] serviceHeaders =
+                FindVisualDescendants<GridViewColumnHeader>(servicesListView!)
+                    .Where(header => header.Role == GridViewColumnHeaderRole.Normal)
+                    .ToArray();
+            Equal(4, serviceHeaders.Length);
+            foreach (GridViewColumnHeader serviceHeader in serviceHeaders)
+            {
+                serviceHeader.ApplyTemplate();
+                Border? serviceHeaderBorder = serviceHeader.Template.FindName(
+                    "GridViewHeaderBorder",
+                    serviceHeader) as Border;
+                NotNull(serviceHeaderBorder);
+                Equal(
+                    ((SolidColorBrush)application.Resources["SurfaceMutedBrush"]).Color,
+                    ((SolidColorBrush)serviceHeaderBorder!.Background).Color);
+                Equal(themedSecondaryTextColor,
+                    ((SolidColorBrush)serviceHeader.Foreground).Color);
+            }
+            GridViewColumnHeader? servicePaddingHeader =
+                FindVisualDescendants<GridViewColumnHeader>(servicesListView!)
+                    .SingleOrDefault(header => header.Role == GridViewColumnHeaderRole.Padding);
+            NotNull(servicePaddingHeader);
+            True(!servicePaddingHeader!.IsHitTestVisible,
+                "A zona vazia depois de TLS não deve parecer um cabeçalho interativo.");
+            deviceDetailsTabControl.SelectedItem = deviceIdentityTab;
+            window.UpdateLayout();
+
+            scanDiagnosticsExpander!.GetBindingExpression(UIElement.VisibilityProperty)?.UpdateTarget();
+            scanDiagnosticsExpander!.IsExpanded = true;
+            window.UpdateLayout();
+            Equal(Visibility.Visible, scanDiagnosticsExpander.Visibility);
+            True(scanDiagnosticsScrollViewer!.ViewportHeight > 0 &&
+                 scanDiagnosticsScrollViewer.ViewportHeight <= 190.5,
+                "O painel de diagnósticos deve ocupar uma área vertical limitada.");
+            True(scanDiagnosticsScrollViewer.Focusable && scanDiagnosticsScrollViewer.IsTabStop,
+                "O painel de diagnósticos deve ser alcançável por teclado.");
+            True(scanDiagnosticsScrollViewer.ScrollableHeight > 0,
+                "Todos os diagnósticos devem permanecer acessíveis através de scroll.");
+            Equal(
+                Visibility.Visible,
+                scanDiagnosticsScrollViewer.ComputedVerticalScrollBarVisibility);
+            scanDiagnosticsScrollViewer.ScrollToEnd();
+            window.UpdateLayout();
+            True(
+                Math.Abs(scanDiagnosticsScrollViewer.VerticalOffset -
+                         scanDiagnosticsScrollViewer.ScrollableHeight) < 0.5,
+                "O painel deve permitir alcançar o último diagnóstico.");
+            scanDiagnosticsScrollViewer.ScrollToHome();
+            scanDiagnosticsExpander.IsExpanded = false;
+            window.UpdateLayout();
 
             DataGridRow? selectedDeviceRow =
                 devicesDataGrid.ItemContainerGenerator.ContainerFromItem(row) as DataGridRow;

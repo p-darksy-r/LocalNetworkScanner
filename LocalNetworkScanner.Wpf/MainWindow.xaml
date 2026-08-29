@@ -1090,90 +1090,104 @@
                         </Border>
                     </Grid>
 
-                    <StackPanel Grid.Row="3" Margin="14,7,14,10">
-                        <Expander Header="{Binding DiagnosticSummary}"
-                                  Visibility="{Binding HasDiagnostics, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                  AutomationProperties.Name="Diagnósticos estruturados do scan"
-                                  AutomationProperties.HelpText="Cada diagnóstico identifica se a origem provável é o utilizador, a rede, o dispositivo ou a aplicação.">
-                            <ItemsControl Margin="0,7,0,0" ItemsSource="{Binding Diagnostics}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Margin="0,3"
-                                                Padding="10,8"
-                                                Background="{DynamicResource SurfaceMutedBrush}"
-                                                BorderBrush="{DynamicResource BorderBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="6">
-                                            <Grid>
-                                                <Grid.RowDefinitions>
-                                                    <RowDefinition Height="Auto" />
-                                                    <RowDefinition Height="Auto" />
-                                                    <RowDefinition Height="Auto" />
-                                                    <RowDefinition Height="Auto" />
-                                                </Grid.RowDefinitions>
+                    <ScrollViewer x:Name="ScanDiagnosticsScrollViewer"
+                                  Grid.Row="3"
+                                  MaxHeight="190"
+                                  Margin="14,7,14,10"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto"
+                                  CanContentScroll="False"
+                                  PanningMode="VerticalOnly"
+                                  Focusable="True"
+                                  IsTabStop="True"
+                                  AutomationProperties.Name="Resultados e diagnósticos completos do scan"
+                                  AutomationProperties.HelpText="Expande os diagnósticos e usa a roda do rato, as teclas ou a barra vertical para consultar toda a informação.">
+                        <StackPanel>
+                            <Expander x:Name="ScanDiagnosticsExpander"
+                                      Header="{Binding DiagnosticSummary}"
+                                      Visibility="{Binding HasDiagnostics, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                      AutomationProperties.Name="Diagnósticos estruturados do scan"
+                                      AutomationProperties.HelpText="Cada diagnóstico identifica se a origem provável é o utilizador, a rede, o dispositivo ou a aplicação.">
+                                <ItemsControl Margin="0,7,0,0" ItemsSource="{Binding Diagnostics}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Margin="0,3"
+                                                    Padding="10,8"
+                                                    Background="{DynamicResource SurfaceMutedBrush}"
+                                                    BorderBrush="{DynamicResource BorderBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="6">
                                                 <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="*" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock FontFamily="Consolas"
-                                                               FontSize="11"
-                                                               FontWeight="Bold"
-                                                               Foreground="{DynamicResource AccentDarkBrush}"
-                                                               Text="{Binding Code}" />
-                                                    <TextBlock Grid.Column="1"
-                                                               Margin="9,0,0,0"
-                                                               FontSize="11"
-                                                               FontWeight="SemiBold"
-                                                               Text="{Binding CategoryLabel}" />
-                                                    <TextBlock Grid.Column="2"
-                                                               HorizontalAlignment="Right"
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                    </Grid.RowDefinitions>
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock FontFamily="Consolas"
+                                                                   FontSize="11"
+                                                                   FontWeight="Bold"
+                                                                   Foreground="{DynamicResource AccentDarkBrush}"
+                                                                   Text="{Binding Code}" />
+                                                        <TextBlock Grid.Column="1"
+                                                                   Margin="9,0,0,0"
+                                                                   FontSize="11"
+                                                                   FontWeight="SemiBold"
+                                                                   Text="{Binding CategoryLabel}" />
+                                                        <TextBlock Grid.Column="2"
+                                                                   HorizontalAlignment="Right"
+                                                                   FontSize="11"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                   Text="{Binding SeverityLabel}" />
+                                                    </Grid>
+                                                    <TextBlock Grid.Row="1"
+                                                               Margin="0,4,0,0"
+                                                               Text="{Binding Message}"
+                                                               TextWrapping="Wrap" />
+                                                    <TextBlock Grid.Row="2"
+                                                               Margin="0,3,0,0"
                                                                FontSize="11"
                                                                Foreground="{DynamicResource TextSecondaryBrush}"
-                                                               Text="{Binding SeverityLabel}" />
+                                                               Text="{Binding RecommendedAction, Converter={StaticResource LocalizedFormatConverter}, ConverterParameter=Ação recomendada: |}"
+                                                               TextWrapping="Wrap" />
+                                                    <TextBlock Grid.Row="3"
+                                                               Margin="0,3,0,0"
+                                                               FontSize="10"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               Text="{Binding Target, Converter={StaticResource LocalizedFormatConverter}, ConverterParameter=Alvo: |}"
+                                                               TextWrapping="Wrap"
+                                                               Visibility="{Binding HasTarget, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 </Grid>
-                                                <TextBlock Grid.Row="1"
-                                                           Margin="0,4,0,0"
-                                                           Text="{Binding Message}"
-                                                           TextWrapping="Wrap" />
-                                                <TextBlock Grid.Row="2"
-                                                           Margin="0,3,0,0"
-                                                           FontSize="11"
-                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                           Text="{Binding RecommendedAction, Converter={StaticResource LocalizedFormatConverter}, ConverterParameter=Ação recomendada: |}"
-                                                           TextWrapping="Wrap" />
-                                                <TextBlock Grid.Row="3"
-                                                           Margin="0,3,0,0"
-                                                           FontSize="10"
-                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                           Text="{Binding Target, Converter={StaticResource LocalizedFormatConverter}, ConverterParameter=Alvo: |}"
-                                                           TextWrapping="Wrap"
-                                                           Visibility="{Binding HasTarget, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </Expander>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
 
-                        <Expander Margin="0,4,0,0"
-                                  Header="Notas adicionais do resultado"
-                                  Visibility="{Binding HasWarnings, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                  AutomationProperties.Name="Notas adicionais do resultado">
-                            <ItemsControl Margin="0,7,0,0" ItemsSource="{Binding Warnings}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Margin="0,2"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource WarningBrush}"
-                                                   Text="{Binding Path=., Converter={StaticResource LocalizedFormatConverter}, ConverterParameter=• |}"
-                                                   TextWrapping="Wrap" />
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </Expander>
-                    </StackPanel>
+                            <Expander Margin="0,4,0,0"
+                                      Header="Notas adicionais do resultado"
+                                      Visibility="{Binding HasWarnings, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                      AutomationProperties.Name="Notas adicionais do resultado">
+                                <ItemsControl Margin="0,7,0,0" ItemsSource="{Binding Warnings}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Margin="0,2"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource WarningBrush}"
+                                                       Text="{Binding Path=., Converter={StaticResource LocalizedFormatConverter}, ConverterParameter=• |}"
+                                                       TextWrapping="Wrap" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Grid>
             </Border>
 
@@ -1470,15 +1484,16 @@
                                 </ScrollViewer>
                             </TabItem>
 
-                            <TabItem Header="Serviços">
+                            <TabItem x:Name="DeviceServicesTab" Header="Serviços">
                                 <Grid Margin="8">
-                                    <ListView ItemsSource="{Binding SelectedDevice.Ports}"
+                                    <ListView x:Name="ServicesListView"
+                                              ItemsSource="{Binding SelectedDevice.Ports}"
                                               ScrollViewer.CanContentScroll="True"
                                               VirtualizingPanel.IsVirtualizing="True"
                                               VirtualizingPanel.VirtualizationMode="Recycling"
                                               AutomationProperties.Name="Portas e serviços abertos">
                                         <ListView.View>
-                                            <GridView>
+                                            <GridView ColumnHeaderContainerStyle="{StaticResource ThemedGridViewColumnHeaderStyle}">
                                                 <GridViewColumn Width="58" Header="Porta" DisplayMemberBinding="{Binding Port}" />
                                                 <GridViewColumn Width="62" Header="Proto." DisplayMemberBinding="{Binding Protocol}" />
                                                 <GridViewColumn Width="112" Header="Serviço" DisplayMemberBinding="{Binding ServiceName, Converter={StaticResource LocalizedFormatConverter}}" />

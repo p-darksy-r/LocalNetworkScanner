@@ -654,6 +654,8 @@ public static class LocalizationService
             ,
             ["Esta lista resulta de descoberta, portas e banners; não equivale a captura integral de pacotes."] = "This list combines discovery, ports and banners; it is not a full packet capture."
             ,
+            ["Expande os diagnósticos e usa a roda do rato, as teclas ou a barra vertical para consultar toda a informação."] = "Expand the diagnostics and use the mouse wheel, keyboard or vertical scroll bar to review all information."
+            ,
             ["Estado da pesquisa na topologia"] = "Topology search status"
             ,
             ["Existem alterações de dispositivo por guardar"] = "There are unsaved device changes"
@@ -721,6 +723,8 @@ public static class LocalizationService
             ["Repor pesquisa e filtro"] = "Reset search and filter"
             ,
             ["Repor pesquisa e filtro de dispositivos"] = "Reset device search and filter"
+            ,
+            ["Resultados e diagnósticos completos do scan"] = "Complete scan results and diagnostics"
             ,
             ["Requer a descoberta SSDP e está desligado por omissão no perfil Rápido."] = "Requires SSDP discovery and is off by default in the Quick profile."
             ,
