@@ -4635,7 +4635,8 @@ List<(string Name, Func<Task> Run)> tests =
                 Tag = "Alto",
                 Style = (Style)application.Resources["RiskSurfaceStyle"]
             };
-            ((Grid)window.Content).Children.Add(riskThemeProbe);
+            ScrollViewer workspace = (ScrollViewer)window.FindName("WorkspaceScrollViewer");
+            ((Grid)workspace.Content).Children.Add(riskThemeProbe);
             Color lightRiskColor = ((SolidColorBrush)riskThemeProbe.Background).Color;
 
             themeToggleButton.Command.Execute(themeToggleButton.CommandParameter);
@@ -4980,7 +4981,6 @@ List<(string Name, Func<Task> Run)> tests =
             window.ViewModel.IsCustomScanSettingsExpanded = true;
             scanDiagnosticsExpander.IsExpanded = true;
             window.UpdateLayout();
-            ScrollViewer workspace = (ScrollViewer)window.FindName("WorkspaceScrollViewer");
             True(workspace.ScrollableHeight > 0 && devicesDataGrid.ActualHeight >= 111,
                 "Com as opções abertas, a janela pequena deve permitir chegar à lista com espaço para uma linha.");
             workspace.ScrollToEnd();
