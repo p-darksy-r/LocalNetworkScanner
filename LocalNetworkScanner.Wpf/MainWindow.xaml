@@ -48,7 +48,30 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <!-- The outer scroll extent must include the results even when setup fills the window. -->
+            <RowDefinition Height="*">
+                <RowDefinition.Style>
+                    <Style TargetType="RowDefinition">
+                        <Setter Property="MinHeight" Value="250" />
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsExpanded, ElementName=ScanDiagnosticsExpander}" Value="True" />
+                                    <Condition Binding="{Binding Visibility, ElementName=ScanDiagnosticsExpander}" Value="Visible" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="MinHeight" Value="450" />
+                            </MultiDataTrigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsExpanded, ElementName=ScanNotesExpander}" Value="True" />
+                                    <Condition Binding="{Binding Visibility, ElementName=ScanNotesExpander}" Value="Visible" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="MinHeight" Value="450" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </RowDefinition.Style>
+            </RowDefinition>
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
@@ -1188,7 +1211,7 @@
                                 </ItemsControl>
                             </Expander>
 
-                            <Expander Margin="0,4,0,0"
+                            <Expander x:Name="ScanNotesExpander" Margin="0,4,0,0"
                                       Header="Notas adicionais do resultado"
                                       Visibility="{Binding HasWarnings, Converter={StaticResource BooleanToVisibilityConverter}}"
                                       AutomationProperties.Name="Notas adicionais do resultado">

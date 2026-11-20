@@ -4988,7 +4988,7 @@ List<(string Name, Func<Task> Run)> tests =
             Rect diagnosticBounds = scanDiagnosticsScrollViewer.TransformToAncestor(workspace)
                 .TransformBounds(new Rect(scanDiagnosticsScrollViewer.RenderSize));
             True(diagnosticBounds.Top >= -1 && diagnosticBounds.Bottom <= workspace.ActualHeight + 1,
-                "O painel inteiro de diagnósticos deve caber na janela depois de deslocar a página.");
+                $"Diagnósticos fora da janela: {diagnosticBounds}, altura {workspace.ActualHeight}, scroll {workspace.VerticalOffset}/{workspace.ScrollableHeight}.");
             scanDiagnosticsScrollViewer.ScrollToEnd();
             window.UpdateLayout();
             True(scanDiagnosticsScrollViewer.ScrollableHeight > 0 &&
