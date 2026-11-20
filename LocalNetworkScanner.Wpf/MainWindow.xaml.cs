@@ -146,6 +146,14 @@ public partial class MainWindow : Window
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(MainViewModel.SelectedDevice) &&
+            DevicesDataGrid.Resources["DeviceActionsMenu"] is ContextMenu
+                { IsOpen: true, PlacementTarget: DataGridRow target } menu &&
+            !ReferenceEquals(target.Item, ViewModel.SelectedDevice))
+        {
+            menu.IsOpen = false;
+        }
+
         if (e.PropertyName == nameof(MainViewModel.SelectedTheme) &&
             Application.Current is App application)
         {
@@ -286,17 +294,19 @@ public partial class MainWindow : Window
             DevicesDataGrid.FrozenColumnCount = count;
     }
 
-    private void OnDevicesDataGridPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    private void OnDeviceActionsMenuOpened(object sender, RoutedEventArgs e)
     {
-        if (e.OriginalSource is not DependencyObject source ||
-            ItemsControl.ContainerFromElement(DevicesDataGrid, source) is not DataGridRow row)
+        ContextMenu menu = (ContextMenu)sender;
+        if (menu.PlacementTarget is not DataGridRow row ||
+            row.Item is not DeviceRowViewModel device ||
+            ItemsControl.ItemsControlFromItemContainer(row) != DevicesDataGrid)
         {
+            menu.IsOpen = false;
             return;
         }
 
-        DevicesDataGrid.SelectedItem = row.Item;
-        row.IsSelected = true;
-        row.Focus();
+        DevicesDataGrid.SetCurrentValue(DataGrid.SelectedItemProperty, device);
+        menu.DataContext = ViewModel;
     }
 
     private void OnOpenTopologyClick(object sender, RoutedEventArgs e)

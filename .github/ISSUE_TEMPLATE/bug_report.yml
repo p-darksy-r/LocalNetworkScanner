@@ -15,7 +15,7 @@ body:
     attributes:
       label: Versão
       description: Versão da aplicação e, se possível, SHA-256 do pacote.
-      placeholder: 1.4.2
+      placeholder: 1.4.3
     validations:
       required: true
   - type: dropdown

@@ -362,7 +362,7 @@ dotnet publish `
   '<pacote.msix>'
 
 & '<Windows SDK>\makeappx.exe' bundle `
-  /v /o /bv 1.4.2.0 `
+  /v /o /bv 1.4.3.0 `
   /d '<pasta com os MSIX x64 e ARM64>' `
   /p '<bundle.msixbundle>'
 ```

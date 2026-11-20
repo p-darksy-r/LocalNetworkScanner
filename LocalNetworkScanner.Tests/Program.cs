@@ -1433,6 +1433,56 @@ List<(string Name, Func<Task> Run)> tests =
         True(lowerIp.OpenPortCount < higherIp.OpenPortCount,
             "As portas devem ser ordenadas pela contagem.");
     })),
+    ("Live device updates refresh filtered membership, order and selection", () => RunOnSta(() =>
+    {
+        using MainViewModel model = new(new UserDialogService(), new DesktopActionService(),
+            new UiSettingsService(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "settings.json")));
+        const BindingFlags instance = BindingFlags.Instance | BindingFlags.NonPublic;
+        Action<long, ScanProgress> apply = typeof(MainViewModel).GetMethod("ApplyProgress", instance)!
+            .CreateDelegate<Action<long, ScanProgress>>(model);
+        Action flush = typeof(MainViewModel).GetMethod("FlushPendingDeviceUpdates", instance)!
+            .CreateDelegate<Action>(model);
+        Action<IReadOnlyList<NetworkDevice>> finish = typeof(MainViewModel).GetMethod("ReplaceDevices", instance)!
+            .CreateDelegate<Action<IReadOnlyList<NetworkDevice>>>(model);
+        NetworkDevice printer = new() { IpAddress = IPAddress.Parse("192.0.2.12") };
+        NetworkDevice router = new() { IpAddress = IPAddress.Parse("192.0.2.1"), ResponseTimeMs = 10 };
+        void Report(NetworkDevice device) =>
+            apply(0, new ScanProgress("Enriquecimento", 1, 2, 2, "", device));
+
+        model.SearchText = "printer";
+        Report(router);
+        Report(printer);
+        flush();
+        Equal(0, model.VisibleDeviceCount);
+        printer.Hostname = "printer.local";
+        Report(printer);
+        flush();
+        Equal(1, model.VisibleDeviceCount);
+        finish([router, printer]);
+        Equal(printer, model.SelectedDevice?.Device);
+        printer.Hostname = "office.local";
+        Report(printer);
+        flush();
+        Equal(0, model.VisibleDeviceCount);
+        Equal<DeviceRowViewModel?>(null, model.SelectedDevice);
+        finish([router, printer]);
+        Equal<DeviceRowViewModel?>(null, model.SelectedDevice);
+
+        model.SearchText = string.Empty;
+        model.SelectedFilter = model.Filters.Single(filter => filter.Key == "high");
+        printer.RiskLevel = "Alto";
+        Report(printer);
+        flush();
+        Equal(printer, model.DevicesView.Cast<DeviceRowViewModel>().Single().Device);
+        model.SelectedFilter = model.Filters.Single(filter => filter.Key == "all");
+        model.DevicesView.SortDescriptions.Add(new SortDescription(
+            nameof(DeviceRowViewModel.ResponseTimeSortKey), ListSortDirection.Ascending));
+        Equal(router, model.DevicesView.Cast<DeviceRowViewModel>().First().Device);
+        printer.ResponseTimeMs = 1;
+        Report(printer);
+        flush();
+        Equal(printer, model.DevicesView.Cast<DeviceRowViewModel>().First().Device);
+    })),
     ("TLS state is evidence-based and JSON-stable", () => Sync(() =>
     {
         PortScanResult conventionalTlsPort = new()
@@ -4430,6 +4480,7 @@ List<(string Name, Func<Task> Run)> tests =
         {
             NetworkScanResult result = CreateTopologyExportResult();
             result.Devices[0].MdnsNames = ["office-printer.local"];
+            result.Devices[0].MacAddress = "02:ab:cd:34:56:78";
             result.Devices[0].MdnsServices =
             [
                 new MdnsServiceObservation
@@ -4749,6 +4800,28 @@ List<(string Name, Func<Task> Run)> tests =
             True(selectedDeviceRow!.IsSelected,
                 "O dispositivo do painel lateral deve continuar selecionado na grelha.");
             Equal(themedSelectionColor, ((SolidColorBrush)selectedDeviceRow.Background).Color);
+            Equal<ContextMenu?>(null, devicesDataGrid.ContextMenu);
+            DataGridColumnHeader deviceColumnHeader =
+                FindVisualDescendants<DataGridColumnHeader>(devicesDataGrid).First();
+            Equal<ContextMenu?>(null, deviceColumnHeader.ContextMenu);
+            ContextMenu deviceActionsMenu = selectedDeviceRow.ContextMenu;
+            NotNull(deviceActionsMenu);
+            DeviceRowViewModel otherDevice = new(new NetworkDevice
+            {
+                IpAddress = IPAddress.Parse("192.0.2.99")
+            });
+            window.ViewModel.Devices.Add(otherDevice);
+            devicesDataGrid.SetCurrentValue(DataGrid.SelectedItemProperty, otherDevice);
+            Equal(otherDevice, window.ViewModel.SelectedDevice);
+            deviceActionsMenu.PlacementTarget = selectedDeviceRow;
+            deviceActionsMenu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
+            Equal(row, window.ViewModel.SelectedDevice);
+            MenuItem copyIpMenuItem = (MenuItem)deviceActionsMenu.Items[0];
+            copyIpMenuItem.GetBindingExpression(MenuItem.CommandProperty)?.UpdateTarget();
+            Equal(window.ViewModel.CopyIpCommand, copyIpMenuItem.Command);
+            deviceActionsMenu.ClearValue(ContextMenu.PlacementTargetProperty);
+            window.ViewModel.Devices.Remove(otherDevice);
+            window.UpdateLayout();
             DataGridCell[] selectedDeviceCells = FindVisualDescendants<DataGridCell>(selectedDeviceRow)
                 .Where(cell => cell.IsSelected)
                 .ToArray();
@@ -4879,6 +4952,18 @@ List<(string Name, Func<Task> Run)> tests =
             window.ViewModel.SearchText = "PRT-724.QA.TEST";
             Equal(row, window.ViewModel.DevicesView.Cast<DeviceRowViewModel>().SingleOrDefault());
             window.ViewModel.SearchText = "prt-725.qa.test";
+            Equal(0, window.ViewModel.VisibleDeviceCount);
+            window.ViewModel.SearchText = "02:AB:CD:34:56:78";
+            Equal(1, window.ViewModel.VisibleDeviceCount);
+            window.ViewModel.SearchText = "02-ab-cd-34-56-78";
+            Equal(1, window.ViewModel.VisibleDeviceCount);
+            window.ViewModel.SearchText = "  02AB.CD34.5678\tAtelier  ";
+            Equal(1, window.ViewModel.VisibleDeviceCount);
+            window.ViewModel.SearchText = "02abcd345678";
+            Equal(1, window.ViewModel.VisibleDeviceCount);
+            window.ViewModel.SearchText = "02abcd345679 Atelier";
+            Equal(0, window.ViewModel.VisibleDeviceCount);
+            window.ViewModel.SearchText = "02abcd345678 sem-correspondencia";
             Equal(0, window.ViewModel.VisibleDeviceCount);
             window.ViewModel.SearchText = "_ipp._tcp.local";
             Equal(1, window.ViewModel.DevicesView.Cast<object>().Count());
@@ -5098,6 +5183,7 @@ List<(string Name, Func<Task> Run)> tests =
 
             languageSelector.SelectedValue = "en-US";
             Equal("en-US", languageSelector.SelectedValue?.ToString());
+            Equal("Copy IP", copyIpMenuItem.Header?.ToString());
             Equal("en-US", new UiSettingsService(settingsPath).Load().Language);
             Equal($"Version {expectedVersion}", aboutWindow.VersionLabel);
             Equal("About Local Network Scanner", aboutWindow.Title);

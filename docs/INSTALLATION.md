@@ -58,7 +58,7 @@ O `.crt` versionado contém apenas a chave pública. Para o Windows aceitar o si
 
 ```powershell
 .\scripts\install-private-test-certificate.ps1 -Action Install -Confirm:$false
-Add-AppxPackage .\artifacts\msix\private-test\win-x64\LocalNetworkScanner-1.4.2.0-PrivateTest-x64.msix
+Add-AppxPackage .\artifacts\msix\private-test\win-x64\LocalNetworkScanner-1.4.3.0-PrivateTest-x64.msix
 ```
 
 Depois dos testes, remova o pacote e a confiança:

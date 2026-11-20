@@ -49,6 +49,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private DateTimeOffset _scanStartedAt;
     private string _networkCidr = string.Empty;
     private string _searchText = string.Empty;
+    private (string Text, string? NormalizedMac)[] _searchTerms = [];
     private string _customPorts = string.Empty;
     private string _statusMessage = "A preparar a aplicação...";
     private string _vendorDatabaseStatus = BuildVendorDatabaseStatus();
@@ -380,6 +381,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (!SetProperty(ref _searchText, value ?? string.Empty))
                 return;
 
+            _searchTerms = _searchText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                .Select(term => (term, MacAddressService.TryNormalizeDeviceAddress(term, out string mac) ? mac : null))
+                .ToArray();
             RefreshFilter();
             ClearSearchCommand.RaiseCanExecuteChanged();
             ResetFiltersCommand.RaiseCanExecuteChanged();
@@ -1244,7 +1248,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             };
             UpdateTopologyMap();
             LoadDiagnostics(_lastResult);
-            SelectedDevice ??= Devices.FirstOrDefault();
+            SelectVisibleScanResult(SelectedDevice);
             ProgressPhase = "Cancelado";
             StatusMessage = partialDevices.Count == 0
                 ? "Scan cancelado. O relatório parcial não contém dispositivos concluídos."
@@ -1667,11 +1671,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (_pendingDeviceUpdates.Count == 0)
             return;
 
+        bool hasFilter = _searchTerms.Length > 0 || SelectedFilter.Key != "all";
+        bool refreshView = false;
         foreach ((string ipAddress, NetworkDevice device) in _pendingDeviceUpdates)
         {
             if (_devicesByIp.TryGetValue(ipAddress, out DeviceRowViewModel? existing))
             {
                 existing.Update(device);
+                refreshView = refreshView || DevicesView.SortDescriptions.Count > 0 ||
+                    (hasFilter && DevicesView.Contains(existing) != FilterDevice(existing));
             }
             else
             {
@@ -1683,13 +1691,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _pendingDeviceUpdates.Clear();
 
         RefreshSummaryCounts();
-        UpdateVisibleDeviceCount();
+        if (refreshView)
+            RefreshFilter();
+        else
+            UpdateVisibleDeviceCount();
         ClearResultsCommand.RaiseCanExecuteChanged();
     }
 
     private void ReplaceDevices(IReadOnlyList<NetworkDevice> devices)
     {
-        string? selectedIp = SelectedDevice?.IpAddress;
+        DeviceRowViewModel? previousSelection = SelectedDevice;
         List<DeviceRowViewModel> finalRows = new(devices.Count);
         Dictionary<string, DeviceRowViewModel> finalByIp = new(StringComparer.OrdinalIgnoreCase);
         foreach (NetworkDevice device in devices)
@@ -1727,12 +1738,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         foreach ((string ipAddress, DeviceRowViewModel row) in finalByIp)
             _devicesByIp[ipAddress] = row;
 
-        SelectedDevice = selectedIp is not null && _devicesByIp.TryGetValue(selectedIp, out DeviceRowViewModel? selected)
-            ? selected
-            : Devices.FirstOrDefault();
         RefreshFilter();
+        SelectVisibleScanResult(previousSelection);
         ClearResultsCommand.RaiseCanExecuteChanged();
     }
+
+    private void SelectVisibleScanResult(DeviceRowViewModel? previousSelection) =>
+        SelectedDevice = previousSelection is not null && DevicesView.Contains(previousSelection)
+            ? previousSelection
+            : DevicesView.Cast<DeviceRowViewModel>().FirstOrDefault();
 
     private void RefreshSummaryCounts()
     {
@@ -2183,8 +2197,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (!categoryMatches)
             return false;
 
-        string search = SearchText.Trim();
-        if (search.Length == 0)
+        if (_searchTerms.Length == 0)
             return true;
 
         string searchable = string.Join(
@@ -2216,13 +2229,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             device.Notes,
             device.NetBiosName,
             device.Workgroup);
-        return search.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .All(token => searchable.Contains(token, StringComparison.CurrentCultureIgnoreCase));
+        foreach ((string text, string? normalizedMac) in _searchTerms)
+        {
+            if (searchable.Contains(text, StringComparison.CurrentCultureIgnoreCase))
+                continue;
+
+            if (normalizedMac is null ||
+                !MacAddressService.TryNormalizeDeviceAddress(device.Device.MacAddress, out string deviceMac) ||
+                !string.Equals(normalizedMac, deviceMac, StringComparison.Ordinal))
+                return false;
+        }
+        return true;
     }
 
     private void RefreshFilter()
     {
+        DeviceRowViewModel? previousSelection = SelectedDevice;
         DevicesView.Refresh();
+        if (previousSelection is not null)
+            SelectedDevice = DevicesView.Contains(previousSelection) ? previousSelection : null;
         UpdateVisibleDeviceCount();
     }
 

@@ -825,7 +825,8 @@
                                          Padding="30,6,44,6"
                                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                          AutomationProperties.Name="Pesquisar dispositivos"
-                                         AutomationProperties.HelpText="Filtra por nome, IP, MAC, entidade IEEE, tipo, porta ou protocolo." />
+                                         ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=(AutomationProperties.HelpText)}"
+                                         AutomationProperties.HelpText="Ctrl+F para pesquisar. Combina termos como nome, IP, MAC, fabricante ou serviço. Esc limpa a pesquisa." />
                                 <TextBlock Margin="10,0,0,0"
                                            VerticalAlignment="Center"
                                            FontFamily="Segoe MDL2 Assets"
@@ -949,15 +950,16 @@
                         <DataGrid x:Name="DevicesDataGrid"
                                   ItemsSource="{Binding DevicesView}"
                                   SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
-                                  PreviewMouseRightButtonDown="OnDevicesDataGridPreviewMouseRightButtonDown"
                                   IsReadOnly="True"
                                   LayoutUpdated="OnDevicesGridLayoutUpdated"
                                   AlternationCount="2"
                                   ClipboardCopyMode="ExcludeHeader"
                                   AutomationProperties.Name="Dispositivos encontrados"
                                   AutomationProperties.HelpText="Seleciona um dispositivo para consultar detalhes e ações.">
-                            <DataGrid.ContextMenu>
-                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                            <DataGrid.Resources>
+                                <ContextMenu x:Key="DeviceActionsMenu"
+                                             Opened="OnDeviceActionsMenuOpened"
+                                             loc:LocalizationService.IsEnabled="True">
                                     <MenuItem Header="Copiar IP" Command="{Binding CopyIpCommand}" />
                                     <MenuItem Header="Copiar MAC" Command="{Binding CopyMacCommand}" />
                                     <Separator />
@@ -969,7 +971,12 @@
                                     <MenuItem Header="Ping" Command="{Binding PingCommand}" />
                                     <MenuItem Header="Tracert" Command="{Binding TracerouteCommand}" />
                                 </ContextMenu>
-                            </DataGrid.ContextMenu>
+                            </DataGrid.Resources>
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+                                    <Setter Property="ContextMenu" Value="{StaticResource DeviceActionsMenu}" />
+                                </Style>
+                            </DataGrid.RowStyle>
                             <DataGrid.Columns>
                                 <DataGridTemplateColumn Header="Estado" Width="92" SortMemberPath="StatusText">
                                     <DataGridTemplateColumn.CellTemplate>

@@ -400,7 +400,7 @@ public static class LocalizationService
             ,
             ["Pesquisar dispositivos"] = "Search devices"
             ,
-            ["Filtra por nome, IP, MAC, entidade IEEE, tipo, porta ou protocolo."] = "Filter by name, IP, MAC, IEEE entity, type, port or protocol."
+            ["Ctrl+F para pesquisar. Combina termos como nome, IP, MAC, fabricante ou serviço. Esc limpa a pesquisa."] = "Press Ctrl+F to search. Combine terms such as a name, IP, MAC, manufacturer or service. Press Esc to clear the search."
             ,
             ["Limpar pesquisa"] = "Clear search"
             ,
@@ -1404,6 +1404,8 @@ public static class LocalizationService
             TranslateProperty(contentControl, ContentControl.ContentProperty);
         if (element is HeaderedContentControl headered)
             TranslateProperty(headered, HeaderedContentControl.HeaderProperty);
+        if (element is MenuItem menuItem)
+            TranslateProperty(menuItem, HeaderedItemsControl.HeaderProperty);
         if (element is Window window)
             TranslateProperty(window, Window.TitleProperty);
 

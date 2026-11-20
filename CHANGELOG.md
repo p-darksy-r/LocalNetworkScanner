@@ -6,6 +6,14 @@ Todas as alterações relevantes deste projeto são registadas neste ficheiro. O
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-11-20
+
+### Fixed
+
+- A pesquisa aceita MACs completos com dois-pontos, hífenes, pontos ou sem separadores e permite combiná-los com outros termos.
+- A lista filtrada, a contagem e a ordenação acompanham os dados recebidos durante o scan. Ao concluir ou cancelar, a seleção recai sobre um resultado visível.
+- As ações do menu de contexto pertencem à linha do dispositivo, também por teclado. O menu acompanha o idioma da aplicação.
+
 ## [1.4.2] - 2026-11-20
 
 ### Fixed
