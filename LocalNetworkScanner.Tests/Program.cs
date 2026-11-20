@@ -5010,11 +5010,13 @@ List<(string Name, Func<Task> Run)> tests =
             window.UpdateLayout();
             Equal(0, devicesDataGrid.FrozenColumnCount);
             DataGridColumn lastColumn = devicesDataGrid.ColumnFromDisplayIndex(devicesDataGrid.Columns.Count - 1);
-            devicesDataGrid.ScrollIntoView(row, lastColumn);
-            window.UpdateLayout();
             ScrollViewer gridScroll = FindVisualDescendants<ScrollViewer>(devicesDataGrid).First();
-            True(gridScroll.HorizontalOffset > 0,
-                "A grelha compacta deve conseguir deslocar-se até à última coluna.");
+            gridScroll.ScrollToRightEnd();
+            window.Dispatcher.Invoke(
+                System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() => { }));
+            window.UpdateLayout();
+            True(gridScroll.HorizontalOffset > 0 && Math.Abs(gridScroll.ScrollableWidth - gridScroll.HorizontalOffset) < 1,
+                $"Scroll horizontal da grelha compacta: {gridScroll.HorizontalOffset}/{gridScroll.ScrollableWidth}, largura útil {gridScroll.ViewportWidth}.");
             DataGridRow compactRow = (DataGridRow)devicesDataGrid.ItemContainerGenerator.ContainerFromItem(row);
             DataGridCell lastCell = FindVisualDescendants<DataGridCell>(compactRow)
                 .Single(cell => cell.Column == lastColumn);
