@@ -4869,6 +4869,16 @@ List<(string Name, Func<Task> Run)> tests =
             row.MarkMetadataSaved();
             Equal(false, window.ViewModel.HasUnsavedDeviceMetadata);
 
+            row.Device.Hostname = "prt-724.qa.test";
+            row.Device.FriendlyName = "Impressora do Atelier";
+            window.ViewModel.SearchText = "Nome por guardar";
+            Equal(row, window.ViewModel.DevicesView.Cast<DeviceRowViewModel>().SingleOrDefault());
+            window.ViewModel.SearchText = "Impressora do Atelier";
+            Equal(row, window.ViewModel.DevicesView.Cast<DeviceRowViewModel>().SingleOrDefault());
+            window.ViewModel.SearchText = "PRT-724.QA.TEST";
+            Equal(row, window.ViewModel.DevicesView.Cast<DeviceRowViewModel>().SingleOrDefault());
+            window.ViewModel.SearchText = "prt-725.qa.test";
+            Equal(0, window.ViewModel.VisibleDeviceCount);
             window.ViewModel.SearchText = "_ipp._tcp.local";
             Equal(1, window.ViewModel.DevicesView.Cast<object>().Count());
             window.ViewModel.SearchText = "office-printer.local";
@@ -4965,8 +4975,58 @@ List<(string Name, Func<Task> Run)> tests =
                 cancelBounds.Right <= window.ActualWidth + 0.5,
                 "Iniciar e Cancelar devem permanecer dentro da largura mínima da janela.");
             isScanningProperty.SetValue(window.ViewModel, false);
+            window.Show();
+            window.ViewModel.IsScanConfigurationExpanded = true;
+            window.ViewModel.IsCustomScanSettingsExpanded = true;
+            scanDiagnosticsExpander.IsExpanded = true;
+            window.UpdateLayout();
+            ScrollViewer workspace = (ScrollViewer)window.FindName("WorkspaceScrollViewer");
+            True(workspace.ScrollableHeight > 0 && devicesDataGrid.ActualHeight >= 111,
+                "Com as opções abertas, a janela pequena deve permitir chegar à lista com espaço para uma linha.");
+            workspace.ScrollToEnd();
+            window.UpdateLayout();
+            Rect diagnosticBounds = scanDiagnosticsScrollViewer.TransformToAncestor(workspace)
+                .TransformBounds(new Rect(scanDiagnosticsScrollViewer.RenderSize));
+            True(diagnosticBounds.Top >= -1 && diagnosticBounds.Bottom <= workspace.ActualHeight + 1,
+                "O painel inteiro de diagnósticos deve caber na janela depois de deslocar a página.");
+            scanDiagnosticsScrollViewer.ScrollToEnd();
+            window.UpdateLayout();
+            True(scanDiagnosticsScrollViewer.ScrollableHeight > 0 &&
+                 Math.Abs(scanDiagnosticsScrollViewer.ScrollableHeight - scanDiagnosticsScrollViewer.VerticalOffset) < 1,
+                "O último diagnóstico deve ser acessível também com a janela pequena.");
+            scanDiagnosticsExpander.IsExpanded = false;
+            window.ViewModel.Diagnostics.Clear();
+            window.UpdateLayout();
+            Equal(Visibility.Collapsed, scanDiagnosticsScrollViewer.Visibility);
+            window.ViewModel.Warnings.Add("Aviso de teste");
+            window.UpdateLayout();
+            Equal(Visibility.Visible, scanDiagnosticsScrollViewer.Visibility);
+            window.ViewModel.Warnings.Clear();
+            workspace.ScrollToHome();
             window.Width = 1_440;
             window.Height = 880;
+            window.ViewModel.IsScanConfigurationExpanded = false;
+            devicesDataGrid.MaxWidth = 320;
+            window.UpdateLayout();
+            Equal(0, devicesDataGrid.FrozenColumnCount);
+            DataGridColumn lastColumn = devicesDataGrid.ColumnFromDisplayIndex(devicesDataGrid.Columns.Count - 1);
+            devicesDataGrid.ScrollIntoView(row, lastColumn);
+            window.UpdateLayout();
+            ScrollViewer gridScroll = FindVisualDescendants<ScrollViewer>(devicesDataGrid).First();
+            True(gridScroll.HorizontalOffset > 0,
+                "A grelha compacta deve conseguir deslocar-se até à última coluna.");
+            DataGridRow compactRow = (DataGridRow)devicesDataGrid.ItemContainerGenerator.ContainerFromItem(row);
+            DataGridCell lastCell = FindVisualDescendants<DataGridCell>(compactRow)
+                .Single(cell => cell.Column == lastColumn);
+            Rect lastCellBounds = lastCell.TransformToAncestor(devicesDataGrid)
+                .TransformBounds(new Rect(lastCell.RenderSize));
+            True(lastCellBounds.Width > 0 && lastCellBounds.Left >= -1 &&
+                 lastCellBounds.Right <= devicesDataGrid.ActualWidth + 1,
+                "A última coluna deve ficar inteiramente visível depois do scroll.");
+            devicesDataGrid.ClearValue(FrameworkElement.MaxWidthProperty);
+            window.UpdateLayout();
+            Equal(3, devicesDataGrid.FrozenColumnCount);
+            window.ViewModel.IsScanConfigurationExpanded = true;
             window.UpdateLayout();
 
             Rect workArea = SystemParameters.WorkArea;

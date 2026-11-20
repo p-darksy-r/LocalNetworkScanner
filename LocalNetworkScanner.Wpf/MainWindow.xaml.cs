@@ -263,6 +263,29 @@ public partial class MainWindow : Window
         ViewModel.SetInputValidationErrorCount(_inputValidationErrorCount);
     }
 
+    private void OnDevicesGridLayoutUpdated(object? sender, EventArgs e)
+    {
+        // Leave room for one full default detail column and the vertical scrollbar.
+        const double minimumScrollableWidth = 240;
+        double remaining = DevicesDataGrid.ActualWidth - SystemParameters.VerticalScrollBarWidth - minimumScrollableWidth;
+        int count = 0;
+        while (count < Math.Min(3, DevicesDataGrid.Columns.Count))
+        {
+            DataGridColumn column = DevicesDataGrid.ColumnFromDisplayIndex(count);
+            double width = column.ActualWidth;
+            if (column.Visibility == Visibility.Visible)
+            {
+                if (!(width > 0 && width <= remaining))
+                    break;
+                remaining -= width;
+            }
+            count++;
+        }
+
+        if (DevicesDataGrid.FrozenColumnCount != count)
+            DevicesDataGrid.FrozenColumnCount = count;
+    }
+
     private void OnDevicesDataGridPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.OriginalSource is not DependencyObject source ||

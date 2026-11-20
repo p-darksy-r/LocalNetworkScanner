@@ -6,7 +6,13 @@ Todas as alterações relevantes deste projeto são registadas neste ficheiro. O
 
 ## [Unreleased]
 
-Sem alterações adicionais depois da tag de código-fonte `v1.4.1`.
+## [1.4.2] - 2026-11-20
+
+### Fixed
+
+- A janela permite deslocação vertical quando falta altura para as opções técnicas, o inventário e os diagnósticos. O painel de diagnósticos só entra na navegação quando há mensagens ou notas.
+- A grelha ajusta o número de colunas fixas à largura disponível para que seja possível chegar às colunas da direita mesmo com o painel lateral aberto.
+- A pesquisa encontra o dispositivo pelo hostname DNS mesmo depois de lhe atribuir um alias ou de descobrir um nome amigável.
 
 ## [1.4.1] - 2026-08-29
 

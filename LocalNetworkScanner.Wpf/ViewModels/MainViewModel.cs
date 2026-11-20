@@ -2190,6 +2190,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         string searchable = string.Join(
             ' ',
             device.Hostname,
+            device.Device.Hostname,
             device.IpAddress,
             device.MacAddress,
             device.Manufacturer,

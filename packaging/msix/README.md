@@ -12,7 +12,7 @@ O processo de empacotamento deve substituir todos os valores seguintes antes de 
 - `__PUBLISHER__`: Publisher exato do Partner Center ou Subject exato do certificado de testes;
 - `__PUBLISHER_DISPLAY_NAME__`: nome público do editor;
 - `__DISPLAY_NAME__`: nome apresentado pelo Windows;
-- `__VERSION__`: versão de quatro componentes exigida pelo MSIX, por exemplo `1.4.1.0`;
+- `__VERSION__`: versão de quatro componentes exigida pelo MSIX, por exemplo `1.4.2.0`;
 - `__ARCHITECTURE__`: arquitetura do pacote, atualmente `x64` ou `arm64`.
 
 Para publicação na Microsoft Store, a identidade e o Publisher devem corresponder exatamente aos valores atribuídos ao produto no Partner Center. O certificado interno e os seus valores não devem ser usados como identidade de produção.
