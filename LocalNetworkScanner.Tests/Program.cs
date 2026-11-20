@@ -4792,6 +4792,7 @@ List<(string Name, Func<Task> Run)> tests =
                 "O painel deve permitir alcançar o último diagnóstico.");
             scanDiagnosticsScrollViewer.ScrollToHome();
             scanDiagnosticsExpander.IsExpanded = false;
+            window.Show();
             window.UpdateLayout();
 
             DataGridRow? selectedDeviceRow =
@@ -4814,12 +4815,17 @@ List<(string Name, Func<Task> Run)> tests =
             devicesDataGrid.SetCurrentValue(DataGrid.SelectedItemProperty, otherDevice);
             Equal(otherDevice, window.ViewModel.SelectedDevice);
             deviceActionsMenu.PlacementTarget = selectedDeviceRow;
-            deviceActionsMenu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
+            deviceActionsMenu.IsOpen = true;
+            window.Dispatcher.Invoke(
+                System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() => { }));
+            Equal(true, deviceActionsMenu.IsOpen);
             Equal(row, window.ViewModel.SelectedDevice);
             MenuItem copyIpMenuItem = (MenuItem)deviceActionsMenu.Items[0];
-            copyIpMenuItem.GetBindingExpression(MenuItem.CommandProperty)?.UpdateTarget();
             Equal(window.ViewModel.CopyIpCommand, copyIpMenuItem.Command);
+            devicesDataGrid.SetCurrentValue(DataGrid.SelectedItemProperty, otherDevice);
+            Equal(false, deviceActionsMenu.IsOpen);
             deviceActionsMenu.ClearValue(ContextMenu.PlacementTargetProperty);
+            devicesDataGrid.SetCurrentValue(DataGrid.SelectedItemProperty, row);
             window.ViewModel.Devices.Remove(otherDevice);
             window.UpdateLayout();
             DataGridCell[] selectedDeviceCells = FindVisualDescendants<DataGridCell>(selectedDeviceRow)
