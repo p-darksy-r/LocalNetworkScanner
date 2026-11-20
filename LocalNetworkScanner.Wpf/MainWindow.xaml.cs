@@ -148,7 +148,7 @@ public partial class MainWindow : Window
     {
         if (e.PropertyName == nameof(MainViewModel.SelectedDevice) &&
             DevicesDataGrid.Resources["DeviceActionsMenu"] is ContextMenu
-                { IsOpen: true, PlacementTarget: DataGridRow target } menu &&
+            { IsOpen: true, PlacementTarget: DataGridRow target } menu &&
             !ReferenceEquals(target.Item, ViewModel.SelectedDevice))
         {
             menu.IsOpen = false;
